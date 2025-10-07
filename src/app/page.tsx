@@ -1,3 +1,4 @@
+import TestUpload from "@/components/handle-upload";
 import { getServerSession } from "next-auth/next";
 import { redirect } from "next/navigation";
 export default async function Home() {
@@ -15,7 +16,7 @@ export default async function Home() {
       ) : (
         <div>
           <h2>we present you our website. Mr. {session.user.name}</h2>
-          
+
         </div>
       )}
     </div>
