@@ -1,4 +1,3 @@
-import TestUpload from "@/components/handle-upload";
 import { getServerSession } from "next-auth/next";
 import { redirect } from "next/navigation";
 export default async function Home() {
