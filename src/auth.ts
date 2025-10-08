@@ -1,9 +1,11 @@
 import { NextAuthOptions } from "next-auth";
-import GoogleProvider from "next-auth/providers/google";
+import CredentialsProvider from "next-auth/providers/credentials";
 import { Adapter } from "next-auth/adapters";
 import { PrismaAdapter } from "@auth/prisma-adapter";
 import { PrismaClient } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
+import bcrypt from "bcrypt";
+import { UserRole } from "@prisma/client";
 
 function CustomPrismaAdapter(p: PrismaClient): Adapter {
   const origin = PrismaAdapter(p);
@@ -25,47 +27,84 @@ export const OPTIONS: NextAuthOptions = {
     secret: process.env.NEXTAUTH_SECRET,
 
     providers: [
-      GoogleProvider({
-        clientId: process.env.AUTH_GOOGLE_ID as string,
-        clientSecret: process.env.AUTH_GOOGLE_SECRET as string,
-        allowDangerousEmailAccountLinking: true,
-        httpOptions: {
-          timeout: 60000, // e.g. 30s
+      CredentialsProvider({
+        name: "Credentials",
+        credentials: {
+          entity_id: { label: "Entity ID", type: "text" },
+          password: { label: "Password", type: "password" },
+        },
+        async authorize(credentials) {
+          if (!credentials?.entity_id || !credentials?.password) {
+            return null; 
+          }
+
+          const user = await prisma.user.findUnique({
+            where: { entity_id: credentials.entity_id },
+          });
+
+          if (!user) {
+            return null; // No user found
+          }
+
+          const isValidPassword = await bcrypt.compare(
+            credentials.password,
+            user.password
+          );
+
+          if (!isValidPassword) {
+            return null; // Password does not match
+          }
+
+          return {
+            id: user.id,
+            entity_id: user.entity_id,
+            name: user.name || user.entity_id,
+            email: user.email,
+            role: user.role, 
+            face_id: user.face_id, 
+          };
         },
       }),
     ],
-  
+
     session: {
       strategy: "jwt",
-      maxAge: 30 * 24 * 60 * 60, // 30 days
+      maxAge: 30 * 24 * 60 * 60,
     },
-  
+
     callbacks: {
       async jwt({ token, user }) {
-        // user is only passed the first time JWT is created
         if (user) {
-          token.id = user.id;
-          token.email = user.email;
-          token.name = user.name;
-          token.image = user.image;
+          const customUser = user as typeof user & {
+            entity_id?: string;
+            role?: UserRole; 
+          };
+
+          token.id = customUser.id;
+          token.entity_id = customUser.entity_id;
+          token.name = customUser.name;
+          token.email = customUser.email;
+          token.role = customUser.role;
+          token.face_id = customUser.face_id;
         }
         return token;
       },
-  
+
       async session({ session, token }) {
-        // Fetch the latest user data from the database using Prisma
-        const user = await prisma.user.findUnique({
-          where: { id: token.id },
-        });
-        // put token values into session.user
-        if (user) {
+        if (token) {
           session.user.id = token.id as string;
-          session.user.email = token.email as string;
+          session.user.entity_id = token.entity_id as string;
           session.user.name = token.name as string;
-          session.user.image = token.image as string;
+          session.user.email = token.email as string;
+          session.user.role = token.role as UserRole;
+          session.user.face_id = token.face_id as string;
         }
         return session;
       },
+    },
+
+    pages: {
+      // signIn: "/authflow",
     },
   };
 
