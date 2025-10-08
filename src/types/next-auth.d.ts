@@ -10,6 +10,9 @@ declare module "next-auth" {
       email?: string | null;
       role?: UserRole;    // <--- This needs to be UserRole type
       face_id?: string | null;
+      student_id?: string | null;
+      staff_id?: string | null;
+      department?: string | null;
     } & DefaultSession["user"];
   }
 
@@ -20,6 +23,9 @@ declare module "next-auth" {
     email?: string | null;
     role?: UserRole;    // <--- This needs to be UserRole type
     face_id?: string | null;
+    student_id?: string | null;
+    staff_id?: string | null;
+    department?: string | null;
   }
 }
 
@@ -31,5 +37,8 @@ declare module "next-auth/jwt" {
     email?: string | null;
     role?: UserRole;    // <--- This needs to be UserRole type
     face_id?: string | null;
+    student_id?: string | null;
+    staff_id?: string | null;
+    department?: string | null; 
   }
 }
