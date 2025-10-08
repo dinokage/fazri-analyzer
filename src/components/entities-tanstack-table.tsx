@@ -79,7 +79,7 @@ function useEntities(
         }
 
         const response = await fetch(
-          `${process.env.NEXT_PUBLIC_FASTAPI_BACKEND}/api/v1/entities?${params}`
+          `${process.env.NEXT_PUBLIC_FASTAPI_BASE_URL}/api/v1/entities?${params}`
         );
 
         if (!response.ok) {
