@@ -1,6 +1,6 @@
 "use client"
-
-import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
+import {useSession, signOut} from "next-auth/react"
+import { Avatar, AvatarImage } from "@/components/ui/avatar"
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -12,31 +12,41 @@ import {
 import { Button } from "@/components/ui/button"
 
 export function UserNav() {
+  const {data: session } = useSession()
+
+  const avatarSrc =
+    session?.user?.image && session.user.image.startsWith("http")? session.user.image: "/default-avatar.png"
+    console.log(avatarSrc)
   return (
     <DropdownMenu>
       <DropdownMenuTrigger asChild>
         <Button variant="ghost" className="h-9 px-2">
           <div className="flex items-center gap-2">
             <Avatar className="size-6">
-              <AvatarImage src="/placeholder-user.jpg" alt="User avatar" />
-              <AvatarFallback>UV</AvatarFallback>
+              <AvatarImage src={avatarSrc} width={10} alt="User Avatar" />
             </Avatar>
-            <span className="hidden text-sm font-medium md:inline">User</span>
+            <span className="hidden md:inline-block font-medium">
+              {session?.user?.name}
+            </span>
           </div>
         </Button>
       </DropdownMenuTrigger>
       <DropdownMenuContent align="end" className="w-56">
         <DropdownMenuLabel className="font-normal">
           <div className="flex flex-col space-y-1">
-            <p className="text-sm font-medium leading-none">Usha Verma</p>
-            <p className="text-xs leading-none text-muted-foreground">usha.verma@example.com</p>
+            <p className="text-sm font-medium leading-none">
+              {session?.user?.name}
+            </p>
+            <p className="text-xs leading-none text-muted-foreground">
+              {session?.user?.email}
+            </p>
           </div>
         </DropdownMenuLabel>
         <DropdownMenuSeparator />
         <DropdownMenuItem>Profile</DropdownMenuItem>
         <DropdownMenuItem>Settings</DropdownMenuItem>
         <DropdownMenuSeparator />
-        <DropdownMenuItem>Sign out</DropdownMenuItem>
+        <DropdownMenuItem onClick={() => signOut()}>Sign out</DropdownMenuItem>
       </DropdownMenuContent>
     </DropdownMenu>
   )
