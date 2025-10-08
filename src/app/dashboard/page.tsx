@@ -1,10 +1,19 @@
 import EntitiesTanStackTable from '@/components/entities-tanstack-table'
 import { getServerSession } from 'next-auth'
+import { OPTIONS } from "@/auth";
 import { redirect } from 'next/navigation'
+import { Metadata } from 'next';
+
+export const metadata:Metadata = {
+  title: `Dashboard `,
+};
 export default async function EntitiesPage() {
-  const session = await getServerSession()
+  const session = await getServerSession(OPTIONS);
   if(!session){
     redirect('/auth')
+  }
+  if (session.user.role !== "SUPER_ADMIN") {
+    redirect("/profile");
   }
   return (
     <div className="space-y-4">

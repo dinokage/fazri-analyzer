@@ -1,12 +1,11 @@
 import React from 'react'
 import { redirect } from "next/navigation"
 import { getServerSession } from "next-auth/next"
-import { siteConfig } from "@/config/site";
 import SigninPage from '@/components/auth/SigninForm';
 import { Metadata } from 'next';
 
 export const metadata:Metadata = {
-  title: `Sign In | ${siteConfig.name}`,
+  title: `Sign In `,
 };
 
 const page = async() => {

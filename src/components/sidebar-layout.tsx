@@ -30,8 +30,7 @@ export function SidebarLayout({ children }: { children: React.ReactNode }) {
       <Sidebar>
         <SidebarHeader className="h-16 px-4 flex items-center">
           <div className="flex items-center gap-2">
-            <img src="/placeholder-logo.svg" alt="Campus Monitor logo" className="size-5" />
-            <span className="font-semibold">Campus Monitor</span>
+            <span className="font-semibold">Fazri Analyzer</span>
           </div>
         </SidebarHeader>
 
