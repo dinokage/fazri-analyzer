@@ -85,7 +85,7 @@ export default function SigninPage() {
         setStep("success"); // Show success animation
         setTimeout(() => {
           // You might want to get `res.url` or `router.push('/')` for more robust redirection
-          window.location.href = "/"; // Redirect to home page
+          window.location.href = "/dashboard"; // Redirect to home page
         }, 2000);
       }
     } catch (error) {
@@ -105,13 +105,8 @@ export default function SigninPage() {
   };
 
   return (
-    <main className="min-h-screen flex items-center justify-center bg-gradient-to-br from-slate-50 via-blue-50 to-indigo-100 dark:from-black dark:via-gray-900 dark:to-black p-4 transition-all duration-500 relative overflow-hidden">
-      {/* Background decoration */}
-      <div className="absolute inset-0 overflow-hidden pointer-events-none">
-        <div className="absolute -top-40 -right-40 w-80 h-80 bg-blue-400/20 dark:bg-gray-800/20 rounded-full blur-3xl"></div>
-        <div className="absolute -bottom-40 -left-40 w-80 h-80 bg-indigo-400/20 dark:bg-gray-700/20 rounded-full blur-3xl"></div>
-        <div className="absolute top-1/2 left-1/2 transform -translate-x-1/2 -translate-y-1/2 w-96 h-96 bg-purple-400/10 dark:bg-gray-600/10 rounded-full blur-3xl"></div>
-      </div>
+    <main className="min-h-screen flex items-center justify-center p-4 transition-all duration-500 relative overflow-hidden">
+
 
       <div className="w-full max-w-sm relative z-10">
         <Card className="backdrop-blur-sm bg-white/90 dark:bg-black/90 shadow-2xl border-0 ring-1 ring-slate-200/50 dark:ring-gray-800/50 transition-all duration-300">
@@ -131,7 +126,7 @@ export default function SigninPage() {
                 Welcome Back
               </h1>
               <p className="text-[1.25rem] text-muted-foreground font-light">
-                Sign in to access <span className="font-semibold text-blue-600 dark:text-blue-400">Hextasphere EPMS</span>
+                Sign in to access <span className="font-semibold text-blue-600 dark:text-blue-400">Fazri Analyzer</span>
               </p>
             </div>
           </CardHeader>
@@ -178,7 +173,7 @@ export default function SigninPage() {
                             placeholder="Enter your username"
                             value={username}
                             onChange={(e) => setUsername(e.target.value)}
-                            className="border-none bg-transparent focus:ring-0 focus-visible:ring-0 focus-visible:border-none px-0 text-foreground placeholder:text-muted-foreground"
+                            className="border-none bg-transparent focus:ring-0 focus-visible:ring-0 focus-visible:border-none px-0  placeholder:text-muted-foreground"
                             required
                             autoFocus
                             disabled={loading}
@@ -324,7 +319,7 @@ export default function SigninPage() {
                       <Label htmlFor="password" className="text-slate-700 dark:text-slate-300 font-medium">
                         Password
                       </Label>
-                      <div className="relative rounded-full py-4 px-5 border border-border bg-transparent">
+                      <div className="relative rounded-full py-4 px-5 border border-border bg-background">
                         <div className="flex items-center">
                           <div className="flex-shrink-0 mr-3">
                             <Lock className="h-5 w-5 text-muted-foreground" />
@@ -335,9 +330,10 @@ export default function SigninPage() {
                             placeholder="Enter your password"
                             value={password}
                             onChange={(e) => setPassword(e.target.value)}
-                            className="border-none bg-transparent focus:ring-0 focus-visible:ring-0 focus-visible:border-none px-0 pr-10 text-foreground placeholder:text-muted-foreground"
+                            className="border-none bg-background focus:ring-0 focus-visible:ring-0 focus-visible:border-none px-0 pr-10 text-foreground placeholder:text-muted-foreground"
                             required
                             autoFocus
+                            autoComplete="off"
                             disabled={loading}
                           />
                           <button
@@ -493,13 +489,6 @@ export default function SigninPage() {
                   </motion.div>
                 )}
               </AnimatePresence>
-
-              {/* Footer */}
-              <div className="pt-4 border-t border-slate-200 dark:border-slate-700">
-                <p className="text-center text-sm text-slate-500 dark:text-slate-400">
-                  Secure authentication powered by <span className="font-medium">Hextasphere</span>
-                </p>
-              </div>
             </CardContent>
           </Card>
         </div>
