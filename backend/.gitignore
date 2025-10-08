@@ -1,0 +1,6 @@
+.env
+fazri-anal/*
+__pycache__/
+*.pyc
+config.py
+datasets/*
