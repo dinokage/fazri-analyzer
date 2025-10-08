@@ -18,7 +18,7 @@ export function Timeline({ activities }: { activities: Activity[] }) {
         const at = new Date(a.timestamp)
         const dateLabel = isNaN(at.getTime()) ? a.timestamp : at.toLocaleString()
         return (
-          <li key={a.id} className="ms-6">
+          <li key={idx} className="ms-6">
             <span className="absolute -start-1.5 mt-1 size-3 rounded-full border bg-background" aria-hidden />
             <div className="space-y-1">
               <div className="flex items-center justify-between gap-2">

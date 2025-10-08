@@ -49,10 +49,10 @@ export function EntitiesTable({ data }: { data: EntityRow[] }) {
               key={row.id}
               role="button"
               tabIndex={0}
-              onClick={() => router.push(`/dashboard/${row.original.id}`)}
+              onClick={() => router.push(`/dashboard/${row.original.id.toLowerCase()}`)}
               onKeyDown={(e) => {
                 if (e.key === "Enter" || e.key === " ") {
-                  router.push(`/dashboard/${row.original.id}`)
+                  router.push(`/dashboard/${row.original.id.toLowerCase()}`)
                 }
               }}
               className="border-b hover:bg-accent cursor-pointer"
