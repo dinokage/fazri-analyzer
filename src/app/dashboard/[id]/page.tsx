@@ -16,7 +16,7 @@ export default async function DashboardPage({
     redirect('/auth')
   }
   if (session.user.role !== "SUPER_ADMIN") {
-    redirect("/profile");
+    redirect("/dashboard/profile");
   }
   
   return (

@@ -13,7 +13,7 @@ export default async function EntitiesPage() {
     redirect('/auth')
   }
   if (session.user.role !== "SUPER_ADMIN") {
-    redirect("/profile");
+    redirect("/dashboard/profile");
   }
   return (
     <div className="space-y-4">

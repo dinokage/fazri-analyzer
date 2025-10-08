@@ -62,6 +62,10 @@ export const OPTIONS: NextAuthOptions = {
             email: user.email,
             role: user.role, 
             face_id: user.face_id, 
+            student_id: user.student_id,
+            staff_id: user.staff_id,
+            department: user.department,
+
           };
         },
       }),
@@ -86,6 +90,10 @@ export const OPTIONS: NextAuthOptions = {
           token.email = customUser.email;
           token.role = customUser.role;
           token.face_id = customUser.face_id;
+          token.student_id = customUser.student_id;
+          token.staff_id = customUser.staff_id;
+          token.department = customUser.department;
+
         }
         return token;
       },
@@ -98,6 +106,9 @@ export const OPTIONS: NextAuthOptions = {
           session.user.email = token.email as string;
           session.user.role = token.role as UserRole;
           session.user.face_id = token.face_id as string;
+          session.user.student_id = token.student_id as string;
+          session.user.staff_id = token.staff_id as string;
+          session.user.department = token.department as string;
         }
         return session;
       },
