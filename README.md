@@ -1,10 +1,12 @@
 # Fazri Analyzer
 
+![acha sa screenshot](https://cdn.hextasphere.com/ethos/screenshot-with-background.png)
+
 A full-stack application designed for advanced entity analysis, visualization, and predictive insights. This project combines a powerful Python backend for data processing and machine learning with a modern Next.js frontend for interactive dashboarding.
 
 ## Product Demo
 
-- Demo Link: [ethos.rdpdc.in]('https://ethos.rdpdc.in')
+- Demo Link: [ethos.rdpdc.in](https://ethos.rdpdc.in)
 - Super Admin Credentials: username-`admin` password-`Ethos@123`
 - Student Credentials: username-`<entity-id>` password-`Ethos@123`
 
@@ -47,7 +49,7 @@ A full-stack application designed for advanced entity analysis, visualization, a
 
 - **Package Manager**: [pnpm](https://pnpm.io/)
 - **Containerization**: [Docker](https://www.docker.com/)
-- **CI/CD**: [Vercel]('https://vercel.com') for frontend, [RDP Datacenter]('https://rdpdatacenter.in') for backend
+- **CI/CD**: [Vercel](https://vercel.com) for frontend, [RDP Datacenter](https://rdpdatacenter.in) for backend
 
 ## 🚀 Getting Started
 
