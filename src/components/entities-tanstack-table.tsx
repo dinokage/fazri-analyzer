@@ -1,6 +1,5 @@
 "use client"
 import React from 'react';
-import axios from 'axios';
 import {
   useReactTable,
   getCoreRowModel,
@@ -50,7 +49,7 @@ type EntitiesResponse = {
 };
 
 // Custom hook for fetching entities
-function useEntities(limit: number, skip: number, department?: string) {
+function useEntities(limit: number, skip: number, department?: string, entityType?: string) {
   const [data, setData] = React.useState<EntitiesResponse | null>(null);
   const [isLoading, setIsLoading] = React.useState(true);
   const [error, setError] = React.useState<string | null>(null);
@@ -70,15 +69,19 @@ function useEntities(limit: number, skip: number, department?: string) {
           params.append('department', department);
         }
 
-        // const response = await fetch(
-        //   `${process.env.NEXT_PUBLIC_FASTAPI_BACKEND}/api/v1/entities?${params}`
-        // );
-        const response  = await axios.get(`${process.env.NEXT_PUBLIC_FASTAPI_BACKEND}/api/v1/entities?${params}`)
-        if (!response.status || response.status !== 200) {
+        if (entityType && entityType !== 'all') {
+          params.append('entity_type', entityType);
+        }
+
+        const response = await fetch(
+          `${process.env.NEXT_PUBLIC_FASTAPI_BACKEND}/api/v1/entities?${params}`
+        );
+
+        if (!response.ok) {
           throw new Error(`HTTP error! status: ${response.status}`);
         }
 
-        const result = await response.data;
+        const result = await response.json();
         setData(result);
       } catch (err) {
         setError(err instanceof Error ? err.message : 'An error occurred');
@@ -89,7 +92,7 @@ function useEntities(limit: number, skip: number, department?: string) {
     };
 
     fetchEntities();
-  }, [limit, skip, department]);
+  }, [limit, skip, department, entityType]);
 
   return { data, isLoading, error };
 }
@@ -136,43 +139,20 @@ const columns: ColumnDef<Entity>[] = [
     ),
   },
   {
-    accessorKey: 'confidence_score',
-    header: 'Confidence',
+    id: 'actions',
+    header: 'Actions',
     cell: ({ row }) => {
-      const score = row.getValue('confidence_score') as number;
+      const entityId = row.getValue('entity_id') as string;
       return (
-        <div className="flex items-center gap-2">
-          <div className="w-16 h-2 bg-muted rounded-full overflow-hidden">
-            <div
-              className="h-full bg-primary"
-              style={{ width: `${score * 100}%` }}
-            />
-          </div>
-          <span className="text-sm text-muted-foreground">
-            {(score * 100).toFixed(0)}%
-          </span>
-        </div>
-      );
-    },
-  },
-  {
-    accessorKey: 'identifiers',
-    header: 'Identifiers',
-    cell: ({ row }) => {
-      const identifiers = row.getValue('identifiers') as Identifier[];
-      return (
-        <div className="flex gap-1 flex-wrap">
-          {identifiers.slice(0, 3).map((id, idx) => (
-            <Badge key={idx} variant="outline" className="text-xs">
-              {id.type}
-            </Badge>
-          ))}
-          {identifiers.length > 3 && (
-            <Badge variant="outline" className="text-xs">
-              +{identifiers.length - 3}
-            </Badge>
-          )}
-        </div>
+        <Button
+          variant="outline"
+          size="sm"
+          asChild
+        >
+          <a href={`/dashboard/${entityId}`}>
+            View Profile
+          </a>
+        </Button>
       );
     },
   },
@@ -183,9 +163,10 @@ export default function EntitiesTanStackTable() {
   const [pageSize, setPageSize] = React.useState(10);
   const [pageIndex, setPageIndex] = React.useState(0);
   const [department, setDepartment] = React.useState<string>('all');
+  const [entityType, setEntityType] = React.useState<string>('all');
 
   const skip = pageIndex * pageSize;
-  const { data, isLoading, error } = useEntities(pageSize, skip, department);
+  const { data, isLoading, error } = useEntities(pageSize, skip, department, entityType);
 
   const table = useReactTable({
     data: data?.entities ?? [],
@@ -258,13 +239,33 @@ export default function EntitiesTanStackTable() {
               </SelectContent>
             </Select>
           </div>
+
+          <div className="flex items-center gap-2">
+            <span className="text-sm font-medium">Type:</span>
+            <Select
+              value={entityType}
+              onValueChange={(value) => {
+                setEntityType(value);
+                setPageIndex(0);
+              }}
+            >
+              <SelectTrigger className="w-[130px]">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">All Types</SelectItem>
+                <SelectItem value="student">Student</SelectItem>
+                <SelectItem value="staff">Staff</SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
         </div>
 
         {data && (
           <div className="mt-4 text-sm text-muted-foreground">
             Showing {skip + 1} to {Math.min(skip + pageSize, data.total)} of{' '}
             {data.total} entries
-            {department !== 'all' && ` (filtered by ${department})`}
+            {(department !== 'all' || entityType !== 'all') && ' (filtered)'}
           </div>
         )}
       </Card>

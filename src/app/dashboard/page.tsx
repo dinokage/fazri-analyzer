@@ -1,6 +1,11 @@
 import EntitiesTanStackTable from '@/components/entities-tanstack-table'
-
-export default function EntitiesPage() {
+import { getServerSession } from 'next-auth'
+import { redirect } from 'next/navigation'
+export default async function EntitiesPage() {
+  const session = await getServerSession()
+  if(!session){
+    redirect('/auth')
+  }
   return (
     <div className="space-y-4">
       <div className="flex items-center justify-between">
