@@ -104,7 +104,7 @@ export const OPTIONS: NextAuthOptions = {
     },
 
     pages: {
-      // signIn: "/authflow",
+      signIn: "/auth",
     },
   };
 
