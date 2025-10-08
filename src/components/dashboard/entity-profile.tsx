@@ -1,6 +1,4 @@
-// components/dashboard/entity-profile.tsx
 'use client';
-
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { Button } from '@/components/ui/button';
 import { Entity } from '@/types/entity';
@@ -17,7 +15,8 @@ export function EntityProfile({ entity }: EntityProfileProps) {
     .join('')
     .toUpperCase() || '??';
 
-    console.log(entity)
+    const face_id = entity.identifiers.filter(id => id.type === 'face_id')[0]?.value || null;
+    const imageUrl = face_id ? process.env.NEXT_PUBLIC_CDN_URL+`/${face_id}.jpg` : "";
 
   return (
     <div className="bg-[#14141a] rounded-lg border border-gray-800 p-6">
@@ -26,7 +25,7 @@ export function EntityProfile({ entity }: EntityProfileProps) {
       <div className="flex items-start justify-between">
         <div className="flex items-center gap-4">
           <Avatar className="h-16 w-16">
-            <AvatarImage src="" />
+            <AvatarImage src={imageUrl} />
             <AvatarFallback className="bg-blue-600 text-white text-xl">
               {initials}
             </AvatarFallback>
