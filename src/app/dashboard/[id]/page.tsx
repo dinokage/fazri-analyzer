@@ -48,7 +48,7 @@ export default function EntityDetailsPage({
     if (!entity) return
 
     const now = new Date()
-    let start = new Date()
+    const start = new Date()
 
     switch (duration) {
       case "12h":
