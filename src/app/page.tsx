@@ -15,7 +15,7 @@ export default async function Home() {
       ) : (
         <div>
           <h2>we present you our website. Mr. {session.user.name}</h2>
-          
+
         </div>
       )}
     </div>
