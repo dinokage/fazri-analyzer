@@ -1,3 +1,5 @@
+// schema.prisma (Corrected and Aligned with NextAuth.js expectations)
+
 generator client {
   provider = "prisma-client-js"
 }
@@ -7,16 +9,41 @@ datasource db {
   url      = env("DATABASE_URL")
 }
 
-model User {
+enum UserRole {
+  STUDENT
+  STAFF
+  FACULTY
+  SUPER_ADMIN
+}
+
+// ==========================================================
+// THE MAIN USER MODEL FOR YOUR APPLICATION (renamed back to `User`)
+// ==========================================================
+model User { // <<< RENAMED from 'Entity' to 'User'
   id            String    @id @default(cuid())
+  entity_id     String    @unique
   name          String?
+  role          UserRole
   email         String?   @unique
+  department    String?
+  student_id    String?
+  staff_id      String?
+  card_id       String?
+  device_hash   String?   @unique
+  face_id       String?   @unique
+
+  password      String // Hashed password
+  // Add these if you want to keep them from default NextAuth.js User model structure:
   emailVerified DateTime?
   image         String?
 
-  accounts      Account[]
-  sessions      Session[]
+  accounts      Account[] // Now links to this User model
+  sessions      Session[] // Now links to this User model
 }
+
+// ==========================================================
+// NEXTAUTH.JS MODELS - NOW CORRECTLY REFERENCING 'USER'
+// ==========================================================
 
 model Account {
   id                String  @id @default(cuid())
@@ -32,7 +59,8 @@ model Account {
   id_token          String?   @db.Text
   session_state     String?
 
-  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+  // Corrected: Relation points to `User` (and name is 'user')
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade) // <<< CHANGED from 'entity' to 'user'
 
   @@unique([provider, providerAccountId])
 }
@@ -43,7 +71,8 @@ model Session {
   userId       String
   expires      DateTime
 
-  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+  // Corrected: Relation points to `User` (and name is 'user')
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade) // <<< CHANGED from 'entity' to 'user'
 }
 
 model VerificationToken {
