@@ -77,7 +77,7 @@ export function SidebarLayout({ children }: { children: React.ReactNode }) {
         </SidebarFooter>
       </Sidebar>
 
-      <SidebarInset className="dark bg-indigo-950">
+      <SidebarInset>
         <header className="flex h-16 items-center justify-between gap-4 border-b border-border px-6 text-foreground">
           <div className="flex items-center gap-3">
             <SidebarTrigger />
