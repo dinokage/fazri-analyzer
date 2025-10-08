@@ -1,22 +1,22 @@
-"use client"
-import React from 'react';
+"use client";
+import React from "react";
 import {
   useReactTable,
   getCoreRowModel,
   ColumnDef,
   flexRender,
-} from '@tanstack/react-table';
-import { Button } from '@/components/ui/button';
+} from "@tanstack/react-table";
+import { Button } from "@/components/ui/button";
 import {
   Select,
   SelectContent,
   SelectItem,
   SelectTrigger,
   SelectValue,
-} from '@/components/ui/select';
-import { Card } from '@/components/ui/card';
-import { Badge } from '@/components/ui/badge';
-import { Loader2, ChevronLeft, ChevronRight } from 'lucide-react';
+} from "@/components/ui/select";
+import { Card } from "@/components/ui/card";
+import { Badge } from "@/components/ui/badge";
+import { Loader2, ChevronLeft, ChevronRight } from "lucide-react";
 
 // Types
 type Identifier = {
@@ -49,7 +49,12 @@ type EntitiesResponse = {
 };
 
 // Custom hook for fetching entities
-function useEntities(limit: number, skip: number, department?: string, entityType?: string) {
+function useEntities(
+  limit: number,
+  skip: number,
+  department?: string,
+  entityType?: string
+) {
   const [data, setData] = React.useState<EntitiesResponse | null>(null);
   const [isLoading, setIsLoading] = React.useState(true);
   const [error, setError] = React.useState<string | null>(null);
@@ -64,13 +69,13 @@ function useEntities(limit: number, skip: number, department?: string, entityTyp
           limit: limit.toString(),
           skip: skip.toString(),
         });
-        
-        if (department && department !== 'all') {
-          params.append('department', department);
+
+        if (department && department !== "all") {
+          params.append("department", department);
         }
 
-        if (entityType && entityType !== 'all') {
-          params.append('entity_type', entityType);
+        if (entityType && entityType !== "all") {
+          params.append("entity_type", entityType);
         }
 
         const response = await fetch(
@@ -84,8 +89,8 @@ function useEntities(limit: number, skip: number, department?: string, entityTyp
         const result = await response.json();
         setData(result);
       } catch (err) {
-        setError(err instanceof Error ? err.message : 'An error occurred');
-        console.error('Error fetching entities:', err);
+        setError(err instanceof Error ? err.message : "An error occurred");
+        console.error("Error fetching entities:", err);
       } finally {
         setIsLoading(false);
       }
@@ -100,58 +105,52 @@ function useEntities(limit: number, skip: number, department?: string, entityTyp
 // Table columns definition
 const columns: ColumnDef<Entity>[] = [
   {
-    accessorKey: 'entity_id',
-    header: 'Entity ID',
+    accessorKey: "entity_id",
+    header: "Entity ID",
     cell: ({ row }) => (
-      <span className="font-mono text-sm">{row.getValue('entity_id')}</span>
+      <span className="font-mono text-sm">{row.getValue("entity_id")}</span>
     ),
   },
   {
-    accessorKey: 'name',
-    header: 'Name',
+    accessorKey: "name",
+    header: "Name",
     cell: ({ row }) => (
-      <div className="font-medium">{row.getValue('name')}</div>
+      <div className="font-medium">{row.getValue("name")}</div>
     ),
   },
   {
-    accessorKey: 'email',
-    header: 'Email',
+    accessorKey: "email",
+    header: "Email",
     cell: ({ row }) => (
       <span className="text-sm text-muted-foreground">
-        {row.getValue('email')}
+        {row.getValue("email")}
       </span>
     ),
   },
   {
-    accessorKey: 'entity_type',
-    header: 'Type',
+    accessorKey: "entity_type",
+    header: "Type",
     cell: ({ row }) => (
       <Badge variant="outline" className="capitalize">
-        {row.getValue('entity_type')}
+        {row.getValue("entity_type")}
       </Badge>
     ),
   },
   {
-    accessorKey: 'department',
-    header: 'Department',
+    accessorKey: "department",
+    header: "Department",
     cell: ({ row }) => (
-      <Badge variant="secondary">{row.getValue('department')}</Badge>
+      <Badge variant="secondary">{row.getValue("department")}</Badge>
     ),
   },
   {
-    id: 'actions',
-    header: 'Actions',
+    id: "actions",
+    header: "Actions",
     cell: ({ row }) => {
-      const entityId = row.getValue('entity_id') as string;
+      const entityId = row.getValue("entity_id") as string;
       return (
-        <Button
-          variant="outline"
-          size="sm"
-          asChild
-        >
-          <a href={`/dashboard/${entityId}`}>
-            View Profile
-          </a>
+        <Button variant="outline" size="sm" asChild>
+          <a href={`/dashboard/${entityId}`}> View Profile</a>
         </Button>
       );
     },
@@ -162,11 +161,16 @@ const columns: ColumnDef<Entity>[] = [
 export default function EntitiesTanStackTable() {
   const [pageSize, setPageSize] = React.useState(10);
   const [pageIndex, setPageIndex] = React.useState(0);
-  const [department, setDepartment] = React.useState<string>('all');
-  const [entityType, setEntityType] = React.useState<string>('all');
+  const [department, setDepartment] = React.useState<string>("all");
+  const [entityType, setEntityType] = React.useState<string>("all");
 
   const skip = pageIndex * pageSize;
-  const { data, isLoading, error } = useEntities(pageSize, skip, department, entityType);
+  const { data, isLoading, error } = useEntities(
+    pageSize,
+    skip,
+    department,
+    entityType
+  );
 
   const table = useReactTable({
     data: data?.entities ?? [],
@@ -187,7 +191,7 @@ export default function EntitiesTanStackTable() {
   // Get unique departments
   const departments = React.useMemo(() => {
     if (!data?.entities) return [];
-    const depts = new Set(data.entities.map(e => e.department));
+    const depts = new Set(data.entities.map((e) => e.department));
     return Array.from(depts).sort();
   }, [data]);
 
@@ -263,9 +267,9 @@ export default function EntitiesTanStackTable() {
 
         {data && (
           <div className="mt-4 text-sm text-muted-foreground">
-            Showing {skip + 1} to {Math.min(skip + pageSize, data.total)} of{' '}
+            Showing {skip + 1} to {Math.min(skip + pageSize, data.total)} of{" "}
             {data.total} entries
-            {(department !== 'all' || entityType !== 'all') && ' (filtered)'}
+            {(department !== "all" || entityType !== "all") && " (filtered)"}
           </div>
         )}
       </Card>
