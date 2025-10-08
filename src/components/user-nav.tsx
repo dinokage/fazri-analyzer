@@ -13,18 +13,16 @@ import { Button } from "@/components/ui/button"
 
 export function UserNav() {
   const {data: session } = useSession()
-
-  const avatarSrc =
-    session?.user?.image && session.user.image.startsWith("http")? session.user.image: "/default-avatar.png"
-    console.log(avatarSrc)
   return (
     <DropdownMenu>
       <DropdownMenuTrigger asChild>
         <Button variant="ghost" className="h-9 px-2">
           <div className="flex items-center gap-2">
-            <Avatar className="size-6">
-              <AvatarImage src={avatarSrc} width={10} alt="User Avatar" />
-            </Avatar>
+            {session?.user?.image && session.user.image.startsWith("http") && (
+              <Avatar className="size-6">
+                <AvatarImage src={session.user.image} width={10} alt="User Avatar" />
+              </Avatar>
+            )}
             <span className="hidden md:inline-block font-medium">
               {session?.user?.name}
             </span>
