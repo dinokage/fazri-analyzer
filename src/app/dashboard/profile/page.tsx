@@ -6,6 +6,11 @@ import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Separator } from "@/components/ui/separator";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { Metadata } from "next";
+
+export const metadata: Metadata = {
+  title: `Profile `,
+};
 
 export default async function ProfilePage() {
   const session = await getServerSession(OPTIONS);
@@ -52,11 +57,6 @@ export default async function ProfilePage() {
           <div className="flex justify-between">
             <span className="text-muted-foreground">Email</span>
             <span className="font-medium">{user.email}</span>
-          </div>
-
-          <div className="flex justify-between">
-            <span className="text-muted-foreground">User ID</span>
-            <span className="font-medium">{user.id}</span>
           </div>
 
           <div className="flex justify-between">
