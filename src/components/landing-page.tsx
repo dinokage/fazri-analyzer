@@ -48,7 +48,10 @@ import {
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Card, CardContent, CardHeader } from "@/components/ui/card";
-import Link from "next/link";
+// import Link from "next/link";
+import { useSession } from "next-auth/react";
+// import { redirect } from "next/navigation";
+import { useRouter } from "next/navigation";
 
 function cn(...classes: (string | undefined | null | boolean)[]): string {
   return classes.filter(Boolean).join(" ");
@@ -335,6 +338,8 @@ interface Dot {
 }
 
 const FazriAnalyzerLanding: React.FC = () => {
+    const { data: session } = useSession();
+    const router = useRouter();
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const animationFrameId = useRef<number | null>(null);
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState<boolean>(false);
@@ -733,16 +738,9 @@ const FazriAnalyzerLanding: React.FC = () => {
           </div>
 
           <div className="flex items-center flex-shrink-0 space-x-4 lg:space-x-6">
-            <Link
-              href="/auth"
-              className="hidden md:inline-block text-sm font-medium text-gray-300 hover:text-white transition-colors duration-200"
-            >
-              Sign in
-            </Link>
-
-            <Button className="group relative overflow-hidden" size="lg">
+            <Button className="group relative overflow-hidden" size="lg" onClick={() => router.push('/dashboard')}>
               <span className="mr-8 transition-opacity duration-500 group-hover:opacity-0">
-                Get Started
+                {session ? "Dashboard" : "Sign in"}
               </span>
               <i className="absolute right-1 top-1 bottom-1 rounded-sm z-10 grid w-1/4 place-items-center transition-all duration-500 bg-primary-foreground/15 group-hover:w-[calc(100%-0.5rem)] group-active:scale-95">
                 <ChevronRight size={16} strokeWidth={2} aria-hidden="true" />
