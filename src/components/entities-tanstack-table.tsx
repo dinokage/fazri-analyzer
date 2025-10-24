@@ -264,14 +264,6 @@ export default function EntitiesTanStackTable() {
             </Select>
           </div>
         </div>
-
-        {data && (
-          <div className="mt-4 text-sm text-muted-foreground">
-            Showing {skip + 1} to {Math.min(skip + pageSize, data.total)} of{" "}
-            {data.total} entries
-            {(department !== "all" || entityType !== "all") && " (filtered)"}
-          </div>
-        )}
       </Card>
 
       {/* Table */}
@@ -352,6 +344,14 @@ export default function EntitiesTanStackTable() {
           <div className="text-sm text-muted-foreground">
             Page {pageIndex + 1} of {totalPages || 1}
           </div>
+
+          {data && (
+          <div className="text-sm text-muted-foreground">
+            Showing {skip + 1} to {Math.min(skip + pageSize, data.total)} of{" "}
+            {data.total} entries
+            {(department !== "all" || entityType !== "all") && " (filtered)"}
+          </div>
+        )}
           <div className="flex items-center gap-2">
             <Button
               variant="outline"
