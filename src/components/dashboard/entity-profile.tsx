@@ -15,13 +15,13 @@ export function EntityProfile({ entity }: EntityProfileProps) {
     .join('')
     .toUpperCase() || '??';
 
-    const face_id = entity.identifiers.filter(id => id.type === 'face_id')[0]?.value || null;
-    const imageUrl = face_id ? process.env.NEXT_PUBLIC_CDN_URL+`/${face_id}.jpg` : "";
+  const face_id = entity.identifiers.filter(id => id.type === 'face_id')[0]?.value || null;
+  const imageUrl = face_id ? process.env.NEXT_PUBLIC_CDN_URL + `/${face_id}.jpg` : "";
 
   return (
     <div className="bg-[#14141a] rounded-lg border border-gray-800 p-6">
       <h2 className="text-lg font-semibold mb-6">Entity Profile</h2>
-      
+
       <div className="flex items-start justify-between">
         <div className="flex items-center gap-4">
           <Avatar className="h-16 w-16">
@@ -30,12 +30,14 @@ export function EntityProfile({ entity }: EntityProfileProps) {
               {initials}
             </AvatarFallback>
           </Avatar>
-          
+
           <div>
             <h3 className="text-xl font-semibold">{entity.name || 'Unknown'}</h3>
-            <p className="text-gray-400">{entity.entity_type || 'Student'}</p>
+            <p className="text-gray-400">{entity.entity_type
+              ? entity.entity_type.charAt(0).toUpperCase() + entity.entity_type.slice(1)
+              : 'Student'}</p>
             {entity.department && (
-              <p className="text-sm text-gray-500 mt-1">{entity.department}</p>
+              <p className="text-sm text-gray-500 mt-1">{entity.department.charAt(0).toUpperCase() + entity.department.slice(1).toLowerCase()}</p>
             )}
           </div>
         </div>
@@ -43,15 +45,15 @@ export function EntityProfile({ entity }: EntityProfileProps) {
         <div className="text-right">
           <p className="text-sm text-gray-400 mb-2">Recent Alerts</p>
           <div className="flex gap-2">
-            <Button 
-              variant="outline" 
+            <Button
+              variant="outline"
               size="sm"
               className="bg-[#1a1a24] border-gray-700 hover:bg-[#242430]"
             >
               Acknowledge
             </Button>
-            <Button 
-              variant="outline" 
+            <Button
+              variant="outline"
               size="sm"
               className="bg-[#1a1a24] border-gray-700 hover:bg-[#242430]"
             >
@@ -66,8 +68,8 @@ export function EntityProfile({ entity }: EntityProfileProps) {
           <p className="text-sm text-gray-400 mb-2">Identifiers</p>
           <div className="flex flex-wrap gap-2">
             {entity.identifiers.slice(0, 3).map((identifier, idx) => (
-              <Badge 
-                key={idx} 
+              <Badge
+                key={idx}
                 variant="secondary"
                 className="bg-[#1a1a24] text-gray-300"
               >
