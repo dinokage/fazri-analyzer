@@ -3,11 +3,11 @@
 import { useEffect, useState } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import { apiClient } from '@/lib/api-client';
-import { Zone, ZoneOccupancy, ZoneHistory, ZoneConnection } from '@/types/zone';
+import { Zone, ZoneOccupancy } from '@/types/zone';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
-import { ArrowLeft, Building2, Users, MapPin, Clock, TrendingUp, AlertCircle, Activity } from 'lucide-react';
+import { ArrowLeft, Building2, Users, MapPin, Clock, AlertCircle, Activity } from 'lucide-react';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { Progress } from '@/components/ui/progress';
 import { PredictiveZoneForecast } from '@/components/dashboard/predictive-zone-forecast';
@@ -37,7 +37,8 @@ export default function ZoneDetailPage() {
 
   const [zone, setZone] = useState<Zone | null>(null);
   const [occupancy, setOccupancy] = useState<ZoneOccupancy | null>(null);
-  const [connections, setConnections] = useState<ZoneConnection[]>([]);
+  //eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const [connections, setConnections] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 

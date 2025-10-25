@@ -19,7 +19,7 @@ import {
   SidebarInset,
   SidebarTrigger,
 } from "@/components/ui/sidebar"
-import { Separator } from "@/components/ui/separator"
+// import { Separator } from "@/components/ui/separator"
 import { UserNav } from "@/components/user-nav"
 import {
   LayoutDashboard,

@@ -29,59 +29,39 @@ export interface ZoneOccupancy {
 }
 
 export interface ZoneForecast {
-  zone_id: string;
-  forecasts: Array<{
-    timestamp: string;
-    predicted_occupancy: number;
-    confidence: number;
-  }>;
-}
-
-export interface ZoneHistoryData {
-  timestamp: string;
-  occupancy: number;
-  hour: number;
-  day_of_week: number;
-  is_weekend: boolean;
-}
-
-export interface ZoneHistory {
-  zone_id: string;
-  data: ZoneHistoryData[];
-  period_days: number;
-  data_points: number;
-}
-
-export interface ZoneConnection {
-  zone_id: string;
-  zone_name: string;
-  distance_meters: number;
-  walking_time_minutes: number;
-}
-
-export interface ZoneForecast {
   target_datetime: string;
   predicted_occupancy: number;
   confidence: number;
 }
 
 export interface CampusSummary {
-  total_zones: number;
-  total_capacity: number;
-  total_current_occupancy: number;
-  average_occupancy_rate: number;
-  most_crowded_zone?: {
+  summary: {
+    total_zones: number;
+    total_capacity: number;
+    total_occupancy: number;
+    overall_occupancy_rate: number;
+    status: string;
+  };
+  zone_details: Array<{
     zone_id: string;
     zone_name: string;
-    occupancy_rate: number;
-  };
-  least_crowded_zone?: {
+    zone_type: string;
+    capacity: number;
+    current_occupancy: number;
+  }>;
+  high_traffic_zones: Array<{
     zone_id: string;
     zone_name: string;
-    occupancy_rate: number;
-  };
-  zones_by_type?: Record<string, number>;
-  zones_by_building?: Record<string, number>;
+    capacity: number;
+    current_occupancy: number;
+  }>;
+  underutilized_zones: Array<{
+    zone_id: string;
+    zone_name: string;
+    capacity: number;
+    current_occupancy: number;
+  }>;
+  last_updated: string;
 }
 
 export interface ZonesResponse {
