@@ -72,7 +72,7 @@ async def get_current_occupancy(
 @router.get("/zones/{zone_id}/history")
 async def get_zone_history(
     zone_id: str,
-    days_back: int = Query(7, ge=1, le=30, description="Number of days to look back"),
+    days_back: int = Query(7, ge=1, le=300, description="Number of days to look back"),
     spatial_service: SpatialForecastingService = Depends(get_spatial_service)
 ):
     """Get historical occupancy data for a zone"""

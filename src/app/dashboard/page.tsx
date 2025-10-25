@@ -7,6 +7,8 @@ import { Metadata } from 'next';
 export const metadata:Metadata = {
   title: `Dashboard `,
 };
+import { DashboardLayout } from '@/components/dashboard/dashboard-layout';
+
 export default async function EntitiesPage() {
   const session = await getServerSession(OPTIONS);
   if(!session){
@@ -16,11 +18,11 @@ export default async function EntitiesPage() {
     redirect("/dashboard/profile");
   }
   return (
-    <div className="space-y-4">
-      <div className="flex items-center justify-between">
+    <DashboardLayout>
+      <div className="flex items-center justify-between mb-4">
         <h2 className="text-xl font-semibold">Entities</h2>
       </div>
       <EntitiesTanStackTable />
-    </div>
+    </DashboardLayout>
   )
 }

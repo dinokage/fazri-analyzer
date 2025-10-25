@@ -152,8 +152,7 @@ class SpatialForecastingService:
                 WHERE sa.hour = $target_hour
                 AND sa.day_of_week = $target_day_of_week
                 RETURN avg(sa.occupancy) as avg_occupancy,
-                       count(sa) as data_points,
-                       stdDev(sa.occupancy) as std_dev
+                       count(sa) as data_points
             """, zone_id=zone_id, target_hour=target_hour, target_day_of_week=target_day_of_week)
             
             record = result.single()
