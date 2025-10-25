@@ -41,14 +41,14 @@ export function SidebarLayout({ children }: { children: React.ReactNode }) {
               <SidebarMenuItem>
                 <SidebarMenuButton asChild data-active={isActive("/dashboard")}>
                   <Link href="/dashboard">
-                    <span>Overview</span>
+                    <span>Dashboard</span>
                   </Link>
                 </SidebarMenuButton>
               </SidebarMenuItem>
               <SidebarMenuItem>
-                <SidebarMenuButton asChild data-active={isActive("/dashboard/entities")}>
-                  <Link href="/dashboard/entities">
-                    <span>Entities</span>
+                <SidebarMenuButton asChild data-active={isActive("/dashboard/profile")}>
+                  <Link href="/dashboard/profile">
+                    <span>Profile</span>
                   </Link>
                 </SidebarMenuButton>
               </SidebarMenuItem>
@@ -61,8 +61,8 @@ export function SidebarLayout({ children }: { children: React.ReactNode }) {
             <SidebarGroupLabel>Shortcuts</SidebarGroupLabel>
             <SidebarMenu>
               <SidebarMenuItem>
-                <SidebarMenuButton asChild>
-                  <Link href="/dashboard/entities">
+                <SidebarMenuButton asChild data-active={isActive("/dashboard/insights")}>
+                  <Link href="/dashboard/insights">
                     <span>Recent activity</span>
                   </Link>
                 </SidebarMenuButton>
@@ -72,7 +72,7 @@ export function SidebarLayout({ children }: { children: React.ReactNode }) {
         </SidebarContent>
 
         <SidebarFooter className="px-4 py-3 text-xs text-sidebar-foreground/70">
-          v1.0 • All systems normal
+          &copy; {new Date().getFullYear()} Fazri Analyzer | IIT Guwahati
         </SidebarFooter>
       </Sidebar>
 
