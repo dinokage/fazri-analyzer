@@ -133,7 +133,7 @@ importers:
         specifier: ^4
         version: 4.1.13
       '@types/bcrypt':
-        specifier: 2.15.4
+        specifier: 6.0.0
         version: 6.0.0
       '@types/node':
         specifier: ^20
