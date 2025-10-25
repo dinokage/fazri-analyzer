@@ -1,4 +1,3 @@
-// page.tsx
 import React from 'react'
 import RoundedPieChart from './pie'
 import { StrokeMultipleRadarChart } from './radar'

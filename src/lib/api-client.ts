@@ -228,6 +228,14 @@ export const apiClient = {
     return handleResponse(response);
   },
 
+  // NEW METHOD: getAnomalySummary for the first three cards
+  async getAnomalySummary() {
+    const response = await fetch(`${API_BASE_URL}/api/v1/anomalies/summary`, {
+      headers: { 'Content-Type': 'application/json' },
+    });
+    return handleResponse(response);
+  },
+
   async getAnomaliesByDateRange(startDate: string, endDate: string) {
     const params = new URLSearchParams({
       start_date: startDate,
