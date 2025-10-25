@@ -36,7 +36,7 @@ export default async function ProfilePage() {
       <Card className="shadow-lg border border-border rounded-2xl">
         <CardHeader className="flex flex-col items-center text-center">
           <Avatar className="h-20 w-20 mb-3">
-            <AvatarImage src="" alt={user.name} />
+            <AvatarImage src={`https://cdn.hextasphere.com/ethos/${user.face_id}.jpg`} alt={user.name} />
             <AvatarFallback>
               {user.name
                 .split(" ")

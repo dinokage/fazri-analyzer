@@ -109,39 +109,17 @@ export function SidebarLayout({ children }: { children: React.ReactNode }) {
                             </Link>
                           </SidebarMenuButton>
                         </SidebarMenuItem>
-                      </SidebarMenu>
-                    </SidebarGroup>
-
-                    <SidebarSeparator />
-
-                    <SidebarGroup>
-                      <SidebarGroupLabel>Operational Tools</SidebarGroupLabel>
-                      <SidebarMenu>
                         <SidebarMenuItem>
                           <SidebarMenuButton
                             asChild
-                            data-active={isActive("/dashboard/recent-activity")}
+                            data-active={isActive("/dashboard/zones")}
                           >
                             <Link
-                              href="/dashboard/recent-activity"
+                              href="/dashboard/zones"
                               className="flex items-center gap-3"
                             >
                               <Activity className="h-5 w-5" />
-                              <span>Recent System Activity</span>
-                            </Link>
-                          </SidebarMenuButton>
-                        </SidebarMenuItem>
-                        <SidebarMenuItem>
-                          <SidebarMenuButton
-                            asChild
-                            data-active={isActive("/dashboard/insights")}
-                          >
-                            <Link
-                              href="/dashboard/insights"
-                              className="flex items-center gap-3"
-                            >
-                              <Lightbulb className="h-5 w-5" />
-                              <span>Performance Insights</span>
+                              <span>Zones</span>
                             </Link>
                           </SidebarMenuButton>
                         </SidebarMenuItem>
