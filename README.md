@@ -12,9 +12,9 @@ A full-stack application designed for advanced entity analysis, visualization, a
 
 ## ✨ Features
 
-- **Interactive Dashboard**: A responsive and intuitive user interface built with Next.js, shadcn/ui, and Tailwind CSS.
+- **Enhanced Dashboard Overview**: Provides a comprehensive, high-level summary of campus activity, including total zones, occupancy, and status, with quick access to high-traffic and underutilized zones.
 - **Entity Analysis**: Deep dive into individual entities with detailed profiles, activity timelines, and relationship graphs.
-- **Predictive Insights**: Leverage machine learning models to generate predictions and confidence scores for entity behavior.
+- **Predictive Zone Forecast**: View future occupancy predictions for specific zones, helping with proactive management and resource allocation.
 - **Graph-Based Visualization**: Understand complex relationships between entities through graph-based data modeling.
 - **Secure Authentication**: User authentication and session management handled by NextAuth.js.
 - **TanStack Table**: Efficiently display and manage large datasets of entities.

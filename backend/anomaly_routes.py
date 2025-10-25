@@ -66,6 +66,7 @@ async def get_all_historical_anomalies(
             {
                 "id": a.id,
                 "type": a.type,
+                "entity_id": a.entity_id,
                 "location": a.location,
                 "severity": a.severity,
                 "timestamp": a.timestamp.isoformat(),

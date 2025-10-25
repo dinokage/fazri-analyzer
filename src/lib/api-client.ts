@@ -248,6 +248,71 @@ export const apiClient = {
     );
     return handleResponse(response);
   },
+
+  // Zone/Spatial endpoints
+  async getAllZones() {
+    const response = await fetch(
+      `${API_BASE_URL}/api/v1/spatial/zones`,
+      { headers: { 'Content-Type': 'application/json' } }
+    );
+    return handleResponse(response);
+  },
+
+  async getZoneDetails(zoneId: string) {
+    const response = await fetch(
+      `${API_BASE_URL}/api/v1/spatial/zones/${zoneId}`,
+      { headers: { 'Content-Type': 'application/json' } }
+    );
+    return handleResponse(response);
+  },
+
+  async getZoneOccupancy(zoneId: string) {
+    const response = await fetch(
+      `${API_BASE_URL}/api/v1/spatial/zones/${zoneId}/occupancy`,
+      { headers: { 'Content-Type': 'application/json' } }
+    );
+    return handleResponse(response);
+  },
+
+  async getZoneHistory(zoneId: string, daysBack: number = 7) {
+    const params = new URLSearchParams({
+      days_back: daysBack.toString(),
+    });
+
+    const response = await fetch(
+      `${API_BASE_URL}/api/v1/spatial/zones/${zoneId}/history?${params}`,
+      { headers: { 'Content-Type': 'application/json' } }
+    );
+    return handleResponse(response);
+  },
+
+  async getZoneForecast(zoneId: string, hoursAhead: number = 24) {
+    const params = new URLSearchParams({
+      hours_ahead: hoursAhead.toString(),
+    });
+
+    const response = await fetch(
+      `${API_BASE_URL}/api/v1/spatial/zones/${zoneId}/forecast?${params}`,
+      { headers: { 'Content-Type': 'application/json' } }
+    );
+    return handleResponse(response);
+  },
+
+  async getZoneConnections(zoneId: string) {
+    const response = await fetch(
+      `${API_BASE_URL}/api/v1/spatial/zones/${zoneId}/connections`,
+      { headers: { 'Content-Type': 'application/json' } }
+    );
+    return handleResponse(response);
+  },
+
+  async getCampusSummary() {
+    const response = await fetch(
+      `${API_BASE_URL}/api/v1/spatial/campus/summary`,
+      { headers: { 'Content-Type': 'application/json' } }
+    );
+    return handleResponse(response);
+  },
 };
 
 export { ApiError };
