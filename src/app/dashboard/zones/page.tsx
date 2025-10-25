@@ -223,7 +223,7 @@ export default function ZonesPage() {
             <div>
               <p className="text-sm text-gray-400 mb-1">Total Zones</p>
               <p className="text-3xl font-bold">
-                {campusSummary?.total_zones || statistics.totalZones}
+                {campusSummary?.summary.total_zones || statistics.totalZones}
               </p>
             </div>
             <div className="p-3 bg-blue-600/10 rounded-lg">
@@ -238,7 +238,7 @@ export default function ZonesPage() {
             <div>
               <p className="text-sm text-gray-400 mb-1">Total Capacity</p>
               <p className="text-3xl font-bold">
-                {campusSummary?.total_capacity || statistics.totalCapacity}
+                {campusSummary?.summary.total_capacity || statistics.totalCapacity}
               </p>
             </div>
             <div className="p-3 bg-green-600/10 rounded-lg">
@@ -253,13 +253,7 @@ export default function ZonesPage() {
             <div>
               <p className="text-sm text-gray-400 mb-1">Current Occupancy</p>
               <p className="text-3xl font-bold">
-                {campusSummary?.total_current_occupancy || statistics.totalCurrentOccupancy}
-              </p>
-              <p className="text-sm text-gray-500">
-                {(() => {
-                  const avgRate = campusSummary?.average_occupancy_rate || statistics.averageOccupancyRate;
-                  return avgRate > 0 ? `${(avgRate * 100).toFixed(1)}% avg` : '0% avg';
-                })()}
+                {campusSummary?.zone_details[0]?.current_occupancy || statistics.totalCurrentOccupancy}
               </p>
             </div>
             <div className="p-3 bg-purple-600/10 rounded-lg">
@@ -274,15 +268,16 @@ export default function ZonesPage() {
             <div>
               <p className="text-sm text-gray-400 mb-1">Most Crowded</p>
               <p className="text-xl font-bold truncate">
-                {campusSummary?.most_crowded_zone?.zone_name ||
-                 statistics.mostCrowdedZone?.name ||
-                 'N/A'}
+                {campusSummary?.high_traffic_zones[0]?.zone_name || 'N/A'}
               </p>
               <p className="text-sm text-orange-500">
                 {(() => {
-                  const rate = campusSummary?.most_crowded_zone?.occupancy_rate ||
-                              statistics.mostCrowdedZone?.rate;
-                  return rate ? `${(rate * 100).toFixed(0)}%` : '0%';
+                  const zone = campusSummary?.high_traffic_zones[0];
+                  if (zone) {
+                    const rate = (zone.current_occupancy / zone.capacity) * 100;
+                    return `${rate.toFixed(0)}%`;
+                  }
+                  return '0%';
                 })()}
               </p>
             </div>

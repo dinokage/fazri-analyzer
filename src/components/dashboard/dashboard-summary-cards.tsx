@@ -4,7 +4,7 @@
 import { useEffect, useState } from 'react';
 import { apiClient } from '@/lib/api-client';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import { Users, Building2, Activity, AlertCircle, ArrowUpRight, ArrowDownRight } from 'lucide-react';
+import { Users, Building2, Activity, ArrowUpRight, ArrowDownRight } from 'lucide-react';
 import { Progress } from '@/components/ui/progress';
 import { Badge } from '@/components/ui/badge';
 
