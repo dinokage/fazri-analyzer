@@ -8,7 +8,6 @@ import React, {
   forwardRef,
   useImperativeHandle,
   useMemo,
-  type MouseEvent as ReactMouseEvent,
   type FormEvent,
 } from "react";
 import {
@@ -37,7 +36,6 @@ import {
   X,
   Mail,
   MapPin,
-  Phone,
   Github,
   Linkedin,
   Twitter,
@@ -122,6 +120,7 @@ const RotatingText = forwardRef<RotatingTextRef, RotatingTextProps>(
             (segment) => segment.segment
           );
         } catch (error) {
+          console.error("Error using Intl.Segmenter:", error);
           return text.split("");
         }
       }
