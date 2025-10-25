@@ -46,6 +46,13 @@ export function SidebarLayout({ children }: { children: React.ReactNode }) {
                 </SidebarMenuButton>
               </SidebarMenuItem>
               <SidebarMenuItem>
+                <SidebarMenuButton asChild data-active={isActive("/dashboard/anomalies")}>
+                  <Link href="/dashboard/anomalies">
+                    <span>Anomalies</span>
+                  </Link>
+                </SidebarMenuButton>
+              </SidebarMenuItem>
+              <SidebarMenuItem>
                 <SidebarMenuButton asChild data-active={isActive("/dashboard/profile")}>
                   <Link href="/dashboard/profile">
                     <span>Profile</span>
