@@ -1,8 +1,9 @@
 "use client"
 
-import type * as React from "react"
+import * as React from "react"
 import Link from "next/link"
-import { usePathname } from "next/navigation"
+import { usePathname, useRouter } from "next/navigation"
+import { useSession, signOut } from "next-auth/react"
 import {
   SidebarProvider,
   Sidebar,
@@ -20,80 +21,218 @@ import {
 } from "@/components/ui/sidebar"
 import { Separator } from "@/components/ui/separator"
 import { UserNav } from "@/components/user-nav"
+import {
+  LayoutDashboard,
+  Bug,
+  User,
+  Activity,
+  Lightbulb,
+  LogOut,
+} from "lucide-react"
+
+import { Button } from "@/components/ui/button"
 
 export function SidebarLayout({ children }: { children: React.ReactNode }) {
   const pathname = usePathname()
+  const router = useRouter()
+  const { data: session, status } = useSession()
   const isActive = (href: string) => pathname === href
+
+  const isSuperAdmin = session?.user?.role === "SUPER_ADMIN"
+  const isAuthenticated = status === "authenticated"
+  const isLoading = status === "loading"
+
+  // Directly redirect unauthenticated users to /auth
+  React.useEffect(() => {
+    if (status === "unauthenticated") {
+      router.push("/auth")
+    }
+  }, [status, router])
+
+
+  // If not authenticated (and thus being redirected), we can render a minimal loading shell
+  // to avoid showing partially loaded content before the redirect takes effect.
+  // This helps prevent "flash of content" or temporary incorrect states.
+  if (!isAuthenticated && !isLoading) {
+    return (
+      <div className="flex items-center justify-center min-h-screen">
+        Redirecting to login...
+      </div>
+    );
+  }
+
 
   return (
     <SidebarProvider>
       <Sidebar>
-        <SidebarHeader className="h-16 px-4 flex items-center">
+        <SidebarHeader className="h-16 flex items-center justify-center">
           <div className="flex items-center gap-2">
-            <span className="font-semibold">Fazri Analyzer</span>
+            <span className="font-bold text-lg">Fazri Analyzer</span>
           </div>
         </SidebarHeader>
 
         <SidebarContent>
-          <SidebarGroup>
-            <SidebarGroupLabel>Navigation</SidebarGroupLabel>
-            <SidebarMenu>
-              <SidebarMenuItem>
-                <SidebarMenuButton asChild data-active={isActive("/dashboard")}>
-                  <Link href="/dashboard">
-                    <span>Dashboard</span>
-                  </Link>
-                </SidebarMenuButton>
-              </SidebarMenuItem>
-              <SidebarMenuItem>
-                <SidebarMenuButton asChild data-active={isActive("/dashboard/anomalies")}>
-                  <Link href="/dashboard/anomalies">
-                    <span>Anomalies</span>
-                  </Link>
-                </SidebarMenuButton>
-              </SidebarMenuItem>
-              <SidebarMenuItem>
-                <SidebarMenuButton asChild data-active={isActive("/dashboard/profile")}>
-                  <Link href="/dashboard/profile">
-                    <span>Profile</span>
-                  </Link>
-                </SidebarMenuButton>
-              </SidebarMenuItem>
-            </SidebarMenu>
-          </SidebarGroup>
+          {
+            // Only render actual content if authenticated (as unauthenticated redirects)
+            isAuthenticated && (
+              <>
+                {isSuperAdmin && (
+                  <>
+                    <SidebarGroup>
+                      <SidebarGroupLabel>Management Console</SidebarGroupLabel>
+                      <SidebarMenu>
+                        <SidebarMenuItem>
+                          <SidebarMenuButton
+                            asChild
+                            data-active={isActive("/dashboard")}
+                          >
+                            <Link
+                              href="/dashboard"
+                              className="flex items-center gap-3"
+                            >
+                              <LayoutDashboard className="h-5 w-5" />
+                              <span>Dashboard Overview</span>
+                            </Link>
+                          </SidebarMenuButton>
+                        </SidebarMenuItem>
+                        <SidebarMenuItem>
+                          <SidebarMenuButton
+                            asChild
+                            data-active={isActive("/dashboard/anomalies")}
+                          >
+                            <Link
+                              href="/dashboard/anomalies"
+                              className="flex items-center gap-3"
+                            >
+                              <Bug className="h-5 w-5" />
+                              <span>Anomalies Detection</span>
+                            </Link>
+                          </SidebarMenuButton>
+                        </SidebarMenuItem>
+                      </SidebarMenu>
+                    </SidebarGroup>
 
-          <SidebarSeparator />
+                    <SidebarSeparator />
 
-          <SidebarGroup>
-            <SidebarGroupLabel>Shortcuts</SidebarGroupLabel>
-            <SidebarMenu>
-              <SidebarMenuItem>
-                <SidebarMenuButton asChild data-active={isActive("/dashboard/insights")}>
-                  <Link href="/dashboard/insights">
-                    <span>Recent activity</span>
-                  </Link>
-                </SidebarMenuButton>
-              </SidebarMenuItem>
-            </SidebarMenu>
-          </SidebarGroup>
+                    <SidebarGroup>
+                      <SidebarGroupLabel>Operational Tools</SidebarGroupLabel>
+                      <SidebarMenu>
+                        <SidebarMenuItem>
+                          <SidebarMenuButton
+                            asChild
+                            data-active={isActive("/dashboard/recent-activity")}
+                          >
+                            <Link
+                              href="/dashboard/recent-activity"
+                              className="flex items-center gap-3"
+                            >
+                              <Activity className="h-5 w-5" />
+                              <span>Recent System Activity</span>
+                            </Link>
+                          </SidebarMenuButton>
+                        </SidebarMenuItem>
+                        <SidebarMenuItem>
+                          <SidebarMenuButton
+                            asChild
+                            data-active={isActive("/dashboard/insights")}
+                          >
+                            <Link
+                              href="/dashboard/insights"
+                              className="flex items-center gap-3"
+                            >
+                              <Lightbulb className="h-5 w-5" />
+                              <span>Performance Insights</span>
+                            </Link>
+                          </SidebarMenuButton>
+                        </SidebarMenuItem>
+                      </SidebarMenu>
+                    </SidebarGroup>
+
+                    <SidebarSeparator />
+                  </>
+                )}
+
+                <SidebarGroup>
+                  <SidebarGroupLabel>Account</SidebarGroupLabel>
+                  <SidebarMenu>
+                    <SidebarMenuItem>
+                      <SidebarMenuButton
+                        asChild
+                        data-active={isActive("/dashboard/profile")}
+                      >
+                        <Link
+                          href="/dashboard/profile"
+                          className="flex items-center gap-3"
+                        >
+                          <User className="h-5 w-5" />
+                          <span>My Profile</span>
+                        </Link>
+                      </SidebarMenuButton>
+                    </SidebarMenuItem>
+                  </SidebarMenu>
+                </SidebarGroup>
+              </>
+            )
+          }
         </SidebarContent>
 
-        <SidebarFooter className="px-4 py-3 text-xs text-sidebar-foreground/70">
-          &copy; {new Date().getFullYear()} Fazri Analyzer | IIT Guwahati
+        <SidebarFooter className="p-4 border-t border-border/70 flex flex-col justify-end gap-3">
+          {isLoading ? (
+            <div className="h-10 animate-pulse bg-muted rounded-md w-full"></div>
+          ) : (
+            // Only render actual content if authenticated (as unauthenticated redirects)
+            isAuthenticated && (
+              <div className="flex items-center justify-between w-full">
+                <div className="text-sm text-sidebar-foreground flex flex-col">
+                  <p className="font-semibold">{session.user?.name}</p>
+                  {session.user?.email && (
+                    <p className="text-xs leading-none text-sidebar-foreground/80">
+                      {session.user.email}
+                    </p>
+                  )}
+                </div>
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  onClick={() => signOut({ callbackUrl: "/auth" })} // Redirect to /auth after logout
+                  className="text-sidebar-foreground hover:text-accent-foreground hover:bg-accent"
+                  title="Logout"
+                >
+                  <LogOut className="h-4 w-4" />
+                </Button>
+              </div>
+            )
+          )}
+          <div className="text-xs text-sidebar-foreground/70 pt-3 border-t border-border/70 -mx-4 px-4 mt-auto">
+            &copy; {new Date().getFullYear()} Fazri Analyzer | IIT Guwahati
+          </div>
         </SidebarFooter>
       </Sidebar>
 
       <SidebarInset>
-        <header className="flex h-16 items-center justify-between gap-4 border-b border-border px-6 text-foreground">
-          <div className="flex items-center gap-3">
-            <SidebarTrigger />
-            <Separator orientation="vertical" className="h-5" />
-            <h1 className="text-sm font-medium text-pretty">Dashboard</h1>
+        <header className="flex flex-col h-16 border-b border-border text-foreground">
+          <div className="flex h-full items-center justify-between gap-4 px-6">
+            <div className="flex items-center gap-3">
+              <SidebarTrigger />
+              <h1 className="text-lg font-semibold text-pretty capitalize">
+                {pathname === "/dashboard"
+                  ? "Dashboard Overview"
+                  : pathname.split("/").pop()?.replace(/-/g, " ") ||
+                    "Application Overview"}
+              </h1>
+            </div>
+            {/* UserNav should ideally handle its own loading/unauthenticated state or be hidden */}
+            {isLoading ? (
+                <div className="h-8 w-8 rounded-full animate-pulse bg-muted" />
+            ) : isAuthenticated ? (
+                <UserNav />
+            ) : null}
           </div>
-          <UserNav />
         </header>
 
-        <main className="min-w-0 p-6 text-foreground">{children}</main>
+        <main className="min-w-0 p-6 text-foreground">
+          {children}
+        </main>
       </SidebarInset>
     </SidebarProvider>
   )
