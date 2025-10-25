@@ -1,5 +1,5 @@
 from typing import List, Dict, Optional
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 import pandas as pd
 
 class TimelineService:
@@ -236,7 +236,7 @@ class TimelineService:
         Generate activity heatmap data (hour x day)
         Useful for visualization
         """
-        end_date = datetime.now()
+        end_date = datetime.now(timezone.utc)
         start_date = end_date - timedelta(days=days)
         
         timeline_data = self.get_timeline_with_gaps(

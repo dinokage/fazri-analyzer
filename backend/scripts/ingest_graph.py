@@ -53,15 +53,15 @@ def main():
     print("\n📊 Step 6: Ingesting Events")
     
     # Load all datasets
-    swipes_df = pd.read_csv(data_dir / "campus_card_swipes.csv")
-    wifi_df = pd.read_csv(data_dir / "wifi_associations_logs.csv")
-    library_df = pd.read_csv(data_dir / "library_checkouts.csv")
-    bookings_df = pd.read_csv(data_dir / "lab_bookings.csv")
-    cctv_df = pd.read_csv(data_dir / "cctv_frames.csv")
-    helpdesk_df = pd.read_csv(data_dir / "helpdesk.csv")
+    swipes_df = pd.read_csv(data_dir / "campus_card_swipes_augmented.csv")
+    wifi_df = pd.read_csv(data_dir / "wifi_associations_logs_augmented.csv")
+    library_df = pd.read_csv(data_dir / "library_checkouts_augmented.csv")
+    bookings_df = pd.read_csv(data_dir / "lab_bookings_augmented.csv")
+    cctv_df = pd.read_csv(data_dir / "cctv_frames_augmented.csv")
+    helpdesk_df = pd.read_csv(data_dir / "helpdesk_augmented.csv")
     
     # How many events to ingest?
-    event_limit = 6000
+    event_limit = 40000
     print(f"\n⚙️  Ingesting up to {event_limit} events from each dataset...")
     
     print("\n1️⃣  Ingesting card swipes...")

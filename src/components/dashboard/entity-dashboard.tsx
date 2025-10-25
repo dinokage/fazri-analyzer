@@ -6,10 +6,12 @@ import { EntityProfile } from './entity-profile';
 import { ActivityTimeline } from './activity-timeline';
 import { PredictionData, PredictiveInsights } from './predictive-insights';
 import { ActivityFrequency, HeatmapData } from './activity-frequency';
+import { AnomalyList } from './anomaly-list';
 // import { CCTVSnapshots } from './cctv-snapshots';
 import { DashboardFilters } from './dashboard-filters';
 import { apiClient } from '@/lib/api-client';
 import { Entity } from '@/types/entity';
+import { Anomaly } from '@/types/anomaly';
 // import { useToast } from '@/hooks/use-toast';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { AlertCircle } from 'lucide-react';
@@ -55,6 +57,7 @@ export function EntityDashboard({ entityId }: { entityId: string }) {
   const [timeline, setTimeline] = useState<TimelineData | null>(null);
   const [prediction, setPrediction] = useState<PredictionData | null>(null);
   const [heatmap, setHeatmap] = useState<HeatmapData | null>(null);
+  const [anomalies, setAnomalies] = useState<Anomaly[] | null>(null);
   // const [patterns, setPatterns] = useState<any>(null);
   const [loading, setLoading] = useState(true);
   const [errors, setErrors] = useState<string[]>([]);
@@ -69,13 +72,14 @@ export function EntityDashboard({ entityId }: { entityId: string }) {
       setLoading(true);
       setErrors([]);
       const errorList: string[] = [];
-      
+
       // Fetch all data in parallel with individual error handling
       const results = await Promise.allSettled([
         apiClient.getEntity(entityId),
         apiClient.getTimelineWithGaps(entityId, 2), // This now returns the new format
         apiClient.predictLocation(entityId),
         apiClient.getActivityHeatmap(entityId, 7),
+        apiClient.getAnomaliesByEntity(entityId),
       ]);
 
       // Process entity data
@@ -107,6 +111,15 @@ export function EntityDashboard({ entityId }: { entityId: string }) {
         console.log('Heatmap data:', results[3].value);
       } else {
         console.error('Heatmap fetch failed:', results[3].reason);
+      }
+
+      // Process anomalies
+      if (results[4].status === 'fulfilled') {
+        const anomalyResponse = results[4].value;
+        setAnomalies(anomalyResponse.data?.anomalies || []);
+        console.log('Anomalies data:', anomalyResponse);
+      } else {
+        console.error('Anomalies fetch failed:', results[4].reason);
       }
 
       if (errorList.length > 0) {
@@ -169,8 +182,8 @@ export function EntityDashboard({ entityId }: { entityId: string }) {
         {/* Left Column */}
         <div className="space-y-6">
           <EntityProfile entity={entity} />
-          <ActivityTimeline 
-            timeline={timeline} 
+          <ActivityTimeline
+            timeline={timeline}
             entityId={entityId}
             onRefresh={loadDashboardData}
           />
@@ -178,6 +191,7 @@ export function EntityDashboard({ entityId }: { entityId: string }) {
 
         {/* Right Column */}
         <div className="space-y-6">
+          <AnomalyList anomalies={anomalies} loading={loading} />
           <PredictiveInsights prediction={prediction} />
           <ActivityFrequency heatmap={heatmap} />
           {/* <CCTVSnapshots entityId={entityId} timeline={timeline} /> */}

@@ -1,0 +1,1486 @@
+{
+  "openapi": "3.1.0",
+  "info": {
+    "title": "Campus Entity Resolution API",
+    "description": "API for campus security monitoring and entity tracking",
+    "version": "1.0.0"
+  },
+  "paths": {
+    "/api/v1/entities/search": {
+      "post": {
+        "tags": ["entities"],
+        "summary": "Search Entity",
+        "description": "Search for entity by identifier",
+        "operationId": "search_entity_api_v1_entities_search_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": { "$ref": "#/components/schemas/EntitySearchRequest" }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EntitySearchResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/entities/fuzzy-search": {
+      "get": {
+        "tags": ["entities"],
+        "summary": "Fuzzy Search By Name",
+        "description": "Fuzzy name search",
+        "operationId": "fuzzy_search_by_name_api_v1_entities_fuzzy_search_get",
+        "parameters": [
+          {
+            "name": "name",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "description": "Name to search",
+              "title": "Name"
+            },
+            "description": "Name to search"
+          },
+          {
+            "name": "threshold",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "number",
+              "maximum": 1.0,
+              "minimum": 0.0,
+              "default": 0.85,
+              "title": "Threshold"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": { "application/json": { "schema": {} } }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/entities/{entity_id}": {
+      "get": {
+        "tags": ["entities"],
+        "summary": "Get Entity",
+        "description": "Get entity by ID",
+        "operationId": "get_entity_api_v1_entities__entity_id__get",
+        "parameters": [
+          {
+            "name": "entity_id",
+            "in": "path",
+            "required": true,
+            "schema": { "type": "string", "title": "Entity Id" }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": { "application/json": { "schema": {} } }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/entities/": {
+      "get": {
+        "tags": ["entities"],
+        "summary": "List Entities",
+        "description": "List all entities",
+        "operationId": "list_entities_api_v1_entities__get",
+        "parameters": [
+          {
+            "name": "skip",
+            "in": "query",
+            "required": false,
+            "schema": { "type": "integer", "default": 0, "title": "Skip" }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "schema": { "type": "integer", "default": 100, "title": "Limit" }
+          },
+          {
+            "name": "department",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [{ "type": "string" }, { "type": "null" }],
+              "description": "Filter by department",
+              "title": "Department"
+            },
+            "description": "Filter by department"
+          },
+          {
+            "name": "entity_type",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [{ "type": "string" }, { "type": "null" }],
+              "description": "Filter by role",
+              "title": "Entity Type"
+            },
+            "description": "Filter by role"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": { "application/json": { "schema": {} } }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/entities/{entity_id}/fusion-report": {
+      "get": {
+        "tags": ["entities"],
+        "summary": "Get Entity Fusion Report",
+        "description": "Get detailed multi-modal fusion report for an entity\nShows all data sources, identifiers, and confidence scores",
+        "operationId": "get_entity_fusion_report_api_v1_entities__entity_id__fusion_report_get",
+        "parameters": [
+          {
+            "name": "entity_id",
+            "in": "path",
+            "required": true,
+            "schema": { "type": "string", "title": "Entity Id" }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": { "application/json": { "schema": {} } }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/graph/timeline/{entity_id}": {
+      "get": {
+        "tags": ["graph"],
+        "summary": "Get Entity Timeline",
+        "description": "Get chronological timeline for entity",
+        "operationId": "get_entity_timeline_api_v1_graph_timeline__entity_id__get",
+        "parameters": [
+          {
+            "name": "entity_id",
+            "in": "path",
+            "required": true,
+            "schema": { "type": "string", "title": "Entity Id" }
+          },
+          {
+            "name": "start_date",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [{ "type": "string" }, { "type": "null" }],
+              "title": "Start Date"
+            }
+          },
+          {
+            "name": "end_date",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [{ "type": "string" }, { "type": "null" }],
+              "title": "End Date"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": { "application/json": { "schema": {} } }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/graph/location/{location_id}/entities": {
+      "get": {
+        "tags": ["graph"],
+        "summary": "Get Entities At Location",
+        "description": "Find entities at location at specific time",
+        "operationId": "get_entities_at_location_api_v1_graph_location__location_id__entities_get",
+        "parameters": [
+          {
+            "name": "location_id",
+            "in": "path",
+            "required": true,
+            "schema": { "type": "string", "title": "Location Id" }
+          },
+          {
+            "name": "timestamp",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [{ "type": "string" }, { "type": "null" }],
+              "title": "Timestamp"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": { "application/json": { "schema": {} } }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/graph/alerts/missing": {
+      "get": {
+        "tags": ["graph"],
+        "summary": "Get Missing Entities",
+        "description": "Find entities with no activity in last N hours",
+        "operationId": "get_missing_entities_api_v1_graph_alerts_missing_get",
+        "parameters": [
+          {
+            "name": "hours",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "maximum": 72,
+              "minimum": 1,
+              "description": "Hours since last activity",
+              "default": 12,
+              "title": "Hours"
+            },
+            "description": "Hours since last activity"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": { "application/json": { "schema": {} } }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/graph/stats": {
+      "get": {
+        "tags": ["graph"],
+        "summary": "Get Graph Stats",
+        "description": "Get database statistics",
+        "operationId": "get_graph_stats_api_v1_graph_stats_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": { "application/json": { "schema": {} } }
+          }
+        }
+      }
+    },
+    "/api/v1/graph/timeline/{entity_id}/summary": {
+      "get": {
+        "tags": ["graph"],
+        "summary": "Get Timeline Summary",
+        "description": "Get human-readable timeline summary",
+        "operationId": "get_timeline_summary_api_v1_graph_timeline__entity_id__summary_get",
+        "parameters": [
+          {
+            "name": "entity_id",
+            "in": "path",
+            "required": true,
+            "schema": { "type": "string", "title": "Entity Id" }
+          },
+          {
+            "name": "start_date",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [{ "type": "string" }, { "type": "null" }],
+              "title": "Start Date"
+            }
+          },
+          {
+            "name": "end_date",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [{ "type": "string" }, { "type": "null" }],
+              "title": "End Date"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": { "application/json": { "schema": {} } }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/graph/timeline/{entity_id}/with-gaps": {
+      "get": {
+        "tags": ["graph"],
+        "summary": "Get Timeline With Gaps",
+        "description": "Get timeline with gap detection",
+        "operationId": "get_timeline_with_gaps_api_v1_graph_timeline__entity_id__with_gaps_get",
+        "parameters": [
+          {
+            "name": "entity_id",
+            "in": "path",
+            "required": true,
+            "schema": { "type": "string", "title": "Entity Id" }
+          },
+          {
+            "name": "start_date",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [{ "type": "string" }, { "type": "null" }],
+              "title": "Start Date"
+            }
+          },
+          {
+            "name": "end_date",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [{ "type": "string" }, { "type": "null" }],
+              "title": "End Date"
+            }
+          },
+          {
+            "name": "gap_threshold_hours",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "maximum": 24,
+              "minimum": 1,
+              "default": 2,
+              "title": "Gap Threshold Hours"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": { "application/json": { "schema": {} } }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/graph/timeline/{entity_id}/heatmap": {
+      "get": {
+        "tags": ["graph"],
+        "summary": "Get Activity Heatmap",
+        "description": "Get activity heatmap data for visualization",
+        "operationId": "get_activity_heatmap_api_v1_graph_timeline__entity_id__heatmap_get",
+        "parameters": [
+          {
+            "name": "entity_id",
+            "in": "path",
+            "required": true,
+            "schema": { "type": "string", "title": "Entity Id" }
+          },
+          {
+            "name": "days",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "maximum": 30,
+              "minimum": 1,
+              "default": 7,
+              "title": "Days"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": { "application/json": { "schema": {} } }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/graph/timeline/{entity_id}/daily-summary": {
+      "get": {
+        "tags": ["graph"],
+        "summary": "Get Daily Summary",
+        "description": "Get detailed summary for a specific day",
+        "operationId": "get_daily_summary_api_v1_graph_timeline__entity_id__daily_summary_get",
+        "parameters": [
+          {
+            "name": "entity_id",
+            "in": "path",
+            "required": true,
+            "schema": { "type": "string", "title": "Entity Id" }
+          },
+          {
+            "name": "date",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [{ "type": "string" }, { "type": "null" }],
+              "title": "Date"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": { "application/json": { "schema": {} } }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/graph/timeline/{entity_id}/patterns": {
+      "get": {
+        "tags": ["graph"],
+        "summary": "Detect Activity Patterns",
+        "description": "Detect activity patterns and routines",
+        "operationId": "detect_activity_patterns_api_v1_graph_timeline__entity_id__patterns_get",
+        "parameters": [
+          {
+            "name": "entity_id",
+            "in": "path",
+            "required": true,
+            "schema": { "type": "string", "title": "Entity Id" }
+          },
+          {
+            "name": "days",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "maximum": 30,
+              "minimum": 1,
+              "default": 7,
+              "title": "Days"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": { "application/json": { "schema": {} } }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/graph/predict/location/{entity_id}": {
+      "post": {
+        "tags": ["graph"],
+        "summary": "Predict Location",
+        "description": "Predict entity location at target time using ML\n\nArgs:\n    entity_id: Entity to predict for\n    target_time: ISO timestamp to predict (default: now)\n    lookback_days: Days of history to use for prediction",
+        "operationId": "predict_location_api_v1_graph_predict_location__entity_id__post",
+        "parameters": [
+          {
+            "name": "entity_id",
+            "in": "path",
+            "required": true,
+            "schema": { "type": "string", "title": "Entity Id" }
+          },
+          {
+            "name": "target_time",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [{ "type": "string" }, { "type": "null" }],
+              "title": "Target Time"
+            }
+          },
+          {
+            "name": "lookback_days",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "maximum": 30,
+              "minimum": 1,
+              "default": 7,
+              "title": "Lookback Days"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": { "application/json": { "schema": {} } }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/graph/predict/gap/{entity_id}": {
+      "post": {
+        "tags": ["graph"],
+        "summary": "Predict During Gap",
+        "description": "Predict locations during an activity gap\n\nArgs:\n    entity_id: Entity ID\n    gap_start: Gap start time (ISO format)\n    gap_end: Gap end time (ISO format)",
+        "operationId": "predict_during_gap_api_v1_graph_predict_gap__entity_id__post",
+        "parameters": [
+          {
+            "name": "entity_id",
+            "in": "path",
+            "required": true,
+            "schema": { "type": "string", "title": "Entity Id" }
+          },
+          {
+            "name": "gap_start",
+            "in": "query",
+            "required": true,
+            "schema": { "type": "string", "title": "Gap Start" }
+          },
+          {
+            "name": "gap_end",
+            "in": "query",
+            "required": true,
+            "schema": { "type": "string", "title": "Gap End" }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": { "application/json": { "schema": {} } }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/spatial/zones": {
+      "get": {
+        "tags": ["spatial-forecasting"],
+        "summary": "Get All Zones",
+        "description": "Get list of all zones",
+        "operationId": "get_all_zones_api_v1_spatial_zones_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": { "application/json": { "schema": {} } }
+          }
+        }
+      }
+    },
+    "/api/v1/spatial/zones/{zone_id}": {
+      "get": {
+        "tags": ["spatial-forecasting"],
+        "summary": "Get Zone Details",
+        "description": "Get detailed information about a specific zone",
+        "operationId": "get_zone_details_api_v1_spatial_zones__zone_id__get",
+        "parameters": [
+          {
+            "name": "zone_id",
+            "in": "path",
+            "required": true,
+            "schema": { "type": "string", "title": "Zone Id" }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": { "application/json": { "schema": {} } }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/spatial/zones/{zone_id}/occupancy": {
+      "get": {
+        "tags": ["spatial-forecasting"],
+        "summary": "Get Current Occupancy",
+        "description": "Get current occupancy for a zone",
+        "operationId": "get_current_occupancy_api_v1_spatial_zones__zone_id__occupancy_get",
+        "parameters": [
+          {
+            "name": "zone_id",
+            "in": "path",
+            "required": true,
+            "schema": { "type": "string", "title": "Zone Id" }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": { "application/json": { "schema": {} } }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/spatial/zones/{zone_id}/history": {
+      "get": {
+        "tags": ["spatial-forecasting"],
+        "summary": "Get Zone History",
+        "description": "Get historical occupancy data for a zone",
+        "operationId": "get_zone_history_api_v1_spatial_zones__zone_id__history_get",
+        "parameters": [
+          {
+            "name": "zone_id",
+            "in": "path",
+            "required": true,
+            "schema": { "type": "string", "title": "Zone Id" }
+          },
+          {
+            "name": "days_back",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "maximum": 30,
+              "minimum": 1,
+              "description": "Number of days to look back",
+              "default": 7,
+              "title": "Days Back"
+            },
+            "description": "Number of days to look back"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": { "application/json": { "schema": {} } }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/spatial/zones/{zone_id}/forecast": {
+      "get": {
+        "tags": ["spatial-forecasting"],
+        "summary": "Get Zone Forecast",
+        "description": "Get occupancy forecast for a zone",
+        "operationId": "get_zone_forecast_api_v1_spatial_zones__zone_id__forecast_get",
+        "parameters": [
+          {
+            "name": "zone_id",
+            "in": "path",
+            "required": true,
+            "schema": { "type": "string", "title": "Zone Id" }
+          },
+          {
+            "name": "hours_ahead",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "maximum": 168,
+              "minimum": 1,
+              "description": "Hours to forecast ahead",
+              "default": 24,
+              "title": "Hours Ahead"
+            },
+            "description": "Hours to forecast ahead"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": { "application/json": { "schema": {} } }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/spatial/zones/{zone_id}/connections": {
+      "get": {
+        "tags": ["spatial-forecasting"],
+        "summary": "Get Zone Connections",
+        "description": "Get zones connected to the specified zone",
+        "operationId": "get_zone_connections_api_v1_spatial_zones__zone_id__connections_get",
+        "parameters": [
+          {
+            "name": "zone_id",
+            "in": "path",
+            "required": true,
+            "schema": { "type": "string", "title": "Zone Id" }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": { "application/json": { "schema": {} } }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/spatial/campus/summary": {
+      "get": {
+        "tags": ["spatial-forecasting"],
+        "summary": "Get Campus Summary",
+        "description": "Get overall campus activity summary",
+        "operationId": "get_campus_summary_api_v1_spatial_campus_summary_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": { "application/json": { "schema": {} } }
+          }
+        }
+      }
+    },
+    "/api/v1/spatial/health": {
+      "get": {
+        "tags": ["spatial-forecasting"],
+        "summary": "Health Check",
+        "description": "Health check endpoint",
+        "operationId": "health_check_api_v1_spatial_health_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": { "application/json": { "schema": {} } }
+          }
+        }
+      }
+    },
+    "/api/v1/anomalies/detect": {
+      "get": {
+        "tags": ["anomaly-detection"],
+        "summary": "Detect Anomalies",
+        "description": "Detect anomalies within specified time range\n- If no parameters: uses entire dataset\n- If time_window_hours: last N hours from now\n- If start_date and end_date: specific date range",
+        "operationId": "detect_anomalies_api_v1_anomalies_detect_get",
+        "parameters": [
+          {
+            "name": "time_window_hours",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [{ "type": "integer" }, { "type": "null" }],
+              "description": "Time window in hours (if None, uses entire dataset)",
+              "title": "Time Window Hours"
+            },
+            "description": "Time window in hours (if None, uses entire dataset)"
+          },
+          {
+            "name": "start_date",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [{ "type": "string" }, { "type": "null" }],
+              "description": "Start date in YYYY-MM-DD format",
+              "title": "Start Date"
+            },
+            "description": "Start date in YYYY-MM-DD format"
+          },
+          {
+            "name": "end_date",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [{ "type": "string" }, { "type": "null" }],
+              "description": "End date in YYYY-MM-DD format",
+              "title": "End Date"
+            },
+            "description": "End date in YYYY-MM-DD format"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": { "application/json": { "schema": {} } }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/anomalies/all": {
+      "get": {
+        "tags": ["anomaly-detection"],
+        "summary": "Get All Historical Anomalies",
+        "description": "Get all anomalies from the entire dataset with optional pagination",
+        "operationId": "get_all_historical_anomalies_api_v1_anomalies_all_get",
+        "parameters": [
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [{ "type": "integer" }, { "type": "null" }],
+              "description": "Limit number of results (default: no limit)",
+              "title": "Limit"
+            },
+            "description": "Limit number of results (default: no limit)"
+          },
+          {
+            "name": "offset",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [{ "type": "integer" }, { "type": "null" }],
+              "description": "Offset for pagination",
+              "default": 0,
+              "title": "Offset"
+            },
+            "description": "Offset for pagination"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": { "application/json": { "schema": {} } }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/anomalies/date-range": {
+      "get": {
+        "tags": ["anomaly-detection"],
+        "summary": "Get Anomalies By Date Range",
+        "description": "Get anomalies within a specific date range",
+        "operationId": "get_anomalies_by_date_range_api_v1_anomalies_date_range_get",
+        "parameters": [
+          {
+            "name": "start_date",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "description": "Start date in YYYY-MM-DD format",
+              "title": "Start Date"
+            },
+            "description": "Start date in YYYY-MM-DD format"
+          },
+          {
+            "name": "end_date",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "description": "End date in YYYY-MM-DD format",
+              "title": "End Date"
+            },
+            "description": "End date in YYYY-MM-DD format"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": { "application/json": { "schema": {} } }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/anomalies/trends": {
+      "get": {
+        "tags": ["anomaly-detection"],
+        "summary": "Get Anomaly Trends",
+        "description": "Get anomaly trends over time",
+        "operationId": "get_anomaly_trends_api_v1_anomalies_trends_get",
+        "parameters": [
+          {
+            "name": "granularity",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "description": "Granularity: daily, weekly, or monthly",
+              "default": "daily",
+              "title": "Granularity"
+            },
+            "description": "Granularity: daily, weekly, or monthly"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": { "application/json": { "schema": {} } }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/anomalies/dataset-info": {
+      "get": {
+        "tags": ["anomaly-detection"],
+        "summary": "Get Dataset Info",
+        "description": "Get information about the available dataset",
+        "operationId": "get_dataset_info_api_v1_anomalies_dataset_info_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": { "application/json": { "schema": {} } }
+          }
+        }
+      }
+    },
+    "/api/v1/anomalies/summary": {
+      "get": {
+        "tags": ["anomaly-detection"],
+        "summary": "Get Anomaly Summary",
+        "description": "Get summary of anomalies by type and severity",
+        "operationId": "get_anomaly_summary_api_v1_anomalies_summary_get",
+        "parameters": [
+          {
+            "name": "time_window_hours",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [{ "type": "integer" }, { "type": "null" }],
+              "description": "Time window in hours (if None, uses entire dataset)",
+              "title": "Time Window Hours"
+            },
+            "description": "Time window in hours (if None, uses entire dataset)"
+          },
+          {
+            "name": "start_date",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [{ "type": "string" }, { "type": "null" }],
+              "description": "Start date in YYYY-MM-DD format",
+              "title": "Start Date"
+            },
+            "description": "Start date in YYYY-MM-DD format"
+          },
+          {
+            "name": "end_date",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [{ "type": "string" }, { "type": "null" }],
+              "description": "End date in YYYY-MM-DD format",
+              "title": "End Date"
+            },
+            "description": "End date in YYYY-MM-DD format"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": { "application/json": { "schema": {} } }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/anomalies/by-location/{location}": {
+      "get": {
+        "tags": ["anomaly-detection"],
+        "summary": "Get Anomalies By Location",
+        "description": "Get anomalies for a specific location",
+        "operationId": "get_anomalies_by_location_api_v1_anomalies_by_location__location__get",
+        "parameters": [
+          {
+            "name": "location",
+            "in": "path",
+            "required": true,
+            "schema": { "type": "string", "title": "Location" }
+          },
+          {
+            "name": "time_window_hours",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [{ "type": "integer" }, { "type": "null" }],
+              "description": "Time window in hours (if None, uses entire dataset)",
+              "title": "Time Window Hours"
+            },
+            "description": "Time window in hours (if None, uses entire dataset)"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": { "application/json": { "schema": {} } }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/anomalies/by-severity/{severity}": {
+      "get": {
+        "tags": ["anomaly-detection"],
+        "summary": "Get Anomalies By Severity",
+        "description": "Get anomalies filtered by severity level",
+        "operationId": "get_anomalies_by_severity_api_v1_anomalies_by_severity__severity__get",
+        "parameters": [
+          {
+            "name": "severity",
+            "in": "path",
+            "required": true,
+            "schema": { "type": "string", "title": "Severity" }
+          },
+          {
+            "name": "time_window_hours",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [{ "type": "integer" }, { "type": "null" }],
+              "description": "Time window in hours (if None, uses entire dataset)",
+              "title": "Time Window Hours"
+            },
+            "description": "Time window in hours (if None, uses entire dataset)"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": { "application/json": { "schema": {} } }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/anomalies/types": {
+      "get": {
+        "tags": ["anomaly-detection"],
+        "summary": "Get Anomaly Types",
+        "description": "Get list of all anomaly types",
+        "operationId": "get_anomaly_types_api_v1_anomalies_types_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": { "application/json": { "schema": {} } }
+          }
+        }
+      }
+    },
+    "/api/v1/anomalies/by-entity/{entity_id}": {
+      "get": {
+        "tags": ["anomaly-detection"],
+        "summary": "Get Anomalies By Entity",
+        "description": "Get all anomalies for a specific entity (student/staff/faculty)",
+        "operationId": "get_anomalies_by_entity_api_v1_anomalies_by_entity__entity_id__get",
+        "parameters": [
+          {
+            "name": "entity_id",
+            "in": "path",
+            "required": true,
+            "schema": { "type": "string", "title": "Entity Id" }
+          },
+          {
+            "name": "start_date",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [{ "type": "string" }, { "type": "null" }],
+              "description": "Start date in YYYY-MM-DD format",
+              "title": "Start Date"
+            },
+            "description": "Start date in YYYY-MM-DD format"
+          },
+          {
+            "name": "end_date",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [{ "type": "string" }, { "type": "null" }],
+              "description": "End date in YYYY-MM-DD format",
+              "title": "End Date"
+            },
+            "description": "End date in YYYY-MM-DD format"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": { "application/json": { "schema": {} } }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/anomalies/health": {
+      "get": {
+        "tags": ["anomaly-detection"],
+        "summary": "Health Check",
+        "description": "Health check for anomaly detection service",
+        "operationId": "health_check_api_v1_anomalies_health_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": { "application/json": { "schema": {} } }
+          }
+        }
+      }
+    },
+    "/": {
+      "get": {
+        "summary": "Root",
+        "operationId": "root__get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": { "application/json": { "schema": {} } }
+          }
+        }
+      }
+    },
+    "/health": {
+      "get": {
+        "summary": "Health Check",
+        "operationId": "health_check_health_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": { "application/json": { "schema": {} } }
+          }
+        }
+      }
+    }
+  },
+  "components": {
+    "schemas": {
+      "Entity": {
+        "properties": {
+          "entity_id": { "type": "string", "title": "Entity Id" },
+          "identifiers": {
+            "items": { "$ref": "#/components/schemas/Identifier" },
+            "type": "array",
+            "title": "Identifiers",
+            "default": []
+          },
+          "name": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Name"
+          },
+          "email": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Email"
+          },
+          "entity_type": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Entity Type"
+          },
+          "department": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Department"
+          },
+          "linked_entity_ids": {
+            "items": { "type": "string" },
+            "type": "array",
+            "title": "Linked Entity Ids",
+            "default": []
+          },
+          "confidence_score": {
+            "type": "number",
+            "maximum": 1.0,
+            "minimum": 0.0,
+            "title": "Confidence Score",
+            "default": 1.0
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Created At"
+          },
+          "updated_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Updated At"
+          }
+        },
+        "type": "object",
+        "required": ["entity_id"],
+        "title": "Entity",
+        "description": "Unified entity representing a person (student/staff)"
+      },
+      "EntitySearchRequest": {
+        "properties": {
+          "identifier_type": { "type": "string", "title": "Identifier Type" },
+          "identifier_value": { "type": "string", "title": "Identifier Value" }
+        },
+        "type": "object",
+        "required": ["identifier_type", "identifier_value"],
+        "title": "EntitySearchRequest"
+      },
+      "EntitySearchResponse": {
+        "properties": {
+          "entity": {
+            "anyOf": [
+              { "$ref": "#/components/schemas/Entity" },
+              { "type": "null" }
+            ]
+          },
+          "all_identifiers": {
+            "additionalProperties": true,
+            "type": "object",
+            "title": "All Identifiers"
+          },
+          "linked_entities": {
+            "items": { "$ref": "#/components/schemas/Entity" },
+            "type": "array",
+            "title": "Linked Entities"
+          },
+          "confidence": { "type": "number", "title": "Confidence" }
+        },
+        "type": "object",
+        "required": [
+          "entity",
+          "all_identifiers",
+          "linked_entities",
+          "confidence"
+        ],
+        "title": "EntitySearchResponse"
+      },
+      "HTTPValidationError": {
+        "properties": {
+          "detail": {
+            "items": { "$ref": "#/components/schemas/ValidationError" },
+            "type": "array",
+            "title": "Detail"
+          }
+        },
+        "type": "object",
+        "title": "HTTPValidationError"
+      },
+      "Identifier": {
+        "properties": {
+          "type": { "type": "string", "title": "Type" },
+          "value": { "type": "string", "title": "Value" },
+          "source": { "type": "string", "title": "Source" },
+          "confidence": {
+            "type": "number",
+            "maximum": 1.0,
+            "minimum": 0.0,
+            "title": "Confidence",
+            "default": 1.0
+          },
+          "first_seen": {
+            "type": "string",
+            "format": "date-time",
+            "title": "First Seen"
+          },
+          "last_seen": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Last Seen"
+          }
+        },
+        "type": "object",
+        "required": ["type", "value", "source", "first_seen", "last_seen"],
+        "title": "Identifier",
+        "description": "Single identifier with metadata"
+      },
+      "ValidationError": {
+        "properties": {
+          "loc": {
+            "items": { "anyOf": [{ "type": "string" }, { "type": "integer" }] },
+            "type": "array",
+            "title": "Location"
+          },
+          "msg": { "type": "string", "title": "Message" },
+          "type": { "type": "string", "title": "Error Type" }
+        },
+        "type": "object",
+        "required": ["loc", "msg", "type"],
+        "title": "ValidationError"
+      }
+    }
+  }
+}

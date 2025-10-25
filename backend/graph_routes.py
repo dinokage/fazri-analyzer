@@ -1,7 +1,7 @@
 # backend/app/api/graph_routes.py
 from fastapi import APIRouter, Query, HTTPException
 from typing import Optional, List
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 
 from services.graph_builder import get_graph_builder
 from services.timeline_service import TimelineService
@@ -42,7 +42,7 @@ async def get_entities_at_location(
     graph = get_graph_builder()
     
     if not timestamp:
-        timestamp = datetime.now().isoformat()
+        timestamp = datetime.now(timezone.utc).isoformat()
     
     try:
         entities = graph.find_entities_at_location(location_id, timestamp)
@@ -166,7 +166,7 @@ async def get_daily_summary(
     Get detailed summary for a specific day
     """
     if not date:
-        date = datetime.now().strftime('%Y-%m-%d')
+        date = datetime.now(timezone.utc).strftime('%Y-%m-%d')
     
     # Parse date
     target_date = datetime.strptime(date, '%Y-%m-%d')
@@ -197,7 +197,7 @@ async def detect_activity_patterns(
     graph = get_graph_builder()
     
     # Get recent events
-    end_date = datetime.now()
+    end_date = datetime.now(timezone.utc)
     start_date = end_date - timedelta(days=days)
     
     events = graph.get_entity_timeline(
@@ -236,9 +236,12 @@ async def predict_location(
         lookback_days: Days of history to use for prediction
     """
     if not target_time:
-        target_datetime = datetime.now()
+        target_datetime = datetime.now(timezone.utc)
     else:
         target_datetime = datetime.fromisoformat(target_time)
+        # Ensure target_datetime is timezone-aware
+        if target_datetime.tzinfo is None:
+            target_datetime = target_datetime.replace(tzinfo=timezone.utc)
     
     graph = get_graph_builder()
     

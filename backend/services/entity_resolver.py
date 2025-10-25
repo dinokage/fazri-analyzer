@@ -23,12 +23,12 @@ class EntityResolver:
     def _load_datasets(self):
         """Load all CSV datasets"""
         self.profiles = pd.read_csv(self.data_dir / "student_staff_profiles.csv")
-        self.swipes = pd.read_csv(self.data_dir / "campus_card_swipes.csv")
-        self.wifi = pd.read_csv(self.data_dir / "wifi_associations_logs.csv")
-        self.library = pd.read_csv(self.data_dir / "library_checkouts.csv")
-        self.bookings = pd.read_csv(self.data_dir / "lab_bookings.csv")
-        self.helpdesk = pd.read_csv(self.data_dir / "helpdesk.csv")
-        self.cctv = pd.read_csv(self.data_dir / "cctv_frames.csv")
+        self.swipes = pd.read_csv(self.data_dir / "campus_card_swipes_augmented.csv")
+        self.wifi = pd.read_csv(self.data_dir / "wifi_associations_logs_augmented.csv")
+        self.library = pd.read_csv(self.data_dir / "library_checkouts_augmented.csv")
+        self.bookings = pd.read_csv(self.data_dir / "lab_bookings_augmented.csv")
+        self.helpdesk = pd.read_csv(self.data_dir / "helpdesk_augmented.csv")
+        self.cctv = pd.read_csv(self.data_dir / "cctv_frames_augmented.csv")
         self.face_embeddings = pd.read_csv(self.data_dir / "face_embeddings.csv")
         
         print(f"✅ Loaded {len(self.profiles)} profiles")
@@ -44,6 +44,7 @@ class EntityResolver:
             entity = Entity(
                 entity_id=entity_id,
                 name=row.get('name'),
+                role=row.get('role'),
                 email=row.get('email'),
                 entity_type=self._determine_entity_type(row),
                 department=row.get('department')
@@ -80,10 +81,12 @@ class EntityResolver:
     
     def _determine_entity_type(self, row: pd.Series) -> str:
         """Determine if entity is student or staff"""
-        if pd.notna(row.get('student_id')):
+        if row.role == 'student' and pd.notna(row.get('student_id')):
             return "student"
-        elif pd.notna(row.get('staff_id')):
+        elif row.role == 'staff' and pd.notna(row.get('staff_id')):
             return "staff"
+        elif row.role == "faculty" and pd.notna(row.get('faculty_id')):
+            return "faculty"
         return "unknown"
     
     def resolve_by_identifier(
@@ -173,7 +176,7 @@ def get_resolver() -> EntityResolver:
     """Get or create resolver instance"""
     global resolver
     if resolver is None:
-        data_dir = Path(__file__).parent.parent / "datasets"
+        data_dir = Path(__file__).parent.parent / "augmented"
         resolver = EntityResolver(data_dir)
         resolver.build_entity_graph()
     return resolver
