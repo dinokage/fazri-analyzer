@@ -8,10 +8,8 @@ import React, {
   forwardRef,
   useImperativeHandle,
   useMemo,
-  type ReactNode,
   type MouseEvent as ReactMouseEvent,
   type FormEvent,
-  type SVGProps,
 } from "react";
 import {
   motion,
@@ -43,7 +41,6 @@ import {
   Github,
   Linkedin,
   Twitter,
-  ArrowRight,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";

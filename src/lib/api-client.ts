@@ -195,11 +195,23 @@ export const apiClient = {
       name,
       threshold: threshold.toString(),
     });
-    
+
     const response = await fetch(
       `${API_BASE_URL}/api/v1/entities/fuzzy-search?${params}`,
       { headers: { 'Content-Type': 'application/json' } }
     );
+    return handleResponse(response);
+  },
+
+  async getAnomaliesByEntity(entityId: string, startDate?: string, endDate?: string) {
+    const params = new URLSearchParams();
+    if (startDate) params.append('start_date', startDate);
+    if (endDate) params.append('end_date', endDate);
+
+    const url = `${API_BASE_URL}/api/v1/anomalies/by-entity/${entityId}${params.toString() ? `?${params}` : ''}`;
+    const response = await fetch(url, {
+      headers: { 'Content-Type': 'application/json' },
+    });
     return handleResponse(response);
   },
 };

@@ -23,7 +23,6 @@ def train_predictors():
     WHERE event_count >= 10
     RETURN e.entity_id as entity_id, e.name as name, event_count
     ORDER BY event_count DESC
-    LIMIT 20
     """
     
     with graph.driver.session() as session:

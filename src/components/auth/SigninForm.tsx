@@ -48,6 +48,7 @@ export default function SigninPage() {
 
       if (data.exists) {
         setUserExists(true); // User exists, proceed to password step
+        console.log(userExists)
         setStep("password");
       } else {
         setError("Username not found. Please check your username and try again.");

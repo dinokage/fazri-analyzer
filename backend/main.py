@@ -1,7 +1,7 @@
 # backend/app/main.py - UPDATE THIS
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
-import entity_routes, graph_routes
+import entity_routes, graph_routes, spatial_routes, anomaly_routes
 
 app = FastAPI(
     title="Campus Entity Resolution API",
@@ -20,6 +20,8 @@ app.add_middleware(
 # Include routers
 app.include_router(entity_routes.router)
 app.include_router(graph_routes.router)
+app.include_router(spatial_routes.router)
+app.include_router(anomaly_routes.router)
 
 @app.get("/")
 async def root():
