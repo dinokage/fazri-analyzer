@@ -35,7 +35,7 @@ import {
 } from '@/components/ui/select';
 import { ArrowUpDown, ChevronLeft, ChevronRight, AlertCircle, ShieldAlert, TrendingUp, MapPin } from 'lucide-react';
 import { Alert, AlertDescription } from '@/components/ui/alert';
-import { ChartContainer, ChartTooltip, ChartTooltipContent } from '@/components/ui/chart';
+import { ChartContainer, ChartTooltip } from '@/components/ui/chart';
 import { PieChart, Pie, Cell, Legend, ResponsiveContainer } from 'recharts';
 
 const severityColors = {
@@ -417,6 +417,7 @@ export default function AnomaliesPage() {
                   <Legend
                     verticalAlign="bottom"
                     height={36}
+                    //eslint-disable-next-line @typescript-eslint/no-explicit-any
                     formatter={(value, entry: any) => (
                       <span className="text-sm">
                         {value} ({entry.payload.count})
