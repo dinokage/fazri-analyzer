@@ -214,6 +214,32 @@ export const apiClient = {
     });
     return handleResponse(response);
   },
+
+  async getAllAnomalies(limit?: number, offset: number = 0) {
+    const params = new URLSearchParams({
+      offset: offset.toString(),
+    });
+    if (limit) params.append('limit', limit.toString());
+
+    const response = await fetch(
+      `${API_BASE_URL}/api/v1/anomalies/all?${params}`,
+      { headers: { 'Content-Type': 'application/json' } }
+    );
+    return handleResponse(response);
+  },
+
+  async getAnomaliesByDateRange(startDate: string, endDate: string) {
+    const params = new URLSearchParams({
+      start_date: startDate,
+      end_date: endDate,
+    });
+
+    const response = await fetch(
+      `${API_BASE_URL}/api/v1/anomalies/date-range?${params}`,
+      { headers: { 'Content-Type': 'application/json' } }
+    );
+    return handleResponse(response);
+  },
 };
 
 export { ApiError };

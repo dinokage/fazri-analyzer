@@ -15,6 +15,7 @@ import {
 import { format } from 'date-fns';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { Progress } from '@/components/ui/progress';
+import { getZoneNameFromLocation } from '@/lib/zone-mapping';
 
 interface PredictionExplanation {
   confidence_level: string;
@@ -166,7 +167,7 @@ export function PredictiveInsights({ prediction }: PredictiveInsightsProps) {
               <MapPin className="h-6 w-6" />
             </div>
             <p className="text-white font-medium text-lg">
-              {primaryPrediction.location || 'Unknown Location'}
+              {getZoneNameFromLocation(primaryPrediction.location) || 'Unknown Location'}
             </p>
             {prediction.target_time && (
               <p className="text-gray-400 text-sm mt-1">
@@ -268,17 +269,17 @@ export function PredictiveInsights({ prediction }: PredictiveInsightsProps) {
               <p className="text-xs text-gray-400 mb-2">Alternative Locations:</p>
               <div className="space-y-2">
                 {alternativePredictions.slice(0, 3).map((alt, idx) => (
-                  <div 
-                    key={idx} 
+                  <div
+                    key={idx}
                     className="flex items-center justify-between text-sm bg-[#1a1a24] rounded p-2 cursor-pointer hover:bg-[#242430] transition-colors"
                     onClick={() => {
                       setSelectedPrediction(alt);
                       setShowDetails(true);
                     }}
                   >
-                    <span className="text-gray-300">{alt.location}</span>
-                    <Badge 
-                      variant="secondary" 
+                    <span className="text-gray-300">{getZoneNameFromLocation(alt.location)}</span>
+                    <Badge
+                      variant="secondary"
                       className={cn("text-xs", getConfidenceBadgeColor(alt.confidence))}
                     >
                       {(alt.confidence * 100).toFixed(0)}%
@@ -315,7 +316,7 @@ export function PredictiveInsights({ prediction }: PredictiveInsightsProps) {
                     </h4>
                     <div className="bg-[#1a1a24] rounded-lg p-4">
                       <div className="flex justify-between items-start mb-2">
-                        <span className="text-lg font-medium">{displayPrediction.location}</span>
+                        <span className="text-lg font-medium">{getZoneNameFromLocation(displayPrediction.location)}</span>
                         <Badge className={getConfidenceBadgeColor(displayPrediction.confidence)}>
                           {(displayPrediction.confidence * 100).toFixed(1)}%
                         </Badge>
@@ -417,7 +418,7 @@ export function PredictiveInsights({ prediction }: PredictiveInsightsProps) {
                         {prediction.predictions
                           .sort((a, b) => b.confidence - a.confidence)
                           .map((pred, idx) => (
-                            <div 
+                            <div
                               key={idx}
                               className={cn(
                                 "bg-[#1a1a24] rounded-lg p-3 flex justify-between items-center",
@@ -425,13 +426,13 @@ export function PredictiveInsights({ prediction }: PredictiveInsightsProps) {
                               )}
                             >
                               <div>
-                                <span className="font-medium">{pred.location}</span>
+                                <span className="font-medium">{getZoneNameFromLocation(pred.location)}</span>
                                 <span className="text-xs text-gray-400 ml-2">
                                   ({formatConfidenceLevel(pred.explanation?.confidence_level || '')})
                                 </span>
                               </div>
-                              <Badge 
-                                variant="secondary" 
+                              <Badge
+                                variant="secondary"
                                 className={getConfidenceBadgeColor(pred.confidence)}
                               >
                                 {(pred.confidence * 100).toFixed(0)}%
