@@ -678,7 +678,7 @@ const FazriAnalyzerLanding: React.FC = () => {
   };
 
   return (
-    <div className="pt-[100px] relative bg-[#111111] text-gray-300 min-h-screen flex flex-col overflow-x-hidden">
+    <div className="pt-[100px] relative bg-[#111111] text-gray-300 min-h-screen flex flex-col">
       <canvas
         ref={canvasRef}
         className="absolute inset-0 z-0 pointer-events-none opacity-80"
