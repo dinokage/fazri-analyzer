@@ -1,4 +1,14 @@
+# Set global default image
 image: python:3.11-slim
+
+# Set default working directory for all jobs
+variables:
+  DOCKER_DRIVER: overlay2
+  DOCKER_TLS_CERTDIR: "/certs"
+  DOCKER_BUILDKIT: 1
+  COMPOSE_DOCKER_CLI_BUILD: 1
+  # Change to backend directory for all operations
+  GIT_STRATEGY: clone
 
 stages:
   - validate
@@ -6,11 +16,9 @@ stages:
   - build
   - deploy
 
-variables:
-  DOCKER_DRIVER: overlay2
-  DOCKER_TLS_CERTDIR: "/certs"
-  DOCKER_BUILDKIT: 1
-  COMPOSE_DOCKER_CLI_BUILD: 1
+# Template for changing to backend directory
+.backend_directory: &backend_directory
+  - cd backend
 
 # Templates
 .docker_login: &docker_login
@@ -26,8 +34,9 @@ variables:
 # Validate docker-compose configuration
 validate:docker-compose:
   stage: validate
-  image: docker/compose:latest
+  image: docker/compose:latest  # Override for this specific job
   before_script:
+    - *backend_directory
     # Create a minimal .env file for validation
     - |
       cat > .env << 'EOF'
@@ -48,16 +57,16 @@ validate:docker-compose:
     - develop
     - tags
 
-# Test stage
+# Test stage - now uses default python:3.11-slim
 test:
   stage: test
-  image: python:3.11-slim
   services:
     - redis:7-alpine
   variables:
     REDIS_HOST: redis
     REDIS_PORT: 6379
   before_script:
+    - *backend_directory
     - apt-get update && apt-get install -y gcc g++ libgl1-mesa-glx libglib2.0-0
     - pip install -r requirements.txt
     - pip install pytest pytest-cov pytest-asyncio httpx
@@ -68,17 +77,19 @@ test:
     reports:
       coverage_report:
         coverage_format: cobertura
-        path: coverage.xml
+        path: backend/coverage.xml
+    paths:
+      - backend/coverage.xml
   only:
     - merge_requests
     - main
     - develop
 
-# Linting
+# Linting - now uses default python:3.11-slim
 lint:
   stage: test
-  image: python:3.11-slim
   before_script:
+    - *backend_directory
     - pip install ruff black isort
   script:
     - ruff check .
@@ -90,11 +101,11 @@ lint:
     - main
     - develop
 
-# Security scanning
+# Security scanning - now uses default python:3.11-slim
 security:
   stage: test
-  image: python:3.11-slim
   before_script:
+    - *backend_directory
     - pip install safety bandit
   script:
     - safety check --json
@@ -102,6 +113,8 @@ security:
   artifacts:
     reports:
       sast: bandit-report.json
+    paths:
+      - backend/bandit-report.json
     expire_in: 1 week
   allow_failure: true
   only:
@@ -109,13 +122,13 @@ security:
     - main
 
 # Build Docker images using docker-compose
-# This job uses shell executor for local testing with gitlab-ci-local
-# For GitLab CI, configure a runner with Docker executor and 'shell' tag
 build:
   stage: build
   # tags:
   #   - shell  # Uncomment if using a specific shell runner
   before_script:
+    - *backend_directory
+    
     # Set IMAGE_TAG and LATEST_TAG with proper defaults
     - |
       export CI_REGISTRY_IMAGE="${CI_REGISTRY_IMAGE:-fazri-analyzer/backend}"
@@ -213,7 +226,7 @@ build:
 # Deploy to EC2 Production
 deploy:production:
   stage: deploy
-  image: alpine:latest
+  image: alpine:latest  # Override for this specific job (needs SSH tools)
   before_script:
     # Set variables with defaults
     - export CI_REGISTRY_IMAGE="${CI_REGISTRY_IMAGE:-fazri-analyzer/backend}"
@@ -277,7 +290,7 @@ deploy:production:
 # Rollback to previous version (manual trigger)
 rollback:production:
   stage: deploy
-  image: alpine:latest
+  image: alpine:latest  # Override for this specific job (needs SSH tools)
   before_script:
     - export CI_REGISTRY_IMAGE="${CI_REGISTRY_IMAGE:-fazri-analyzer/backend}"
     - apk add --no-cache openssh-client
