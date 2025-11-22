@@ -5,7 +5,7 @@ FROM base AS dependencies
 
 WORKDIR /app
 
-COPY ./app/package.json ./app/yarn.lock* ./
+COPY ./package.json ./pnpm-lock.yaml* ./
 
 RUN pnpm install
 
