@@ -14,7 +14,7 @@ build:
     - echo "$CI_REGISTRY_PASSWORD" | docker login $CI_REGISTRY -u $CI_REGISTRY_USER --password-stdin
     - docker build -t "$CI_REGISTRY_IMAGE:$CI_COMMIT_SHORT_SHA" -f Dockerfile.prod .
     - docker push "$CI_REGISTRY_IMAGE:$CI_COMMIT_SHORT_SHA"
-    - echo "Built and pushed image: $CI_REGISTRY_IMAGE:$CI_COMMIT_SHORT_SHA"
+    - echo "Built and pushed image $CI_REGISTRY_IMAGE:$CI_COMMIT_SHORT_SHA"
 
 deploy:
   stage: deploy
