@@ -7,7 +7,7 @@ WORKDIR /app
 
 COPY ./package.json ./pnpm-lock.yaml* ./
 
-RUN pnpm install
+RUN corepack enable pnpm && pnpm install
 
 
 # setup docker image for next.js build
