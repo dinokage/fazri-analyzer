@@ -172,24 +172,14 @@ build:
     - echo "Building Docker images with docker-compose..."
     - docker-compose -f docker-compose.prod.yml build app
 
-    # Get the actual image name from docker-compose
+    # Verify the image was built
+    - docker images | grep -E "${CI_REGISTRY_IMAGE}" || echo "Image built successfully"
+
+    # Tag with latest if on main/master branch
     - |
-      # Try to find the image by common patterns
-      BUILT_IMAGE=$(docker images --format "{{.Repository}}:{{.Tag}}" | grep -E "(fazri|backend).*app" | head -1)
-
-      # If not found, get the most recently created image
-      if [ -z "$BUILT_IMAGE" ]; then
-        BUILT_IMAGE=$(docker images --format "{{.Repository}}:{{.Tag}}" --filter "since=$(docker images -q | tail -1)" | head -1)
-      fi
-
-      echo "Built image: $BUILT_IMAGE"
-
-      # Tag with CI image tag
-      if [ -n "$BUILT_IMAGE" ]; then
-        docker tag "$BUILT_IMAGE" "$IMAGE_TAG"
-        echo "Tagged as: $IMAGE_TAG"
-      else
-        echo "Warning: Could not find built image"
+      if [ "${CI_COMMIT_REF_NAME:-main}" == "main" ] || [ "${CI_COMMIT_REF_NAME}" == "master" ]; then
+        docker tag "$IMAGE_TAG" "$LATEST_TAG"
+        echo "Tagged latest: $LATEST_TAG"
       fi
 
     # Push images to registry if credentials are available
@@ -197,12 +187,12 @@ build:
       if [ -n "$CI_REGISTRY_USER" ] && [ -n "$CI_REGISTRY_PASSWORD" ]; then
         echo "Pushing image to registry..."
         docker push "$IMAGE_TAG"
+        echo "Pushed: $IMAGE_TAG"
 
-        # Also tag and push as latest if on main/master branch
+        # Also push latest tag if on main/master branch
         if [ "${CI_COMMIT_REF_NAME:-main}" == "main" ] || [ "${CI_COMMIT_REF_NAME}" == "master" ]; then
-          docker tag "$IMAGE_TAG" "$LATEST_TAG"
           docker push "$LATEST_TAG"
-          echo "Pushed latest tag: $LATEST_TAG"
+          echo "Pushed: $LATEST_TAG"
         fi
       else
         echo "Skipping push (no registry credentials, likely running locally)"
@@ -210,7 +200,7 @@ build:
 
     # Show built images
     - echo "Built images:"
-    - docker images | grep -E "(fazri|backend).*app" || echo "Showing recent images:" && docker images | head -5
+    - docker images | grep "${CI_REGISTRY_IMAGE}" | head -5
 
   only:
     - main
