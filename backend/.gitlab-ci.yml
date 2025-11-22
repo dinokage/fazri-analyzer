@@ -175,7 +175,7 @@ build:
   script:
     # Build the app service using docker-compose
     - echo "Building Docker images with docker-compose..."
-    - docker-compose build app
+    - docker-compose -f docker-compose.prod.yml build app
 
     # Get the actual image name from docker-compose
     - |
