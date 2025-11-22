@@ -10,8 +10,9 @@ DOCKER_PULL_COMMAND="docker pull $APP_CONTAINER_IMAGE"
 # Stop and remove old container
 CONTAINER_STOP_COMMAND="if [ \$(docker ps -q -f name=$APP_CONTAINER_NAME) ]; then docker stop $APP_CONTAINER_NAME && docker rm $APP_CONTAINER_NAME; fi"
 
-# Start container with all environment variables
-CONTAINER_START_COMMAND="docker run -d --restart unless-stopped -p 80:3000 \
+# CHANGED: Port mapping from 80:3000 to 3000:3000
+CONTAINER_START_COMMAND="docker run -d --restart unless-stopped \
+  -p 3000:3000 \
   -e NEXTAUTH_URL='$NEXTAUTH_URL' \
   -e NEXTAUTH_SECRET='$NEXTAUTH_SECRET' \
   -e AUTH_GOOGLE_ID='$AUTH_GOOGLE_ID' \
@@ -47,7 +48,6 @@ while true; do
     sleep 2
 done
 
-# Get output
 OUTPUT=$(aws ssm list-command-invocations \
     --command-id "$COMMAND_ID" \
     --details \
