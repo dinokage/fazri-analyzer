@@ -49,7 +49,7 @@ validate:docker-compose:
       PGADMIN_PASSWORD=test
       EOF
   script:
-    - docker-compose config --quiet
+    - docker-compose -f docker-compose.prod.yml config --quiet
     - echo "Docker Compose configuration is valid"
   only:
     - merge_requests
@@ -124,6 +124,14 @@ security:
 # Build Docker images using docker-compose
 build:
   stage: build
+  image: docker:latest
+  services:
+    - docker:dind
+  variables:
+    DOCKER_HOST: tcp://docker:2376
+    DOCKER_TLS_CERTDIR: "/certs"
+    DOCKER_TLS_VERIFY: 1
+    DOCKER_CERT_PATH: "$DOCKER_TLS_CERTDIR/client"
   # tags:
   #   - shell  # Uncomment if using a specific shell runner
   before_script:
@@ -139,21 +147,8 @@ build:
       echo "IMAGE_TAG=${IMAGE_TAG}"
       echo "LATEST_TAG=${LATEST_TAG}"
 
-    # Install docker-compose if not available (for some environments)
-    - |
-      if ! command -v docker-compose &> /dev/null; then
-        echo "Installing docker-compose..."
-        # For Alpine-based systems
-        if command -v apk &> /dev/null; then
-          apk add --no-cache docker-compose
-        # For Debian/Ubuntu-based systems
-        elif command -v apt-get &> /dev/null; then
-          apt-get update && apt-get install -y docker-compose
-        else
-          echo "docker-compose not found and cannot be installed automatically"
-          exit 1
-        fi
-      fi
+    # Install docker-compose for Alpine
+    - apk add --no-cache docker-compose
 
     # Create a minimal .env file for docker-compose (CI build doesn't need actual values)
     - |

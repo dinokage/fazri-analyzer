@@ -1,5 +1,3 @@
-version: '3.8'
-
 services:
   db:
     image: postgres:15
@@ -60,6 +58,10 @@ services:
     restart: unless-stopped
 
   app:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      target: production
     image: ${CI_REGISTRY_IMAGE:-fazri-analyzer/backend}:${CI_COMMIT_REF_SLUG:-latest}
     container_name: fazri_api
     environment:
