@@ -12,9 +12,13 @@ build:
     DOCKER_TLS_CERTDIR: "/certs"
   script:
     - echo "$CI_REGISTRY_PASSWORD" | docker login $CI_REGISTRY -u $CI_REGISTRY_USER --password-stdin
-    - docker build -t "$CI_REGISTRY_IMAGE:$CI_COMMIT_SHORT_SHA" -f Dockerfile.prod .
+    - |
+      docker build \
+        --build-arg NEXT_PUBLIC_FASTAPI_BASE_URL="$NEXT_PUBLIC_FASTAPI_BASE_URL" \
+        --build-arg NEXT_PUBLIC_CDN_URL="$NEXT_PUBLIC_CDN_URL" \
+        -t "$CI_REGISTRY_IMAGE:$CI_COMMIT_SHORT_SHA" \
+        -f Dockerfile.prod .
     - docker push "$CI_REGISTRY_IMAGE:$CI_COMMIT_SHORT_SHA"
-    - echo "Built and pushed image $CI_REGISTRY_IMAGE:$CI_COMMIT_SHORT_SHA"
 
 deploy:
   stage: deploy
@@ -32,20 +36,6 @@ deploy:
     - echo "${GITLAB_OIDC_TOKEN}" > /tmp/web_identity_token
     - echo -e "[profile default]\nrole_arn=${ROLE_ARN}\nweb_identity_token_file=/tmp/web_identity_token" > ~/.aws/config
   script:
-    - echo "=== Debugging OIDC Token ==="
-    - echo $GITLAB_OIDC_TOKEN | cut -d'.' -f2 | base64 -d 2>/dev/null || echo "Token payload (base64 encoded)"
-    - echo ""
-    - echo "=== Project Info ==="
-    - echo "Project Path - $CI_PROJECT_PATH"
-    - echo "Commit Ref - $CI_COMMIT_REF_NAME"
-    - echo "Expected sub claim - project_path:$CI_PROJECT_PATH:ref_type:branch:ref:$CI_COMMIT_REF_NAME"
-    - echo ""
-    - echo "=== AWS Config ==="
-    - cat ~/.aws/config
-    - echo ""
-    - echo "=== Testing AWS Assume Role ==="
     - aws sts get-caller-identity
-    - echo ""
-    - echo "=== Starting Deployment ==="
     - chmod +x deploy-to-ec2.sh
     - ./deploy-to-ec2.sh
