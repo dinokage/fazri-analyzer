@@ -1,14 +1,11 @@
 FROM node:22.11.0-alpine AS base
 
+RUN npm install -g pnpm
+
 # setup docker image to install all node packages
 FROM base AS dependencies
-
 WORKDIR /app
-
 COPY ./package.json ./pnpm-lock.yaml* ./
-
-# RUN corepack enable pnpm && pnpm install
-RUN npm install -g pnpm
 RUN pnpm install
 
 
