@@ -14,7 +14,7 @@ RUN pnpm install
 FROM base AS build
 WORKDIR /app
 COPY --from=dependencies /app/node_modules ./node_modules
-COPY .
+COPY . .
 
 ENV NEXT_TELEMETRY_DISABLED=1
 
