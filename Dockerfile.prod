@@ -20,7 +20,7 @@ COPY . .
 
 ENV NEXT_TELEMETRY_DISABLED=1
 
-RUN pnpm run build
+RUN pnpm build
 
 # setup docker image to hold build, static and run the app
 FROM base AS runner
