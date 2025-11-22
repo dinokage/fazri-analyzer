@@ -1,6 +1,10 @@
+stages:
+  - build
+  - deploy
+
 build:
   stage: build
-  image: docker
+  image: docker:latest
   services:
     - docker:27.2.0-dind
   variables:
@@ -8,32 +12,38 @@ build:
     DOCKER_TLS_CERTDIR: "/certs"
   script:
     - echo "$CI_REGISTRY_PASSWORD" | docker login $CI_REGISTRY -u $CI_REGISTRY_USER --password-stdin
-    - docker build -t "$CI_REGISTRY_IMAGE:${CI_COMMIT_SHA:0:8}" -f Dockerfile.prod .
-    - docker push "$CI_REGISTRY_IMAGE:${CI_COMMIT_SHA:0:8}"
+    - docker build -t "$CI_REGISTRY_IMAGE:$CI_COMMIT_SHORT_SHA" -f Dockerfile.prod .
+    - docker push "$CI_REGISTRY_IMAGE:$CI_COMMIT_SHORT_SHA"
+    - echo "Built and pushed image: $CI_REGISTRY_IMAGE:$CI_COMMIT_SHORT_SHA"
 
 deploy:
   stage: deploy
   image: registry.gitlab.com/gitlab-org/cloud-deploy/aws-base:latest
-
   id_tokens:
     GITLAB_OIDC_TOKEN:
       aud: https://gitlab.com
-
   variables:
     AWS_DEFAULT_REGION: ap-south-1
     ROLE_ARN: arn:aws:iam::955719296501:role/ec2-ssm-gitlab
-
   before_script:
+    - apt-get update -y && apt-get install -y jq
     - curl "https://s3.amazonaws.com/session-manager-downloads/plugin/latest/ubuntu_64bit/session-manager-plugin.deb" -o "session-manager-plugin.deb"
     - dpkg -i session-manager-plugin.deb
     - session-manager-plugin --version
-    - apt-get update -y && apt-get install -y expect
     - mkdir -p ~/.aws
     - echo "${GITLAB_OIDC_TOKEN}" > /tmp/web_identity_token
     - echo -e "[profile default]\nrole_arn=${ROLE_ARN}\nweb_identity_token_file=/tmp/web_identity_token" > ~/.aws/config
-
   script:
+    - echo "=== Debugging OIDC Token Claims ==="
+    - python3 -c "import base64, json, sys; parts = sys.stdin.read().strip().split('.'); print(json.dumps(json.loads(base64.urlsafe_b64decode(parts[1] + '==').decode('utf-8')), indent=2))" <<< "$GITLAB_OIDC_TOKEN" || echo "Could not decode token"
+    - echo "=== End Debug ==="
+    - echo ""
+    - echo "=== AWS Config ==="
     - cat ~/.aws/config
+    - echo ""
+    - echo "=== Testing AWS Assume Role ==="
     - aws sts get-caller-identity
+    - echo ""
+    - echo "=== Starting Deployment ==="
     - chmod +x deploy-to-ec2.sh
     - ./deploy-to-ec2.sh
