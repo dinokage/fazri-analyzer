@@ -1,0 +1,300 @@
+# Set global default image
+image: python:3.11-slim
+
+# Set default working directory for all jobs
+variables:
+  DOCKER_DRIVER: overlay2
+  DOCKER_TLS_CERTDIR: "/certs"
+  DOCKER_BUILDKIT: 1
+  COMPOSE_DOCKER_CLI_BUILD: 1
+  # Change to backend directory for all operations
+  GIT_STRATEGY: clone
+
+stages:
+  - validate
+  - test
+  - build
+  - deploy
+
+# Template for changing to backend directory
+.backend_directory: &backend_directory
+  - cd backend
+
+# Templates
+.docker_login: &docker_login
+  - echo "Logging into registry..."
+  - |
+    if [ -n "$CI_REGISTRY_USER" ] && [ -n "$CI_REGISTRY_PASSWORD" ]; then
+      REGISTRY="${CI_REGISTRY:-$REGISTRY_URL}"
+      echo "$CI_REGISTRY_PASSWORD" | docker login -u "$CI_REGISTRY_USER" --password-stdin "$REGISTRY"
+    else
+      echo "Skipping docker login (running locally)"
+    fi
+
+# Validate docker-compose configuration
+validate:docker-compose:
+  stage: validate
+  image: docker/compose:latest  # Override for this specific job
+  before_script:
+    - *backend_directory
+    # Create a minimal .env file for validation
+    - |
+      cat > .env << 'EOF'
+      POSTGRES_USER=postgres
+      POSTGRES_PASSWORD=test
+      POSTGRES_DB=test
+      NEO4J_USER=neo4j
+      NEO4J_PASSWORD=test
+      PGADMIN_EMAIL=admin@test.local
+      PGADMIN_PASSWORD=test
+      EOF
+  script:
+    - docker-compose -f docker-compose.prod.yml config --quiet
+    - echo "Docker Compose configuration is valid"
+  only:
+    - merge_requests
+    - main
+    - develop
+    - tags
+
+# Test stage - now uses default python:3.11-slim
+test:
+  stage: test
+  services:
+    - redis:7-alpine
+  variables:
+    REDIS_HOST: redis
+    REDIS_PORT: 6379
+  before_script:
+    - *backend_directory
+    - apt-get update && apt-get install -y gcc g++ libgl1-mesa-glx libglib2.0-0
+    - pip install -r requirements.txt
+    - pip install pytest pytest-cov pytest-asyncio httpx
+  script:
+    - pytest tests/ --cov=. --cov-report=xml --cov-report=term
+  coverage: '/(?i)total.*? (100(?:\.0+)?\%|[1-9]?\d(?:\.\d+)?\%)$/'
+  artifacts:
+    reports:
+      coverage_report:
+        coverage_format: cobertura
+        path: backend/coverage.xml
+    paths:
+      - backend/coverage.xml
+  only:
+    - merge_requests
+    - main
+    - develop
+
+# Linting - now uses default python:3.11-slim
+lint:
+  stage: test
+  before_script:
+    - *backend_directory
+    - pip install ruff black isort
+  script:
+    - ruff check .
+    - black --check .
+    - isort --check-only .
+  allow_failure: true
+  only:
+    - merge_requests
+    - main
+    - develop
+
+# Security scanning - now uses default python:3.11-slim
+security:
+  stage: test
+  before_script:
+    - *backend_directory
+    - pip install safety bandit
+  script:
+    - safety check --json
+    - bandit -r . -f json -o bandit-report.json
+  artifacts:
+    reports:
+      sast: bandit-report.json
+    paths:
+      - backend/bandit-report.json
+    expire_in: 1 week
+  allow_failure: true
+  only:
+    - merge_requests
+    - main
+
+# Build Docker images using docker-compose
+build:
+  stage: build
+  image: docker:latest
+  services:
+    - docker:dind
+  variables:
+    DOCKER_HOST: tcp://docker:2376
+    DOCKER_TLS_CERTDIR: "/certs"
+    DOCKER_TLS_VERIFY: 1
+    DOCKER_CERT_PATH: "$DOCKER_TLS_CERTDIR/client"
+  # tags:
+  #   - shell  # Uncomment if using a specific shell runner
+  before_script:
+    - *backend_directory
+    
+    # Set IMAGE_TAG and LATEST_TAG with proper defaults
+    - |
+      export CI_REGISTRY_IMAGE="${CI_REGISTRY_IMAGE:-fazri-analyzer/backend}"
+      export CI_COMMIT_REF_SLUG="${CI_COMMIT_REF_SLUG:-local}"
+      export CI_REGISTRY="${CI_REGISTRY:-registry.gitlab.com}"
+      export IMAGE_TAG="${CI_REGISTRY_IMAGE}:${CI_COMMIT_REF_SLUG}"
+      export LATEST_TAG="${CI_REGISTRY_IMAGE}:latest"
+      echo "IMAGE_TAG=${IMAGE_TAG}"
+      echo "LATEST_TAG=${LATEST_TAG}"
+
+    # Install docker-compose for Alpine
+    - apk add --no-cache docker-compose
+
+    # Create a minimal .env file for docker-compose (CI build doesn't need actual values)
+    - |
+      cat > .env << 'EOF'
+      # Minimal .env for CI builds
+      POSTGRES_USER=postgres
+      POSTGRES_PASSWORD=ci_password
+      POSTGRES_DB=fazri_ci
+      NEO4J_USER=neo4j
+      NEO4J_PASSWORD=ci_password
+      PGADMIN_EMAIL=admin@ci.local
+      PGADMIN_PASSWORD=ci_password
+      EOF
+    - echo "Created .env file for build"
+
+    # Docker login (only if credentials are available)
+    - *docker_login
+
+  script:
+    # Build the app service using docker-compose
+    - echo "Building Docker images with docker-compose..."
+    - docker-compose -f docker-compose.prod.yml build app
+
+    # Verify the image was built
+    - docker images | grep -E "${CI_REGISTRY_IMAGE}" || echo "Image built successfully"
+
+    # Tag with latest if on main/master branch
+    - |
+      if [ "${CI_COMMIT_REF_NAME:-main}" == "main" ] || [ "${CI_COMMIT_REF_NAME}" == "master" ]; then
+        docker tag "$IMAGE_TAG" "$LATEST_TAG"
+        echo "Tagged latest: $LATEST_TAG"
+      fi
+
+    # Push images to registry if credentials are available
+    - |
+      if [ -n "$CI_REGISTRY_USER" ] && [ -n "$CI_REGISTRY_PASSWORD" ]; then
+        echo "Pushing image to registry..."
+        docker push "$IMAGE_TAG"
+        echo "Pushed: $IMAGE_TAG"
+
+        # Also push latest tag if on main/master branch
+        if [ "${CI_COMMIT_REF_NAME:-main}" == "main" ] || [ "${CI_COMMIT_REF_NAME}" == "master" ]; then
+          docker push "$LATEST_TAG"
+          echo "Pushed: $LATEST_TAG"
+        fi
+      else
+        echo "Skipping push (no registry credentials, likely running locally)"
+      fi
+
+    # Show built images
+    - echo "Built images:"
+    - docker images | grep "${CI_REGISTRY_IMAGE}" | head -5
+
+  only:
+    - main
+    - develop
+    - tags
+    - branches
+
+# Deploy to EC2 Production
+deploy:production:
+  stage: deploy
+  image: alpine:latest  # Override for this specific job (needs SSH tools)
+  before_script:
+    # Set variables with defaults
+    - export CI_REGISTRY_IMAGE="${CI_REGISTRY_IMAGE:-fazri-analyzer/backend}"
+    - export CI_COMMIT_REF_SLUG="${CI_COMMIT_REF_SLUG:-latest}"
+    - export IMAGE_TAG="${CI_REGISTRY_IMAGE}:${CI_COMMIT_REF_SLUG}"
+
+    # Setup SSH
+    - apk add --no-cache openssh-client
+    - eval $(ssh-agent -s)
+    - echo "$SSH_PRIVATE_KEY" | tr -d '\r' | ssh-add -
+    - mkdir -p ~/.ssh
+    - chmod 700 ~/.ssh
+    - ssh-keyscan -H $EC2_HOST >> ~/.ssh/known_hosts
+  script:
+    - |
+      ssh $EC2_USER@$EC2_HOST << EOF
+        # Navigate to deployment directory
+        cd /opt/fazri-analyzer || mkdir -p /opt/fazri-analyzer && cd /opt/fazri-analyzer
+
+        # Login to GitLab Container Registry
+        echo "$CI_REGISTRY_PASSWORD" | docker login -u $CI_REGISTRY_USER --password-stdin $CI_REGISTRY
+
+        # Create .env file if it doesn't exist
+        if [ ! -f .env ]; then
+          cat > .env << 'ENVEOF'
+      POSTGRES_USER=$POSTGRES_USER
+      POSTGRES_PASSWORD=$POSTGRES_PASSWORD
+      POSTGRES_DB=$POSTGRES_DB
+      NEO4J_USER=$NEO4J_USER
+      NEO4J_PASSWORD=$NEO4J_PASSWORD
+      CI_REGISTRY_IMAGE=$IMAGE_TAG
+      ENVEOF
+        fi
+
+        # Download docker-compose.prod.yml from registry or update it
+        # For now, ensure it exists (you'll need to copy it manually first time)
+
+        # Pull latest images
+        docker pull $IMAGE_TAG
+
+        # Stop and remove old containers
+        docker-compose -f docker-compose.prod.yml down
+
+        # Start new containers
+        docker-compose -f docker-compose.prod.yml up -d
+
+        # Clean up old images
+        docker system prune -af --filter "until=24h"
+
+        # Show running containers
+        docker ps
+      EOF
+  environment:
+    name: production
+    url: http://$EC2_HOST:8000
+  only:
+    - main
+    - master
+  when: manual
+
+# Rollback to previous version (manual trigger)
+rollback:production:
+  stage: deploy
+  image: alpine:latest  # Override for this specific job (needs SSH tools)
+  before_script:
+    - export CI_REGISTRY_IMAGE="${CI_REGISTRY_IMAGE:-fazri-analyzer/backend}"
+    - apk add --no-cache openssh-client
+    - eval $(ssh-agent -s)
+    - echo "$SSH_PRIVATE_KEY" | tr -d '\r' | ssh-add -
+    - mkdir -p ~/.ssh
+    - chmod 700 ~/.ssh
+    - ssh-keyscan -H $EC2_HOST >> ~/.ssh/known_hosts
+  script:
+    - |
+      ssh $EC2_USER@$EC2_HOST << 'EOF'
+        cd /opt/fazri-analyzer
+        # Restart with current docker-compose configuration
+        docker-compose -f docker-compose.prod.yml down
+        docker-compose -f docker-compose.prod.yml up -d
+      EOF
+  environment:
+    name: production
+  when: manual
+  only:
+    - main
+    - master
