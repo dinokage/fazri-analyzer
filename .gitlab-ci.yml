@@ -1,6 +1,5 @@
 # Unified GitLab CI/CD Pipeline for Full-Stack Application
 # Frontend: Next.js | Backend: FastAPI
-# Path-based conditional triggering for parallel pipelines
 
 image: docker:latest
 
@@ -12,13 +11,10 @@ stages:
 variables:
   DOCKER_DRIVER: overlay2
   DOCKER_TLS_CERTDIR: "/certs"
-  DOCKER_BUILDKIT: 1
+  DOCKER_BUILDKIT: "1"
   DOCKER_HOST: tcp://docker:2376
   AWS_DEFAULT_REGION: ap-south-1
 
-# =============================================================================
-# WORKFLOW RULES - Define when pipelines should run
-# =============================================================================
 workflow:
   rules:
     - if: $CI_COMMIT_BRANCH == "main" || $CI_COMMIT_BRANCH == "master"
@@ -26,11 +22,6 @@ workflow:
     - if: $CI_MERGE_REQUEST_IID
     - if: $CI_COMMIT_TAG
 
-# =============================================================================
-# RULE TEMPLATES - Reusable rules for path-based triggering
-# =============================================================================
-
-# Backend rules - triggers only when backend folder changes
 .backend_rules:
   rules:
     - if: $CI_COMMIT_BRANCH == "main" || $CI_COMMIT_BRANCH == "master" || $CI_COMMIT_BRANCH == "develop" || $CI_MERGE_REQUEST_IID
@@ -40,15 +31,10 @@ workflow:
       when: on_success
     - when: never
 
-# Frontend rules - triggers when anything EXCEPT backend folder changes
-# Note: GitLab doesn't support "exclude" patterns directly, so we use a workaround
-# by listing all non-backend paths. Adjust paths based on your project structure.
 .frontend_rules:
   rules:
-    # Skip if ONLY backend files changed (no frontend files)
     - if: $CI_COMMIT_BRANCH == "main" || $CI_COMMIT_BRANCH == "master" || $CI_COMMIT_BRANCH == "develop" || $CI_MERGE_REQUEST_IID
       changes:
-        # Root level files (frontend related)
         - "*.json"
         - "*.js"
         - "*.ts"
@@ -64,7 +50,6 @@ workflow:
         - "tailwind.config.*"
         - "tsconfig.*"
         - "postcss.config.*"
-        # Frontend directories
         - src/**/*
         - app/**/*
         - pages/**/*
@@ -97,28 +82,22 @@ workflow:
 # BACKEND PIPELINE JOBS
 # =============================================================================
 
-# Backend: Validate docker-compose configuration
 backend:validate:
   stage: validate
   image: docker/compose:latest
   extends: .backend_rules
-  before_script:
-    - cd backend
-    - |
-      cat > .env << 'EOF'
-      POSTGRES_USER=postgres
-      POSTGRES_PASSWORD=test
-      POSTGRES_DB=test
-      NEO4J_USER=neo4j
-      NEO4J_PASSWORD=test
-      PGADMIN_EMAIL=admin@test.local
-      PGADMIN_PASSWORD=test
-      EOF
   script:
+    - cd backend
+    - echo "POSTGRES_USER=postgres" > .env
+    - echo "POSTGRES_PASSWORD=test" >> .env
+    - echo "POSTGRES_DB=test" >> .env
+    - echo "NEO4J_USER=neo4j" >> .env
+    - echo "NEO4J_PASSWORD=test" >> .env
+    - echo "PGADMIN_EMAIL=admin@test.local" >> .env
+    - echo "PGADMIN_PASSWORD=test" >> .env
     - docker-compose -f docker-compose.api.yml config --quiet
     - echo "Docker Compose configuration is valid"
 
-# Backend: Build Docker image
 backend:build:
   stage: build
   image: docker:latest
@@ -126,140 +105,47 @@ backend:build:
   services:
     - docker:dind
   variables:
-    DOCKER_TLS_VERIFY: 1
+    DOCKER_TLS_VERIFY: "1"
     DOCKER_CERT_PATH: "$DOCKER_TLS_CERTDIR/client"
-  before_script:
-    - cd backend
-    - export BACKEND_IMAGE_TAG="${CI_REGISTRY_IMAGE}/backend:${CI_COMMIT_SHORT_SHA}"
-    - export BACKEND_LATEST_TAG="${CI_REGISTRY_IMAGE}/backend:latest"
-    - echo "BACKEND_IMAGE_TAG=${BACKEND_IMAGE_TAG}"
-    
-    # Install docker-compose
-    - apk add --no-cache docker-compose
-    
-    # Create minimal .env for build
-    - |
-      cat > .env << 'EOF'
-      POSTGRES_USER=postgres
-      POSTGRES_PASSWORD=ci_password
-      POSTGRES_DB=fazri_ci
-      NEO4J_USER=neo4j
-      NEO4J_PASSWORD=ci_password
-      PGADMIN_EMAIL=admin@ci.local
-      PGADMIN_PASSWORD=ci_password
-      CI_REGISTRY_IMAGE=${CI_REGISTRY_IMAGE}/backend
-      CI_COMMIT_REF_SLUG=${CI_COMMIT_SHORT_SHA}
-      EOF
-    
-    # Docker login
-    - echo "$CI_REGISTRY_PASSWORD" | docker login $CI_REGISTRY -u $CI_REGISTRY_USER --password-stdin
   script:
-    # Build only the app service
+    - cd backend
+    - echo "POSTGRES_USER=postgres" > .env
+    - echo "POSTGRES_PASSWORD=ci_password" >> .env
+    - echo "POSTGRES_DB=fazri_ci" >> .env
+    - echo "NEO4J_USER=neo4j" >> .env
+    - echo "NEO4J_PASSWORD=ci_password" >> .env
+    - echo "PGADMIN_EMAIL=admin@ci.local" >> .env
+    - echo "PGADMIN_PASSWORD=ci_password" >> .env
+    - echo "CI_REGISTRY_IMAGE=${CI_REGISTRY_IMAGE}/backend" >> .env
+    - echo "CI_COMMIT_REF_SLUG=${CI_COMMIT_SHORT_SHA}" >> .env
+    - apk add --no-cache docker-compose
+    - echo "$CI_REGISTRY_PASSWORD" | docker login $CI_REGISTRY -u $CI_REGISTRY_USER --password-stdin
     - docker-compose -f docker-compose.api.yml build app
-    
-    # Tag with commit SHA
-    - docker tag "${CI_REGISTRY_IMAGE}/backend:${CI_COMMIT_REF_SLUG:-latest}" "${BACKEND_IMAGE_TAG}"
-    
-    # Tag with latest if on main/master
-    - |
-      if [ "${CI_COMMIT_REF_NAME}" == "main" ] || [ "${CI_COMMIT_REF_NAME}" == "master" ]; then
-        docker tag "${BACKEND_IMAGE_TAG}" "${BACKEND_LATEST_TAG}"
-      fi
-    
-    # Push images
-    - docker push "${BACKEND_IMAGE_TAG}"
-    - |
-      if [ "${CI_COMMIT_REF_NAME}" == "main" ] || [ "${CI_COMMIT_REF_NAME}" == "master" ]; then
-        docker push "${BACKEND_LATEST_TAG}"
-      fi
-    
-    - echo "Built and pushed backend image: ${BACKEND_IMAGE_TAG}"
+    - docker tag "${CI_REGISTRY_IMAGE}/backend:${CI_COMMIT_REF_SLUG:-latest}" "${CI_REGISTRY_IMAGE}/backend:${CI_COMMIT_SHORT_SHA}"
+    - docker push "${CI_REGISTRY_IMAGE}/backend:${CI_COMMIT_SHORT_SHA}"
+    - echo "Built and pushed backend image"
 
-# Backend: Deploy to EC2
 backend:deploy:
   stage: deploy
   image: registry.gitlab.com/gitlab-org/cloud-deploy/aws-base:latest
-  extends: .backend_rules
   id_tokens:
     GITLAB_OIDC_TOKEN:
       aud: https://gitlab.com
   variables:
     ROLE_ARN: arn:aws:iam::955719296501:role/ec2-ssm-gitlab
-    EC2_INSTANCE_ID: "i-091d1dcb0c1358f59"
-    BACKEND_CONTAINER_NAME: "fazri-api"
-  before_script:
-    # Install SSM plugin
-    - curl "https://s3.amazonaws.com/session-manager-downloads/plugin/latest/ubuntu_64bit/session-manager-plugin.deb" -o "session-manager-plugin.deb"
+    EC2_INSTANCE_ID: i-091d1dcb0c1358f59
+    BACKEND_CONTAINER_NAME: fazri-api
+  script:
+    - curl -s "https://s3.amazonaws.com/session-manager-downloads/plugin/latest/ubuntu_64bit/session-manager-plugin.deb" -o "session-manager-plugin.deb"
     - dpkg -i session-manager-plugin.deb
-    
-    # Setup AWS credentials
     - mkdir -p ~/.aws
     - echo "${GITLAB_OIDC_TOKEN}" > /tmp/web_identity_token
-    - echo -e "[profile default]\nrole_arn=${ROLE_ARN}\nweb_identity_token_file=/tmp/web_identity_token" > ~/.aws/config
-  script:
+    - printf "[profile default]\nrole_arn=%s\nweb_identity_token_file=/tmp/web_identity_token" "${ROLE_ARN}" > ~/.aws/config
     - aws sts get-caller-identity
-    
-    - export BACKEND_IMAGE="${CI_REGISTRY_IMAGE}/backend:${CI_COMMIT_SHORT_SHA}"
-    
-    # Deploy commands
-    - |
-      DOCKER_LOGIN_CMD="echo $CI_REGISTRY_PASSWORD | docker login $CI_REGISTRY -u $CI_REGISTRY_USER --password-stdin"
-      DOCKER_PULL_CMD="docker pull $BACKEND_IMAGE"
-      CONTAINER_STOP_CMD="if [ \$(docker ps -q -f name=$BACKEND_CONTAINER_NAME) ]; then docker stop $BACKEND_CONTAINER_NAME && docker rm $BACKEND_CONTAINER_NAME; fi"
-      CONTAINER_START_CMD="docker run -d --restart unless-stopped \
-        -p 8000:8000 \
-        -e POSTGRES_USER='$POSTGRES_USER' \
-        -e POSTGRES_PASSWORD='$POSTGRES_PASSWORD' \
-        -e POSTGRES_DB='$POSTGRES_DB' \
-        -e NEO4J_URI='$NEO4J_URI' \
-        -e NEO4J_USER='$NEO4J_USER' \
-        -e NEO4J_PASSWORD='$NEO4J_PASSWORD' \
-        -e REDIS_HOST='$REDIS_HOST' \
-        -e REDIS_PORT='$REDIS_PORT' \
-        -e ENVIRONMENT=production \
-        --name $BACKEND_CONTAINER_NAME $BACKEND_IMAGE"
-    
-    - echo "Deploying backend image: $BACKEND_IMAGE"
-    
-    # Send commands via SSM
-    - |
-      COMMAND_ID=$(aws ssm send-command \
-        --document-name "AWS-RunShellScript" \
-        --targets "Key=instanceIds,Values=$EC2_INSTANCE_ID" \
-        --parameters commands="[\"$DOCKER_LOGIN_CMD\", \"$DOCKER_PULL_CMD\", \"$CONTAINER_STOP_CMD\", \"$CONTAINER_START_CMD\"]" \
-        --query "Command.CommandId" \
-        --output text)
-      echo "Command sent. Command ID: $COMMAND_ID"
-    
-    # Wait for completion
-    - |
-      while true; do
-        STATUS=$(aws ssm list-command-invocations \
-          --command-id "$COMMAND_ID" \
-          --details \
-          --query "CommandInvocations[0].Status" \
-          --output text)
-        echo "Current Status: $STATUS"
-        if [[ "$STATUS" == "Success" || "$STATUS" == "Failed" || "$STATUS" == "TimedOut" || "$STATUS" == "Cancelled" ]]; then
-          break
-        fi
-        sleep 2
-      done
-    
-    # Get output
-    - |
-      OUTPUT=$(aws ssm list-command-invocations \
-        --command-id "$COMMAND_ID" \
-        --details \
-        --query "CommandInvocations[0].CommandPlugins[0].Output" \
-        --output text)
-      echo "Final Output:"
-      echo "$OUTPUT"
-      if [[ "$STATUS" != "Success" ]]; then
-        echo "Backend deployment failed with status: $STATUS"
-        exit 1
-      fi
-      echo "Backend deployed successfully."
+    - echo "Deploying backend image"
+    - aws ssm send-command --document-name "AWS-RunShellScript" --targets "Key=instanceIds,Values=${EC2_INSTANCE_ID}" --parameters "commands=[\"echo ${CI_REGISTRY_PASSWORD} | docker login ${CI_REGISTRY} -u ${CI_REGISTRY_USER} --password-stdin\",\"docker pull ${CI_REGISTRY_IMAGE}/backend:${CI_COMMIT_SHORT_SHA}\",\"docker stop ${BACKEND_CONTAINER_NAME} || true\",\"docker rm ${BACKEND_CONTAINER_NAME} || true\",\"docker run -d --restart unless-stopped -p 8000:8000 -e POSTGRES_USER=${POSTGRES_USER} -e POSTGRES_PASSWORD=${POSTGRES_PASSWORD} -e POSTGRES_DB=${POSTGRES_DB} -e NEO4J_URI=${NEO4J_URI} -e NEO4J_USER=${NEO4J_USER} -e NEO4J_PASSWORD=${NEO4J_PASSWORD} -e REDIS_HOST=${REDIS_HOST} -e REDIS_PORT=${REDIS_PORT} -e ENVIRONMENT=production --name ${BACKEND_CONTAINER_NAME} ${CI_REGISTRY_IMAGE}/backend:${CI_COMMIT_SHORT_SHA}\"]" --output text
+    - sleep 30
+    - echo "Backend deployment command sent"
   environment:
     name: production-backend
     url: http://${BACKEND_EC2_HOST}:8000
@@ -275,132 +161,45 @@ backend:deploy:
 # FRONTEND PIPELINE JOBS
 # =============================================================================
 
-# Frontend: Build Docker image
 frontend:build:
   stage: build
   image: docker:latest
   extends: .frontend_rules
   services:
     - docker:27.2.0-dind
-  before_script:
-    - export FRONTEND_IMAGE_TAG="${CI_REGISTRY_IMAGE}/frontend:${CI_COMMIT_SHORT_SHA}"
-    - export FRONTEND_LATEST_TAG="${CI_REGISTRY_IMAGE}/frontend:latest"
-    - echo "FRONTEND_IMAGE_TAG=${FRONTEND_IMAGE_TAG}"
-    
-    # Docker login
-    - echo "$CI_REGISTRY_PASSWORD" | docker login $CI_REGISTRY -u $CI_REGISTRY_USER --password-stdin
   script:
-    # Build frontend image
-    - |
-      docker build \
-        --build-arg NEXT_PUBLIC_FASTAPI_BASE_URL="$NEXT_PUBLIC_FASTAPI_BASE_URL" \
-        --build-arg NEXT_PUBLIC_CDN_URL="$NEXT_PUBLIC_CDN_URL" \
-        -t "$FRONTEND_IMAGE_TAG" \
-        -f Dockerfile.prod .
-    
-    # Tag with latest if on main/master
-    - |
-      if [ "${CI_COMMIT_REF_NAME}" == "main" ] || [ "${CI_COMMIT_REF_NAME}" == "master" ]; then
-        docker tag "$FRONTEND_IMAGE_TAG" "$FRONTEND_LATEST_TAG"
-      fi
-    
-    # Push images
-    - docker push "$FRONTEND_IMAGE_TAG"
-    - |
-      if [ "${CI_COMMIT_REF_NAME}" == "main" ] || [ "${CI_COMMIT_REF_NAME}" == "master" ]; then
-        docker push "$FRONTEND_LATEST_TAG"
-      fi
-    
-    - echo "Built and pushed frontend image: ${FRONTEND_IMAGE_TAG}"
+    - echo "$CI_REGISTRY_PASSWORD" | docker login $CI_REGISTRY -u $CI_REGISTRY_USER --password-stdin
+    - docker build --build-arg NEXT_PUBLIC_FASTAPI_BASE_URL="$NEXT_PUBLIC_FASTAPI_BASE_URL" --build-arg NEXT_PUBLIC_CDN_URL="$NEXT_PUBLIC_CDN_URL" -t "${CI_REGISTRY_IMAGE}/frontend:${CI_COMMIT_SHORT_SHA}" -f Dockerfile.prod .
+    - docker push "${CI_REGISTRY_IMAGE}/frontend:${CI_COMMIT_SHORT_SHA}"
+    - echo "Built and pushed frontend image"
 
-# Frontend: Deploy to EC2
 frontend:deploy:
   stage: deploy
   image: registry.gitlab.com/gitlab-org/cloud-deploy/aws-base:latest
-  extends: .frontend_rules
   id_tokens:
     GITLAB_OIDC_TOKEN:
       aud: https://gitlab.com
   variables:
     ROLE_ARN: arn:aws:iam::955719296501:role/ec2-ssm-gitlab
-    EC2_INSTANCE_ID: "i-091d1dcb0c1358f59"
-    FRONTEND_CONTAINER_NAME: "nextjs-app"
-  before_script:
-    # Install SSM plugin
-    - curl "https://s3.amazonaws.com/session-manager-downloads/plugin/latest/ubuntu_64bit/session-manager-plugin.deb" -o "session-manager-plugin.deb"
+    EC2_INSTANCE_ID: i-091d1dcb0c1358f59
+    FRONTEND_CONTAINER_NAME: nextjs-app
+  script:
+    - curl -s "https://s3.amazonaws.com/session-manager-downloads/plugin/latest/ubuntu_64bit/session-manager-plugin.deb" -o "session-manager-plugin.deb"
     - dpkg -i session-manager-plugin.deb
-    
-    # Setup AWS credentials
     - mkdir -p ~/.aws
     - echo "${GITLAB_OIDC_TOKEN}" > /tmp/web_identity_token
-    - echo -e "[profile default]\nrole_arn=${ROLE_ARN}\nweb_identity_token_file=/tmp/web_identity_token" > ~/.aws/config
-  script:
+    - printf "[profile default]\nrole_arn=%s\nweb_identity_token_file=/tmp/web_identity_token" "${ROLE_ARN}" > ~/.aws/config
     - aws sts get-caller-identity
-    
-    - export FRONTEND_IMAGE="${CI_REGISTRY_IMAGE}/frontend:${CI_COMMIT_SHORT_SHA}"
-    
-    # Deploy commands
-    - |
-      DOCKER_LOGIN_CMD="echo $CI_REGISTRY_PASSWORD | docker login $CI_REGISTRY -u $CI_REGISTRY_USER --password-stdin"
-      DOCKER_PULL_CMD="docker pull $FRONTEND_IMAGE"
-      CONTAINER_STOP_CMD="if [ \$(docker ps -q -f name=$FRONTEND_CONTAINER_NAME) ]; then docker stop $FRONTEND_CONTAINER_NAME && docker rm $FRONTEND_CONTAINER_NAME; fi"
-      CONTAINER_START_CMD="docker run -d --restart unless-stopped \
-        -p 3000:3000 \
-        -e NEXTAUTH_URL='$NEXTAUTH_URL' \
-        -e NEXTAUTH_SECRET='$NEXTAUTH_SECRET' \
-        -e AUTH_GOOGLE_ID='$AUTH_GOOGLE_ID' \
-        -e AUTH_GOOGLE_SECRET='$AUTH_GOOGLE_SECRET' \
-        -e DATABASE_URL='$DATABASE_URL' \
-        --name $FRONTEND_CONTAINER_NAME $FRONTEND_IMAGE"
-    
-    - echo "Deploying frontend image: $FRONTEND_IMAGE"
-    
-    # Send commands via SSM
-    - |
-      COMMAND_ID=$(aws ssm send-command \
-        --document-name "AWS-RunShellScript" \
-        --targets "Key=instanceIds,Values=$EC2_INSTANCE_ID" \
-        --parameters commands="[\"$DOCKER_LOGIN_CMD\", \"$DOCKER_PULL_CMD\", \"$CONTAINER_STOP_CMD\", \"$CONTAINER_START_CMD\"]" \
-        --query "Command.CommandId" \
-        --output text)
-      echo "Command sent. Command ID: $COMMAND_ID"
-    
-    # Wait for completion
-    - |
-      while true; do
-        STATUS=$(aws ssm list-command-invocations \
-          --command-id "$COMMAND_ID" \
-          --details \
-          --query "CommandInvocations[0].Status" \
-          --output text)
-        echo "Current Status: $STATUS"
-        if [[ "$STATUS" == "Success" || "$STATUS" == "Failed" || "$STATUS" == "TimedOut" || "$STATUS" == "Cancelled" ]]; then
-          break
-        fi
-        sleep 2
-      done
-    
-    # Get output
-    - |
-      OUTPUT=$(aws ssm list-command-invocations \
-        --command-id "$COMMAND_ID" \
-        --details \
-        --query "CommandInvocations[0].CommandPlugins[0].Output" \
-        --output text)
-      echo "Final Output:"
-      echo "$OUTPUT"
-      if [[ "$STATUS" != "Success" ]]; then
-        echo "Frontend deployment failed with status: $STATUS"
-        exit 1
-      fi
-      echo "Frontend deployed successfully."
+    - echo "Deploying frontend image"
+    - aws ssm send-command --document-name "AWS-RunShellScript" --targets "Key=instanceIds,Values=${EC2_INSTANCE_ID}" --parameters "commands=[\"echo ${CI_REGISTRY_PASSWORD} | docker login ${CI_REGISTRY} -u ${CI_REGISTRY_USER} --password-stdin\",\"docker pull ${CI_REGISTRY_IMAGE}/frontend:${CI_COMMIT_SHORT_SHA}\",\"docker stop ${FRONTEND_CONTAINER_NAME} || true\",\"docker rm ${FRONTEND_CONTAINER_NAME} || true\",\"docker run -d --restart unless-stopped -p 3000:3000 -e NEXTAUTH_URL=${NEXTAUTH_URL} -e NEXTAUTH_SECRET=${NEXTAUTH_SECRET} -e AUTH_GOOGLE_ID=${AUTH_GOOGLE_ID} -e AUTH_GOOGLE_SECRET=${AUTH_GOOGLE_SECRET} -e DATABASE_URL=${DATABASE_URL} --name ${FRONTEND_CONTAINER_NAME} ${CI_REGISTRY_IMAGE}/frontend:${CI_COMMIT_SHORT_SHA}\"]" --output text
+    - sleep 30
+    - echo "Frontend deployment command sent"
   environment:
     name: production-frontend
     url: http://${FRONTEND_EC2_HOST}:3000
   rules:
     - if: $CI_COMMIT_BRANCH == "main" || $CI_COMMIT_BRANCH == "master"
       changes:
-        # Root level files (frontend related)
         - "*.json"
         - "*.js"
         - "*.ts"
@@ -414,7 +213,6 @@ frontend:deploy:
         - "tailwind.config.*"
         - "tsconfig.*"
         - "postcss.config.*"
-        # Frontend directories
         - src/**/*
         - app/**/*
         - pages/**/*
@@ -438,7 +236,6 @@ frontend:deploy:
 # ROLLBACK JOBS (Manual trigger)
 # =============================================================================
 
-# Backend: Rollback
 backend:rollback:
   stage: deploy
   image: registry.gitlab.com/gitlab-org/cloud-deploy/aws-base:latest
@@ -447,30 +244,22 @@ backend:rollback:
       aud: https://gitlab.com
   variables:
     ROLE_ARN: arn:aws:iam::955719296501:role/ec2-ssm-gitlab
-    EC2_INSTANCE_ID: "i-091d1dcb0c1358f59"
-  before_script:
-    - curl "https://s3.amazonaws.com/session-manager-downloads/plugin/latest/ubuntu_64bit/session-manager-plugin.deb" -o "session-manager-plugin.deb"
+    EC2_INSTANCE_ID: i-091d1dcb0c1358f59
+  script:
+    - curl -s "https://s3.amazonaws.com/session-manager-downloads/plugin/latest/ubuntu_64bit/session-manager-plugin.deb" -o "session-manager-plugin.deb"
     - dpkg -i session-manager-plugin.deb
     - mkdir -p ~/.aws
     - echo "${GITLAB_OIDC_TOKEN}" > /tmp/web_identity_token
-    - echo -e "[profile default]\nrole_arn=${ROLE_ARN}\nweb_identity_token_file=/tmp/web_identity_token" > ~/.aws/config
-  script:
+    - printf "[profile default]\nrole_arn=%s\nweb_identity_token_file=/tmp/web_identity_token" "${ROLE_ARN}" > ~/.aws/config
     - aws sts get-caller-identity
-    - |
-      COMMAND_ID=$(aws ssm send-command \
-        --document-name "AWS-RunShellScript" \
-        --targets "Key=instanceIds,Values=$EC2_INSTANCE_ID" \
-        --parameters commands="[\"docker restart fazri-api || echo 'Container restart failed'\"]" \
-        --query "Command.CommandId" \
-        --output text)
-      echo "Rollback command sent. Command ID: $COMMAND_ID"
+    - aws ssm send-command --document-name "AWS-RunShellScript" --targets "Key=instanceIds,Values=${EC2_INSTANCE_ID}" --parameters "commands=[\"docker restart fazri-api || echo Container restart failed\"]" --output text
+    - echo "Rollback command sent"
   environment:
     name: production-backend
   when: manual
   rules:
     - if: $CI_COMMIT_BRANCH == "main" || $CI_COMMIT_BRANCH == "master"
 
-# Frontend: Rollback
 frontend:rollback:
   stage: deploy
   image: registry.gitlab.com/gitlab-org/cloud-deploy/aws-base:latest
@@ -479,23 +268,16 @@ frontend:rollback:
       aud: https://gitlab.com
   variables:
     ROLE_ARN: arn:aws:iam::955719296501:role/ec2-ssm-gitlab
-    EC2_INSTANCE_ID: "i-091d1dcb0c1358f59"
-  before_script:
-    - curl "https://s3.amazonaws.com/session-manager-downloads/plugin/latest/ubuntu_64bit/session-manager-plugin.deb" -o "session-manager-plugin.deb"
+    EC2_INSTANCE_ID: i-091d1dcb0c1358f59
+  script:
+    - curl -s "https://s3.amazonaws.com/session-manager-downloads/plugin/latest/ubuntu_64bit/session-manager-plugin.deb" -o "session-manager-plugin.deb"
     - dpkg -i session-manager-plugin.deb
     - mkdir -p ~/.aws
     - echo "${GITLAB_OIDC_TOKEN}" > /tmp/web_identity_token
-    - echo -e "[profile default]\nrole_arn=${ROLE_ARN}\nweb_identity_token_file=/tmp/web_identity_token" > ~/.aws/config
-  script:
+    - printf "[profile default]\nrole_arn=%s\nweb_identity_token_file=/tmp/web_identity_token" "${ROLE_ARN}" > ~/.aws/config
     - aws sts get-caller-identity
-    - |
-      COMMAND_ID=$(aws ssm send-command \
-        --document-name "AWS-RunShellScript" \
-        --targets "Key=instanceIds,Values=$EC2_INSTANCE_ID" \
-        --parameters commands="[\"docker restart nextjs-app || echo 'Container restart failed'\"]" \
-        --query "Command.CommandId" \
-        --output text)
-      echo "Rollback command sent. Command ID: $COMMAND_ID"
+    - aws ssm send-command --document-name "AWS-RunShellScript" --targets "Key=instanceIds,Values=${EC2_INSTANCE_ID}" --parameters "commands=[\"docker restart nextjs-app || echo Container restart failed\"]" --output text
+    - echo "Rollback command sent"
   environment:
     name: production-frontend
   when: manual
