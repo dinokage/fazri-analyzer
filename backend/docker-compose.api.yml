@@ -9,7 +9,7 @@ services:
       context: .
       dockerfile: Dockerfile
       target: production
-    image: ${CI_REGISTRY_IMAGE:-fazri-analyzer/backend}:${CI_COMMIT_REF_SLUG:-latest}
+    image: ${CI_REGISTRY_IMAGE}/backend:${CI_COMMIT_REF_SLUG}
     container_name: fazri_api
     # NOTE: Environment variables are NOT defined here
     # They are passed at runtime via 'docker run -e' flags in the GitLab CI deploy job
