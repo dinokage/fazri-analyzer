@@ -2,6 +2,7 @@
 # This file is used for building the app image only
 # Environment variables are passed via docker run command from GitLab CI/CD variables
 # External services (PostgreSQL, Neo4j, Redis) are expected to be running separately
+version: "3.8"
 
 services:
   app:
