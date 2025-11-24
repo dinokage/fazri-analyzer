@@ -1,0 +1,34 @@
+# Docker Compose for FastAPI Backend - Production Build
+# This file is used for building the app image only
+# Environment variables are passed via docker run command from GitLab CI/CD variables
+# External services (PostgreSQL, Neo4j, Redis) are expected to be running separately
+
+services:
+  app:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      target: production
+    image: ${CI_REGISTRY_IMAGE:-fazri-analyzer/backend}:${CI_COMMIT_REF_SLUG:-latest}
+    container_name: fazri_api
+    # NOTE: Environment variables are NOT defined here
+    # They are passed at runtime via 'docker run -e' flags in the GitLab CI deploy job
+    # This ensures secrets are managed through GitLab CI/CD variables, not in this file
+    ports:
+      - "8000:8000"
+    volumes:
+      - app_data:/app/augmented
+      - app_models:/app/models
+      - app_logs:/app/logs
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+
+volumes:
+  app_data:
+  app_models:
+  app_logs:
