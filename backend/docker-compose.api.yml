@@ -22,7 +22,7 @@ services:
       - app_models:/app/models
       - app_logs:/app/logs
     networks:
-      - fazri-network
+      - backend_fazri-network
     restart: unless-stopped
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
@@ -32,7 +32,7 @@ services:
       start_period: 40s
 
 networks:
-  fazri-network:
+  backend_fazri-network:
     external: true  # Use the existing network created by your infrastructure compose
 
 volumes:
