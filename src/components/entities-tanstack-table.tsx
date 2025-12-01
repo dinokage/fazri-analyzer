@@ -18,8 +18,6 @@ import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Loader2, ChevronLeft, ChevronRight } from "lucide-react";
 
-const API_BASE_URL = 'https://ecell.rdpdc.in';
-
 // Types
 type Identifier = {
   type: string;
@@ -81,7 +79,7 @@ function useEntities(
         }
 
         const response = await fetch(
-          `${API_BASE_URL}/api/v1/entities/?${params}`
+          `${process.env.NEXT_PUBLIC_FASTAPI_BASE_URL}/api/v1/entities/?${params}`
         );
 
         if (!response.ok) {
