@@ -1279,7 +1279,7 @@ const FazriAnalyzerLanding: React.FC = () => {
               <div className="space-y-2 text-sm text-gray-400">
                 <div className="flex items-center gap-2">
                   <Mail className="h-4 w-4" />
-                  <span>noc@rdpdatacenter.in</span>
+                  <span>hello@rdpdatacenter.in</span>
                 </div>
                 <div className="flex items-center gap-2">
                   <MapPin className="h-4 w-4" />
