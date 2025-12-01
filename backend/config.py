@@ -7,15 +7,15 @@ class Settings(BaseSettings):
     PROJECT_NAME: str = "Campus Entity Resolution"
 
     # Neo4j Configuration (override with environment variables)
-    NEO4J_URI: str = "neo4j://neo4j:7687"
-    NEO4J_USER: str = "neo4j"
+    NEO4J_URI: str = "neo4j://neo4j:7687" # Set via GitLab secret
+    NEO4J_USER: str = "neo4j" # Set via GitLab secret
     NEO4J_PASSWORD: str = ""  # Set via GitLab secret
 
     # PostgreSQL Configuration (override with environment variables)
-    POSTGRES_SERVER: str = "db"
-    POSTGRES_USER: str = "postgres"
+    POSTGRES_SERVER: str = "db" # Set via GitLab secret
+    POSTGRES_USER: str = "postgres" # Set via GitLab secret
     POSTGRES_PASSWORD: str = ""  # Set via GitLab secret
-    POSTGRES_DB: str = "ethos_iitg"
+    POSTGRES_DB: str = "ethos_iitg" # Set via GitLab secret
     POSTGRES_PORT: int = 5432
 
     # Redis Configuration
