@@ -115,7 +115,7 @@ export default function ZoneDetailPage() {
     );
   }
 
-  const occupancyRate = occupancy ? occupancy.occupancy_rate * 100 : 0;
+  const occupancyRate = occupancy ? occupancy.occupancy_rate : 0;
   const status = getOccupancyStatus(occupancyRate);
 
   return (
