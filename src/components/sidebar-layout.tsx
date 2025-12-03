@@ -172,7 +172,7 @@ export function SidebarLayout({ children }: { children: React.ReactNode }) {
               )
             )}
             <div className="text-xs text-sidebar-foreground/70 pt-3 border-t border-border/70 -mx-4 px-4 truncate">
-              &copy; {new Date().getFullYear()} Fazri Analyzer | IIT Guwahati
+              &copy; {new Date().getFullYear()} Fazri Analyzer | IIT Bombay
             </div>
           </SidebarFooter>
         </Sidebar>
