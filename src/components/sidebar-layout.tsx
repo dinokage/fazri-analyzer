@@ -19,7 +19,6 @@ import {
   SidebarInset,
   SidebarTrigger,
 } from "@/components/ui/sidebar"
-// import { Separator } from "@/components/ui/separator"
 import { UserNav } from "@/components/user-nav"
 import {
   LayoutDashboard,
@@ -42,39 +41,32 @@ export function SidebarLayout({ children }: { children: React.ReactNode }) {
   const isAuthenticated = status === "authenticated"
   const isLoading = status === "loading"
 
-  // Directly redirect unauthenticated users to /auth
   React.useEffect(() => {
     if (status === "unauthenticated") {
       router.push("/auth")
     }
   }, [status, router])
 
-
-  // If not authenticated (and thus being redirected), we can render a minimal loading shell
-  // to avoid showing partially loaded content before the redirect takes effect.
-  // This helps prevent "flash of content" or temporary incorrect states.
   if (!isAuthenticated && !isLoading) {
     return (
       <div className="flex items-center justify-center min-h-screen">
-        Redirecting to login...
+        Redirecting to auth...
       </div>
     );
   }
 
-
   return (
     <SidebarProvider>
-      <Sidebar>
-        <SidebarHeader className="h-16 flex items-center justify-center">
-          <div className="flex items-center gap-2">
-            <span className="font-bold text-lg">Fazri Analyzer</span>
-          </div>
-        </SidebarHeader>
+      <div className="flex h-screen w-full overflow-hidden">
+        <Sidebar className="flex flex-col overflow-hidden">
+          <SidebarHeader className="h-16 flex items-center justify-center flex-shrink-0">
+            <div className="flex items-center gap-2 px-4">
+              <span className="font-bold text-lg truncate">Fazri Analyzer</span>
+            </div>
+          </SidebarHeader>
 
-        <SidebarContent>
-          {
-            // Only render actual content if authenticated (as unauthenticated redirects)
-            isAuthenticated && (
+          <SidebarContent className="flex-1 overflow-y-auto overflow-x-hidden">
+            {isAuthenticated && (
               <>
                 {isSuperAdmin && (
                   <>
@@ -90,8 +82,8 @@ export function SidebarLayout({ children }: { children: React.ReactNode }) {
                               href="/dashboard"
                               className="flex items-center gap-3"
                             >
-                              <LayoutDashboard className="h-5 w-5" />
-                              <span>Dashboard Overview</span>
+                              <LayoutDashboard className="h-5 w-5 flex-shrink-0" />
+                              <span className="truncate">Dashboard Overview</span>
                             </Link>
                           </SidebarMenuButton>
                         </SidebarMenuItem>
@@ -104,8 +96,8 @@ export function SidebarLayout({ children }: { children: React.ReactNode }) {
                               href="/dashboard/anomalies"
                               className="flex items-center gap-3"
                             >
-                              <Bug className="h-5 w-5" />
-                              <span>Anomalies Detection</span>
+                              <Bug className="h-5 w-5 flex-shrink-0" />
+                              <span className="truncate">Anomalies Detection</span>
                             </Link>
                           </SidebarMenuButton>
                         </SidebarMenuItem>
@@ -118,8 +110,8 @@ export function SidebarLayout({ children }: { children: React.ReactNode }) {
                               href="/dashboard/zones"
                               className="flex items-center gap-3"
                             >
-                              <Activity className="h-5 w-5" />
-                              <span>Zones</span>
+                              <Activity className="h-5 w-5 flex-shrink-0" />
+                              <span className="truncate">Zones</span>
                             </Link>
                           </SidebarMenuButton>
                         </SidebarMenuItem>
@@ -142,76 +134,74 @@ export function SidebarLayout({ children }: { children: React.ReactNode }) {
                           href="/dashboard/profile"
                           className="flex items-center gap-3"
                         >
-                          <User className="h-5 w-5" />
-                          <span>My Profile</span>
+                          <User className="h-5 w-5 flex-shrink-0" />
+                          <span className="truncate">My Profile</span>
                         </Link>
                       </SidebarMenuButton>
                     </SidebarMenuItem>
                   </SidebarMenu>
                 </SidebarGroup>
               </>
-            )
-          }
-        </SidebarContent>
+            )}
+          </SidebarContent>
 
-        <SidebarFooter className="p-4 border-t border-border/70 flex flex-col justify-end gap-3">
-          {isLoading ? (
-            <div className="h-10 animate-pulse bg-muted rounded-md w-full"></div>
-          ) : (
-            // Only render actual content if authenticated (as unauthenticated redirects)
-            isAuthenticated && (
-              <div className="flex items-center justify-between w-full">
-                <div className="text-sm text-sidebar-foreground flex flex-col">
-                  <p className="font-semibold">{session.user?.name}</p>
-                  {session.user?.email && (
-                    <p className="text-xs leading-none text-sidebar-foreground/80">
-                      {session.user.email}
-                    </p>
-                  )}
-                </div>
-                <Button
-                  variant="ghost"
-                  size="icon"
-                  onClick={() => signOut({ callbackUrl: "/auth" })} // Redirect to /auth after logout
-                  className="text-sidebar-foreground hover:text-accent-foreground hover:bg-accent"
-                  title="Logout"
-                >
-                  <LogOut className="h-4 w-4" />
-                </Button>
-              </div>
-            )
-          )}
-          <div className="text-xs text-sidebar-foreground/70 pt-3 border-t border-border/70 -mx-4 px-4 mt-auto">
-            &copy; {new Date().getFullYear()} Fazri Analyzer | IIT Bombay 
-          </div>
-        </SidebarFooter>
-      </Sidebar>
-
-      <SidebarInset>
-        <header className="flex flex-col h-16 border-b border-border text-foreground">
-          <div className="flex h-full items-center justify-between gap-4 px-6">
-            <div className="flex items-center gap-3">
-              <SidebarTrigger />
-              <h1 className="text-lg font-semibold text-pretty capitalize">
-                {pathname === "/dashboard"
-                  ? "Dashboard Overview"
-                  : pathname.split("/").pop()?.replace(/-/g, " ") ||
-                    "Application Overview"}
-              </h1>
-            </div>
-            {/* UserNav should ideally handle its own loading/unauthenticated state or be hidden */}
+          <SidebarFooter className="p-4 border-t border-border/70 flex flex-col gap-3 flex-shrink-0 overflow-hidden">
             {isLoading ? (
-                <div className="h-8 w-8 rounded-full animate-pulse bg-muted" />
-            ) : isAuthenticated ? (
-                <UserNav />
-            ) : null}
-          </div>
-        </header>
+              <div className="h-10 animate-pulse bg-muted rounded-md w-full"></div>
+            ) : (
+              isAuthenticated && (
+                <div className="flex items-center justify-between gap-2 w-full min-w-0">
+                  <div className="text-sm text-sidebar-foreground flex flex-col min-w-0 flex-1">
+                    <p className="font-semibold truncate">{session.user?.name}</p>
+                    {session.user?.email && (
+                      <p className="text-xs leading-none text-sidebar-foreground/80 truncate">
+                        {session.user.email}
+                      </p>
+                    )}
+                  </div>
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    onClick={() => signOut({ callbackUrl: "/auth" })}
+                    className="text-sidebar-foreground hover:text-accent-foreground hover:bg-accent flex-shrink-0"
+                    title="Logout"
+                  >
+                    <LogOut className="h-4 w-4" />
+                  </Button>
+                </div>
+              )
+            )}
+            <div className="text-xs text-sidebar-foreground/70 pt-3 border-t border-border/70 -mx-4 px-4 truncate">
+              &copy; {new Date().getFullYear()} Fazri Analyzer | IIT Guwahati
+            </div>
+          </SidebarFooter>
+        </Sidebar>
 
-        <main className="min-w-0 p-6 text-foreground">
-          {children}
-        </main>
-      </SidebarInset>
+        <SidebarInset className="flex-1 flex flex-col overflow-hidden">
+          <header className="flex flex-col h-16 border-b border-border text-foreground flex-shrink-0">
+            <div className="flex h-full items-center justify-between gap-4 px-6">
+              <div className="flex items-center gap-3 min-w-0 flex-1">
+                <SidebarTrigger className="flex-shrink-0" />
+                <h1 className="text-lg font-semibold text-pretty capitalize truncate">
+                  {pathname === "/dashboard"
+                    ? "Dashboard Overview"
+                    : pathname.split("/").pop()?.replace(/-/g, " ") ||
+                      "Application Overview"}
+                </h1>
+              </div>
+              {isLoading ? (
+                  <div className="h-8 w-8 rounded-full animate-pulse bg-muted flex-shrink-0" />
+              ) : isAuthenticated ? (
+                  <div className="flex-shrink-0"><UserNav /></div>
+              ) : null}
+            </div>
+          </header>
+
+          <main className="flex-1 overflow-auto p-6 text-foreground">
+            {children}
+          </main>
+        </SidebarInset>
+      </div>
     </SidebarProvider>
   )
 }
