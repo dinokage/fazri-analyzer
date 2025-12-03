@@ -406,7 +406,7 @@ export default function ZonesPage() {
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
         {filteredZones.map((zone) => {
           const occupancy = occupancyData[zone.zone_id];
-          const occupancyRate = occupancy ? occupancy.occupancy_rate * 100 : 0;
+          const occupancyRate = occupancy ? occupancy.occupancy_rate : 0;
           const status = getOccupancyStatus(occupancyRate);
 
           return (
