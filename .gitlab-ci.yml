@@ -13,12 +13,19 @@ include:
   - template: Security/Dependency-Scanning.gitlab-ci.yml
   - template: Security/SAST.gitlab-ci.yml
 
+# Override Python dependency scanning to allow failure (dlib requires CMake)
+gemnasium-python-dependency_scanning:
+  allow_failure: true
+
 variables:
   DOCKER_DRIVER: overlay2
   DOCKER_TLS_CERTDIR: "/certs"
   DOCKER_BUILDKIT: "1"
   DOCKER_HOST: tcp://docker:2376
   AWS_DEFAULT_REGION: ap-south-1
+  # Dependency scanning - scan both root (frontend) and backend directories
+  DS_EXCLUDED_PATHS: "spec, test, tests, tmp, node_modules"
+  PIP_REQUIREMENTS_FILE: "backend/requirements.txt"
 
 workflow:
   rules:
