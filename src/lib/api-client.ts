@@ -15,11 +15,17 @@ class ApiError extends Error {
 async function handleResponse(response: Response) {
   if (!response.ok) {
     const error = await response.json().catch(() => ({}));
-    throw new ApiError(
-      error.detail || error.message || 'API request failed',
-      response.status,
-      error
-    );
+    // Handle cases where detail is an object (e.g., validation errors)
+    let message = 'API request failed';
+    if (typeof error.detail === 'string') {
+      message = error.detail;
+    } else if (typeof error.message === 'string') {
+      message = error.message;
+    } else if (error.detail && typeof error.detail === 'object') {
+      // Handle validation errors or structured error details
+      message = JSON.stringify(error.detail);
+    }
+    throw new ApiError(message, response.status, error);
   }
   return response.json();
 }
@@ -389,12 +395,13 @@ export const apiClient = {
   },
 
   async acknowledgeAlert(alertId: string, staffId: string) {
+    // staff_id is a query parameter, not body
+    const params = new URLSearchParams({ staff_id: staffId });
     const response = await fetch(
-      `${API_BASE_URL}/api/v1/alerts/${alertId}/acknowledge`,
+      `${API_BASE_URL}/api/v1/alerts/${alertId}/acknowledge?${params}`,
       {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ staff_id: staffId }),
       }
     );
     return handleResponse(response);
@@ -405,12 +412,17 @@ export const apiClient = {
     resolution_type: string;
     resolution_notes: string;
   }) {
+    // staff_id is a query parameter, resolution data is body
+    const params = new URLSearchParams({ staff_id: data.staff_id });
     const response = await fetch(
-      `${API_BASE_URL}/api/v1/alerts/${alertId}/resolve`,
+      `${API_BASE_URL}/api/v1/alerts/${alertId}/resolve?${params}`,
       {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(data),
+        body: JSON.stringify({
+          resolution_type: data.resolution_type,
+          resolution_notes: data.resolution_notes,
+        }),
       }
     );
     return handleResponse(response);
@@ -420,12 +432,16 @@ export const apiClient = {
     escalate_to: string;
     reason: string;
   }) {
+    // escalate_to and reason are query parameters
+    const params = new URLSearchParams({
+      escalate_to: data.escalate_to,
+      reason: data.reason,
+    });
     const response = await fetch(
-      `${API_BASE_URL}/api/v1/alerts/${alertId}/escalate`,
+      `${API_BASE_URL}/api/v1/alerts/${alertId}/escalate?${params}`,
       {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(data),
       }
     );
     return handleResponse(response);
@@ -454,20 +470,40 @@ export const apiClient = {
   // ===== STAFF ENDPOINTS =====
 
   async getStaffList(params?: { available_only?: boolean; role?: string }) {
-    const searchParams = new URLSearchParams();
-    if (params?.available_only) searchParams.append('available_only', 'true');
-    if (params?.role) searchParams.append('role', params.role);
+    // Use /available endpoint if available_only is true, otherwise use main endpoint
+    const endpoint = params?.available_only
+      ? `${API_BASE_URL}/api/v1/staff/available`
+      : `${API_BASE_URL}/api/v1/staff`;
 
-    const response = await fetch(
-      `${API_BASE_URL}/api/v1/staff?${searchParams}`,
-      { headers: { 'Content-Type': 'application/json' } }
-    );
-    return handleResponse(response);
+    const searchParams = new URLSearchParams();
+    if (params?.role) searchParams.append('role', params.role);
+    // Also filter by on_duty for the main endpoint
+    if (!params?.available_only && params?.available_only !== undefined) {
+      searchParams.append('on_duty', 'true');
+    }
+
+    const queryString = searchParams.toString();
+    const url = queryString ? `${endpoint}?${queryString}` : endpoint;
+
+    const response = await fetch(url, {
+      headers: { 'Content-Type': 'application/json' }
+    });
+    const data = await handleResponse(response);
+    // Backend returns array directly, wrap it for consistent frontend interface
+    return { staff: Array.isArray(data) ? data : data.staff || [] };
   },
 
   async getStaffMember(staffId: string) {
     const response = await fetch(
       `${API_BASE_URL}/api/v1/staff/${staffId}`,
+      { headers: { 'Content-Type': 'application/json' } }
+    );
+    return handleResponse(response);
+  },
+
+  async getStaffByEmail(email: string) {
+    const response = await fetch(
+      `${API_BASE_URL}/api/v1/staff/by-email/${encodeURIComponent(email)}`,
       { headers: { 'Content-Type': 'application/json' } }
     );
     return handleResponse(response);
@@ -488,6 +524,57 @@ export const apiClient = {
 
     const response = await fetch(
       `${API_BASE_URL}/api/v1/staff/${staffId}/alerts?${searchParams}`,
+      { headers: { 'Content-Type': 'application/json' } }
+    );
+    return handleResponse(response);
+  },
+
+  // ===== CHAT ENDPOINTS =====
+
+  async sendChatMessage(data: {
+    message: string;
+    conversation_id?: string;
+    context?: Record<string, unknown>;
+  }): Promise<{
+    response: string;
+    conversation_id: string;
+    tools_used: string[];
+    data: Record<string, unknown> | null;
+    metadata: Record<string, unknown>;
+  }> {
+    const response = await fetch(
+      `${API_BASE_URL}/api/v1/chat/message`,
+      {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(data),
+      }
+    );
+    return handleResponse(response);
+  },
+
+  async clearChatConversation(conversationId: string) {
+    const response = await fetch(
+      `${API_BASE_URL}/api/v1/chat/conversation/${conversationId}`,
+      {
+        method: 'DELETE',
+        headers: { 'Content-Type': 'application/json' },
+      }
+    );
+    return handleResponse(response);
+  },
+
+  async getChatHealth() {
+    const response = await fetch(
+      `${API_BASE_URL}/api/v1/chat/health`,
+      { headers: { 'Content-Type': 'application/json' } }
+    );
+    return handleResponse(response);
+  },
+
+  async getChatTools() {
+    const response = await fetch(
+      `${API_BASE_URL}/api/v1/chat/tools`,
       { headers: { 'Content-Type': 'application/json' } }
     );
     return handleResponse(response);

@@ -27,6 +27,7 @@ import {
   Activity,
   LogOut,
   ShieldAlert,
+  Bot,
 } from "lucide-react"
 import { useActiveAlertCount } from "@/hooks/useAlerts"
 
@@ -135,6 +136,20 @@ export function SidebarLayout({ children }: { children: React.ReactNode }) {
                                   {activeAlertCount > 99 ? '99+' : activeAlertCount}
                                 </span>
                               )}
+                            </Link>
+                          </SidebarMenuButton>
+                        </SidebarMenuItem>
+                        <SidebarMenuItem>
+                          <SidebarMenuButton
+                            asChild
+                            data-active={isActive("/dashboard/chat")}
+                          >
+                            <Link
+                              href="/dashboard/chat"
+                              className="flex items-center gap-3"
+                            >
+                              <Bot className="h-5 w-5 flex-shrink-0" />
+                              <span className="truncate">AI Assistant</span>
                             </Link>
                           </SidebarMenuButton>
                         </SidebarMenuItem>

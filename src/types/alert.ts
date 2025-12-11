@@ -72,11 +72,16 @@ export interface StaffMember {
   email: string;
   phone?: string;
   role: StaffRole;
-  status: StaffStatus;
-  skills: string[];
-  current_workload: number;
-  max_workload: number;
+  department?: string;
+  on_duty: boolean;
+  max_concurrent_assignments: number;
+  current_assignment_count: number;
+  is_mock_user: boolean;
   created_at: string;
+  updated_at: string;
+  // Computed/alias fields for backward compatibility
+  current_workload?: number;
+  max_workload?: number;
 }
 
 export interface StaffListResponse {

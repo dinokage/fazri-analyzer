@@ -114,6 +114,21 @@ async def list_available_staff(
     return [staff_to_response(s, db) for s in staff_list]
 
 
+@router.get("/by-email/{email}", response_model=StaffProfileResponse)
+async def get_staff_by_email(
+    email: str,
+    db: Session = Depends(get_db),
+):
+    """Get a staff profile by email address"""
+    service = StaffService(db)
+    staff = service.get_staff_by_email(email)
+
+    if not staff:
+        raise HTTPException(status_code=404, detail="Staff not found")
+
+    return staff_to_response(staff, db)
+
+
 @router.get("/{staff_id}", response_model=StaffProfileResponse)
 async def get_staff(
     staff_id: UUID,

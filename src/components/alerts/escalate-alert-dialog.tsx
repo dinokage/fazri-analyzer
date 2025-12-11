@@ -138,7 +138,7 @@ export function EscalateAlertDialog({
                       <div>
                         <div className="font-medium">{supervisor.name}</div>
                         <div className="text-xs text-gray-400">
-                          Workload: {supervisor.current_workload}/{supervisor.max_workload}
+                          Workload: {supervisor.current_assignment_count}/{supervisor.max_concurrent_assignments}
                         </div>
                       </div>
                     </SelectItem>
