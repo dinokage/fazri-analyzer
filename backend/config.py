@@ -38,6 +38,11 @@ class Settings(BaseSettings):
     ML_MODEL_CACHE_SIZE: int = 10
     PREDICTION_BATCH_SIZE: int = 32
 
+    # GitLab Integration Configuration
+    GITLAB_URL: str = "https://gitlab.com"
+    GITLAB_TOKEN: str = ""  # Personal Access Token with read_api scope
+    GITLAB_PROJECT_ID: str = ""  # e.g., "username/repo" or numeric ID
+
     # Chatbot Configuration (Gemini API / Vertex AI)
     GOOGLE_API_KEY: str = ""  # Set via environment variable (for Google AI Studio)
     USE_VERTEX_AI: bool = False  # Set to True to use Vertex AI instead of Google AI Studio

@@ -579,6 +579,73 @@ export const apiClient = {
     );
     return handleResponse(response);
   },
+
+  // ===== GITLAB ENDPOINTS =====
+
+  async getGitLabStatus(): Promise<{
+    connected: boolean;
+    project_name?: string;
+    project_url?: string;
+    default_branch?: string;
+    latest_pipeline?: {
+      id: number;
+      status: string;
+      ref: string;
+      sha: string;
+      web_url: string;
+      created_at: string;
+      source: string;
+    };
+    latest_commit?: {
+      sha: string;
+      short_sha: string;
+      title: string;
+      author_name: string;
+      authored_date: string;
+      web_url: string;
+    };
+    recent_pipelines: Array<{
+      id: number;
+      status: string;
+      ref: string;
+      sha: string;
+      web_url: string;
+      created_at: string;
+      source: string;
+    }>;
+    pipeline_jobs: Array<{
+      id: number;
+      name: string;
+      stage: string;
+      status: string;
+      web_url: string;
+      duration?: number;
+    }>;
+    latest_deployment?: {
+      id: number;
+      status: string;
+      environment: string;
+      ref: string;
+      sha: string;
+      created_at: string;
+      deployed_by?: string;
+    };
+    error?: string;
+  }> {
+    const response = await fetch(
+      `${API_BASE_URL}/api/v1/gitlab/status`,
+      { headers: { 'Content-Type': 'application/json' } }
+    );
+    return handleResponse(response);
+  },
+
+  async getGitLabHealth() {
+    const response = await fetch(
+      `${API_BASE_URL}/api/v1/gitlab/health`,
+      { headers: { 'Content-Type': 'application/json' } }
+    );
+    return handleResponse(response);
+  },
 };
 
 export { ApiError };

@@ -5,6 +5,7 @@ import { ReactNode } from 'react';
 import { DashboardSummaryCards } from './dashboard-summary-cards';
 import { RecentAlertsCard } from '@/components/alerts';
 import { AlertNotificationListener } from '@/components/alert-notification-listener';
+import { GitLabDeploymentStatus } from './gitlab-deployment-status';
 
 interface DashboardLayoutProps {
   children: ReactNode;
@@ -23,7 +24,8 @@ export function DashboardLayout({ children }: DashboardLayoutProps) {
           <div className="lg:col-span-2">
             {children}
           </div>
-          <div className="lg:col-span-1">
+          <div className="lg:col-span-1 space-y-4 lg:pt-[44px]">
+            <GitLabDeploymentStatus />
             <RecentAlertsCard maxItems={5} />
           </div>
         </div>

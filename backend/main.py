@@ -7,6 +7,7 @@ from fastapi.middleware.cors import CORSMiddleware
 
 import entity_routes, graph_routes, spatial_routes, anomaly_routes, chat_routes
 from routes import alert_router, staff_router, notification_router, demo_router
+from routes.gitlab_routes import router as gitlab_router
 from config import settings
 
 # Configure logging
@@ -59,6 +60,7 @@ app.include_router(graph_routes.router)
 app.include_router(spatial_routes.router)
 app.include_router(anomaly_routes.router)
 app.include_router(chat_routes.router)
+app.include_router(gitlab_router)
 
 # Include alert system routers
 if settings.ALERT_SYSTEM_ENABLED:

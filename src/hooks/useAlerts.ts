@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, useCallback, useRef } from 'react';
+import { useState, useEffect, useCallback, useRef, useMemo } from 'react';
 import { apiClient } from '@/lib/api-client';
 import type { Alert, AlertFilters, AlertsResponse } from '@/types/alert';
 
@@ -31,20 +31,37 @@ export function useAlerts(options: UseAlertsOptions = {}): UseAlertsReturn {
 
   const previousAlertIdsRef = useRef<Set<string>>(new Set());
   const isFirstFetchRef = useRef(true);
+  const isFetchingRef = useRef(false);
+
+  // Memoize filters to prevent infinite re-renders when filters object is recreated
+  const memoizedFilters = useMemo(() => ({
+    status: filters?.status,
+    severity: filters?.severity,
+    assigned_to: filters?.assigned_to,
+    start_date: filters?.start_date,
+    end_date: filters?.end_date,
+    page: filters?.page,
+    page_size: filters?.page_size,
+  }), [
+    // Stringify arrays to compare by value, not reference
+    JSON.stringify(filters?.status),
+    JSON.stringify(filters?.severity),
+    filters?.assigned_to,
+    filters?.start_date,
+    filters?.end_date,
+    filters?.page,
+    filters?.page_size,
+  ]);
 
   const fetchAlerts = useCallback(async () => {
     if (!enabled) return;
 
+    // Prevent concurrent fetches
+    if (isFetchingRef.current) return;
+    isFetchingRef.current = true;
+
     try {
-      const response: AlertsResponse = await apiClient.getAlerts({
-        status: filters?.status,
-        severity: filters?.severity,
-        assigned_to: filters?.assigned_to,
-        start_date: filters?.start_date,
-        end_date: filters?.end_date,
-        page: filters?.page,
-        page_size: filters?.page_size,
-      });
+      const response: AlertsResponse = await apiClient.getAlerts(memoizedFilters);
 
       const fetchedAlerts = response.alerts || [];
       const currentAlertIds = new Set(fetchedAlerts.map((a: Alert) => a.id));
@@ -69,19 +86,20 @@ export function useAlerts(options: UseAlertsOptions = {}): UseAlertsReturn {
       setError(err instanceof Error ? err.message : 'Failed to fetch alerts');
     } finally {
       setLoading(false);
+      isFetchingRef.current = false;
     }
-  }, [enabled, filters]);
+  }, [enabled, memoizedFilters]);
 
   const clearNewAlerts = useCallback(() => {
     setNewAlerts([]);
   }, []);
 
-  // Initial fetch
+  // Initial fetch - only run once on mount or when filters actually change
   useEffect(() => {
     fetchAlerts();
   }, [fetchAlerts]);
 
-  // Polling
+  // Polling - separate from initial fetch to avoid double-fetching
   useEffect(() => {
     if (!enabled || pollInterval <= 0) return;
 
