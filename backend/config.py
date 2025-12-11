@@ -54,6 +54,63 @@ class Settings(BaseSettings):
     ANOMALY_DETECTION_ENABLED: bool = True
     ANOMALY_CACHE_TTL_SECONDS: int = 300
 
+    # =========================================================================
+    # Alert System Configuration
+    # =========================================================================
+
+    # Alert System Feature Flags
+    ALERT_SYSTEM_ENABLED: bool = True
+    DEMO_MODE_ENABLED: bool = True
+
+    # Assignment Configuration
+    ALERT_MAX_CONCURRENT_PER_STAFF: int = 3  # Max alerts per staff member
+    ALERT_PROXIMITY_MAX_METERS: int = 100  # Initial search radius
+    ALERT_PROXIMITY_GROWTH_METERS: int = 50  # Grow search by this amount
+    ALERT_MAX_SEARCH_RADIUS_METERS: int = 500  # Maximum search radius
+
+    # Assignment Weights (must sum to 1.0)
+    ALERT_WEIGHT_PROXIMITY: float = 0.5
+    ALERT_WEIGHT_WORKLOAD: float = 0.3
+    ALERT_WEIGHT_SKILL_MATCH: float = 0.2
+
+    # Escalation Configuration
+    ALERT_ESCALATION_NO_ACK_MINUTES: int = 5  # Escalate if not acknowledged
+    ALERT_ESCALATION_NO_RESOLUTION_MINUTES: int = 30  # Escalate if not resolved
+    ALERT_MAX_ESCALATIONS: int = 2  # Maximum escalation count
+
+    # Notification Configuration
+    ALERT_NOTIFICATION_MAX_RETRIES: int = 3
+    ALERT_NOTIFICATION_RETRY_BACKOFF: list = [10, 60, 300]  # Seconds between retries
+
+    # Demo Configuration
+    DEMO_DEFAULT_SPEED: float = 1.0
+    DEMO_AUTO_ADVANCE: bool = True
+
+    # Notification Channel Flags
+    EMAIL_ENABLED: bool = True
+    SMS_ENABLED: bool = True
+    PUSH_ENABLED: bool = True
+    NOTIFICATION_MOCK_MODE: bool = True  # If True, don't actually send notifications
+
+    # Email Configuration (SMTP)
+    SMTP_HOST: str = "smtp.gmail.com"
+    SMTP_PORT: int = 587
+    SMTP_USER: str = ""
+    SMTP_PASSWORD: str = ""
+    EMAIL_FROM_ADDRESS: str = "alerts@fazri.campus"
+
+    # SMS Configuration (Twilio)
+    TWILIO_ACCOUNT_SID: str = ""
+    TWILIO_AUTH_TOKEN: str = ""
+    TWILIO_FROM_NUMBER: str = ""
+
+    # Push Notification Configuration (Firebase)
+    FIREBASE_CREDENTIALS_PATH: str = ""
+
+    # Legacy keys (for compatibility)
+    SENDGRID_API_KEY: str = ""
+    FCM_SERVER_KEY: str = ""
+
     # Database Pool Settings
     DATABASE_POOL_SIZE: int = 10
     DATABASE_MAX_OVERFLOW: int = 20
