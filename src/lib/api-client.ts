@@ -313,6 +313,185 @@ export const apiClient = {
     );
     return handleResponse(response);
   },
+
+  // ===== ALERT ENDPOINTS =====
+
+  async getAlerts(params?: {
+    status?: string | string[];
+    severity?: string | string[];
+    assigned_to?: string;
+    start_date?: string;
+    end_date?: string;
+    page?: number;
+    page_size?: number;
+  }) {
+    const searchParams = new URLSearchParams();
+    if (params?.status) {
+      const statuses = Array.isArray(params.status) ? params.status : [params.status];
+      statuses.forEach(s => searchParams.append('status', s));
+    }
+    if (params?.severity) {
+      const severities = Array.isArray(params.severity) ? params.severity : [params.severity];
+      severities.forEach(s => searchParams.append('severity', s));
+    }
+    if (params?.assigned_to) searchParams.append('assigned_to', params.assigned_to);
+    if (params?.start_date) searchParams.append('start_date', params.start_date);
+    if (params?.end_date) searchParams.append('end_date', params.end_date);
+    if (params?.page) searchParams.append('page', params.page.toString());
+    if (params?.page_size) searchParams.append('page_size', params.page_size.toString());
+
+    const response = await fetch(
+      `${API_BASE_URL}/api/v1/alerts?${searchParams}`,
+      { headers: { 'Content-Type': 'application/json' } }
+    );
+    return handleResponse(response);
+  },
+
+  async getAlert(alertId: string) {
+    const response = await fetch(
+      `${API_BASE_URL}/api/v1/alerts/${alertId}`,
+      { headers: { 'Content-Type': 'application/json' } }
+    );
+    return handleResponse(response);
+  },
+
+  async createAlert(data: {
+    title: string;
+    description: string;
+    severity: string;
+    location: Record<string, unknown>;
+    anomaly_type: string;
+    affected_entities?: string[];
+    data_sources?: string[];
+    evidence?: Record<string, unknown>;
+  }) {
+    const response = await fetch(
+      `${API_BASE_URL}/api/v1/alerts`,
+      {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(data),
+      }
+    );
+    return handleResponse(response);
+  },
+
+  async assignAlert(alertId: string, staffId: string, reason?: string) {
+    const response = await fetch(
+      `${API_BASE_URL}/api/v1/alerts/${alertId}/assign`,
+      {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ staff_id: staffId, reason }),
+      }
+    );
+    return handleResponse(response);
+  },
+
+  async acknowledgeAlert(alertId: string, staffId: string) {
+    const response = await fetch(
+      `${API_BASE_URL}/api/v1/alerts/${alertId}/acknowledge`,
+      {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ staff_id: staffId }),
+      }
+    );
+    return handleResponse(response);
+  },
+
+  async resolveAlert(alertId: string, data: {
+    staff_id: string;
+    resolution_type: string;
+    resolution_notes: string;
+  }) {
+    const response = await fetch(
+      `${API_BASE_URL}/api/v1/alerts/${alertId}/resolve`,
+      {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(data),
+      }
+    );
+    return handleResponse(response);
+  },
+
+  async escalateAlert(alertId: string, data: {
+    escalate_to: string;
+    reason: string;
+  }) {
+    const response = await fetch(
+      `${API_BASE_URL}/api/v1/alerts/${alertId}/escalate`,
+      {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(data),
+      }
+    );
+    return handleResponse(response);
+  },
+
+  async getAlertHistory(alertId: string) {
+    const response = await fetch(
+      `${API_BASE_URL}/api/v1/alerts/${alertId}/history`,
+      { headers: { 'Content-Type': 'application/json' } }
+    );
+    return handleResponse(response);
+  },
+
+  async addAlertNote(alertId: string, staffId: string, note: string) {
+    const response = await fetch(
+      `${API_BASE_URL}/api/v1/staff/${staffId}/alerts/${alertId}/add-note`,
+      {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ note }),
+      }
+    );
+    return handleResponse(response);
+  },
+
+  // ===== STAFF ENDPOINTS =====
+
+  async getStaffList(params?: { available_only?: boolean; role?: string }) {
+    const searchParams = new URLSearchParams();
+    if (params?.available_only) searchParams.append('available_only', 'true');
+    if (params?.role) searchParams.append('role', params.role);
+
+    const response = await fetch(
+      `${API_BASE_URL}/api/v1/staff?${searchParams}`,
+      { headers: { 'Content-Type': 'application/json' } }
+    );
+    return handleResponse(response);
+  },
+
+  async getStaffMember(staffId: string) {
+    const response = await fetch(
+      `${API_BASE_URL}/api/v1/staff/${staffId}`,
+      { headers: { 'Content-Type': 'application/json' } }
+    );
+    return handleResponse(response);
+  },
+
+  async getStaffDashboard(staffId: string) {
+    const response = await fetch(
+      `${API_BASE_URL}/api/v1/staff/${staffId}/dashboard`,
+      { headers: { 'Content-Type': 'application/json' } }
+    );
+    return handleResponse(response);
+  },
+
+  async getStaffAlerts(staffId: string, params?: { status?: string; active_only?: boolean }) {
+    const searchParams = new URLSearchParams();
+    if (params?.status) searchParams.append('status', params.status);
+    if (params?.active_only) searchParams.append('active_only', 'true');
+
+    const response = await fetch(
+      `${API_BASE_URL}/api/v1/staff/${staffId}/alerts?${searchParams}`,
+      { headers: { 'Content-Type': 'application/json' } }
+    );
+    return handleResponse(response);
+  },
 };
 
 export { ApiError };
