@@ -3,3 +3,9 @@ fazri-anal/*
 __pycache__/
 *.pyc
 datasets/*
+
+# GCP Service Account Credentials (NEVER commit these)
+credentials/
+*.json
+!package.json
+!package-lock.json

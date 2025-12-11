@@ -68,10 +68,9 @@ services:
       - ./:/app
       - app_data:/app/augmented
       - app_logs:/app/logs
-      # Mount GCP credentials for Vertex AI (from gcloud auth application-default login)
-      - ~/.config/gcloud/application_default_credentials.json:/app/gcp-credentials.json:ro
+      # Mount GCP service account credentials for Vertex AI
+      - ./credentials/service-account.json:/app/credentials/service-account.json:ro
     environment:
-      - GOOGLE_APPLICATION_CREDENTIALS=/app/gcp-credentials.json
       - PYTHONUNBUFFERED=1
     depends_on:
       db:
