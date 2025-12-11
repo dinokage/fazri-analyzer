@@ -38,6 +38,18 @@ class Settings(BaseSettings):
     ML_MODEL_CACHE_SIZE: int = 10
     PREDICTION_BATCH_SIZE: int = 32
 
+    # Chatbot Configuration (Gemini API / Vertex AI)
+    GOOGLE_API_KEY: str = ""  # Set via environment variable (for Google AI Studio)
+    USE_VERTEX_AI: bool = False  # Set to True to use Vertex AI instead of Google AI Studio
+    VERTEX_PROJECT_ID: str = ""  # Google Cloud Project ID for Vertex AI
+    VERTEX_LOCATION: str = "us-central1"  # Vertex AI location
+    CHATBOT_MODEL: str = "gemini-2.0-flash"
+    CHATBOT_MAX_TOKENS: int = 4096
+    CHATBOT_TEMPERATURE: float = 0.3
+    CHATBOT_MAX_TOOL_CALLS: int = 5
+    CHATBOT_CONVERSATION_TTL: int = 3600  # 1 hour in seconds
+    CHATBOT_ENABLED: bool = True
+
     # Anomaly Detection
     ANOMALY_DETECTION_ENABLED: bool = True
     ANOMALY_CACHE_TTL_SECONDS: int = 300

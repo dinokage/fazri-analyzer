@@ -146,7 +146,8 @@ class RealDataIngestion:
                     MATCH (z:Zone {zone_id: swipe.location_id})
                     CREATE (e)-[:SWIPED_CARD {
                         timestamp: datetime(swipe.timestamp),
-                        location_id: swipe.location_id
+                        location_id: swipe.location_id,
+                        direction: swipe.IN_OUT
                     }]->(z)
                 """, {'swipes': batch})
 
@@ -307,28 +308,34 @@ class RealDataIngestion:
         print(f"  ✅ Ingested {len(bookings)} lab bookings")
 
     def _create_occupancy_aggregations(self):
-        """Create hourly occupancy counts per zone for anomaly detection"""
+        """Create hourly occupancy counts per zone for anomaly detection using IN/OUT direction"""
         print("\n📊 Creating Occupancy Aggregations...")
 
         with self.driver.session() as session:
-            # Aggregate card swipes by zone and hour
-            logger.info("  Aggregating card swipes...")
+            # Aggregate card swipes by zone and hour, calculating net occupancy from IN/OUT
+            logger.info("  Aggregating card swipes with direction-based occupancy...")
             session.run("""
                 MATCH (e:Entity)-[s:SWIPED_CARD]->(z:Zone)
                 WITH z,
                      date(s.timestamp) as activity_date,
                      s.timestamp.hour as hour,
                      s.timestamp.dayOfWeek as day_of_week,
-                     count(DISTINCT e) as occupancy_count,
                      s.timestamp.year as year,
                      s.timestamp.month as month,
-                     s.timestamp.day as day
+                     s.timestamp.day as day,
+                     sum(CASE WHEN s.direction = 'IN' THEN 1 ELSE 0 END) as entry_count,
+                     sum(CASE WHEN s.direction = 'OUT' THEN 1 ELSE 0 END) as exit_count,
+                     count(DISTINCT e) as unique_visitors
                 MERGE (sa:SpatialActivity {
                     zone_id: z.zone_id,
                     date: activity_date,
                     hour: hour
                 })
-                SET sa.occupancy = occupancy_count,
+                SET sa.entry_count = entry_count,
+                    sa.exit_count = exit_count,
+                    sa.net_flow = entry_count - exit_count,
+                    sa.occupancy = entry_count,
+                    sa.unique_visitors = unique_visitors,
                     sa.day_of_week = day_of_week,
                     sa.is_weekend = (day_of_week >= 6),
                     sa.timestamp = datetime({year: year, month: month, day: day, hour: hour, minute: 0}),

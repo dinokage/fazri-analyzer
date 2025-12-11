@@ -75,13 +75,13 @@ class EntityAnomalyDetectionService:
             # 3. Department-based access violations
             anomalies.extend(self._detect_department_violations(start_time, end_time))
 
-            # 4. Impossible travel detection
+            # 4. Impossible travel detection (updated with direction awareness)
             anomalies.extend(self._detect_impossible_travel(start_time, end_time))
 
             # 5. Multi-modal location mismatches
             anomalies.extend(self._detect_location_mismatches(start_time, end_time))
 
-            # 6. Post-curfew hostel entries
+            # 6. Post-curfew hostel entries (updated with direction)
             anomalies.extend(self._detect_curfew_violations(start_time, end_time))
 
             # 7. Excessive access frequency
@@ -89,6 +89,18 @@ class EntityAnomalyDetectionService:
 
             # 8. Booking no-shows
             anomalies.extend(self._detect_booking_anomalies(start_time, end_time))
+
+            # 9. Entry without exit (tailgating/piggybacking detection)
+            anomalies.extend(self._detect_entry_without_exit(start_time, end_time))
+
+            # 10. Exit without entry (suspicious exit)
+            anomalies.extend(self._detect_exit_without_entry(start_time, end_time))
+
+            # 11. Abnormal dwell time (person in zone too long)
+            anomalies.extend(self._detect_abnormal_dwell_time(start_time, end_time))
+
+            # 12. Consecutive same-direction swipes (possible card sharing)
+            anomalies.extend(self._detect_consecutive_same_direction(start_time, end_time))
 
             # Filter by entity_id if specified
             if entity_id:
@@ -298,14 +310,15 @@ class EntityAnomalyDetectionService:
         return anomalies
 
     def _detect_impossible_travel(self, start_time: datetime, end_time: datetime) -> List[Dict]:
-        """Detect impossible travel between zones"""
+        """Detect impossible travel between zones (direction-aware: OUT from zone1 then IN to zone2)"""
         anomalies = []
 
         with self.driver.session() as session:
-            # Find entity movements between zones that are too fast
+            # Find entity movements: OUT from one zone, then IN to another too quickly
+            # This is more accurate than just checking any swipe
             result = session.run("""
-                MATCH (e:Entity)-[r1:SWIPED_CARD]->(z1:Zone)
-                MATCH (e)-[r2:SWIPED_CARD]->(z2:Zone)
+                MATCH (e:Entity)-[r1:SWIPED_CARD {direction: 'OUT'}]->(z1:Zone)
+                MATCH (e)-[r2:SWIPED_CARD {direction: 'IN'}]->(z2:Zone)
                 WHERE r1.timestamp >= datetime($start_time)
                 AND r1.timestamp <= datetime($end_time)
                 AND r2.timestamp > r1.timestamp
@@ -321,8 +334,8 @@ class EntityAnomalyDetectionService:
                        z1.name as from_zone_name,
                        z2.zone_id as to_zone,
                        z2.name as to_zone_name,
-                       r1.timestamp as first_timestamp,
-                       r2.timestamp as second_timestamp,
+                       r1.timestamp as exit_timestamp,
+                       r2.timestamp as entry_timestamp,
                        time_diff_seconds
                 ORDER BY time_diff_seconds ASC
                 LIMIT 50
@@ -332,7 +345,7 @@ class EntityAnomalyDetectionService:
             })
 
             for rec in result:
-                timestamp_str = serialize_neo4j_datetime(rec['first_timestamp'])
+                timestamp_str = serialize_neo4j_datetime(rec['exit_timestamp'])
                 location_str = f"{rec['from_zone']} → {rec['to_zone']}"
                 anomalies.append({
                     'id': generate_unique_id('impossible_travel', rec['entity_id'], location_str, timestamp_str, str(rec['time_diff_seconds'])),
@@ -343,19 +356,20 @@ class EntityAnomalyDetectionService:
                     'entity_role': rec['role'],
                     'location': location_str,
                     'timestamp': timestamp_str,
-                    'description': f"{rec['entity_name']} appeared in {rec['to_zone_name']} only {rec['time_diff_seconds']}s after {rec['from_zone_name']} (impossible travel)",
+                    'description': f"{rec['entity_name']} exited {rec['from_zone_name']} and entered {rec['to_zone_name']} only {rec['time_diff_seconds']}s later (impossible travel)",
                     'details': {
                         'from_zone': rec['from_zone'],
                         'to_zone': rec['to_zone'],
                         'time_difference_seconds': rec['time_diff_seconds'],
-                        'first_access': serialize_neo4j_datetime(rec['first_timestamp']),
-                        'second_access': serialize_neo4j_datetime(rec['second_timestamp'])
+                        'exit_time': serialize_neo4j_datetime(rec['exit_timestamp']),
+                        'entry_time': serialize_neo4j_datetime(rec['entry_timestamp']),
+                        'movement_pattern': 'OUT → IN'
                     },
                     'recommended_actions': [
-                        "Investigate card sharing",
+                        "Investigate card sharing or cloning",
                         "Check for cloned access cards",
-                        "Review CCTV footage",
-                        "Possible identity fraud"
+                        "Review CCTV footage at both locations",
+                        "Possible identity fraud or buddy-swiping"
                     ]
                 })
 
@@ -416,12 +430,13 @@ class EntityAnomalyDetectionService:
         return anomalies
 
     def _detect_curfew_violations(self, start_time: datetime, end_time: datetime) -> List[Dict]:
-        """Detect hostel entries after curfew (23:00)"""
+        """Detect hostel entries after curfew (23:00) and late exits - direction aware"""
         anomalies = []
 
         with self.driver.session() as session:
+            # Detect late entries (IN after curfew) - more serious
             result = session.run("""
-                MATCH (e:Entity)-[r:SWIPED_CARD]->(z:Zone {zone_id: 'HOSTEL_GATE'})
+                MATCH (e:Entity)-[r:SWIPED_CARD {direction: 'IN'}]->(z:Zone {zone_id: 'HOSTEL_GATE'})
                 WHERE r.timestamp >= datetime($start_time)
                 AND r.timestamp <= datetime($end_time)
                 AND r.timestamp.hour >= 23
@@ -430,7 +445,8 @@ class EntityAnomalyDetectionService:
                        e.role as role,
                        r.timestamp as timestamp,
                        r.timestamp.hour as hour,
-                       count(*) as late_entries
+                       r.timestamp.minute as minute,
+                       'IN' as direction
                 ORDER BY r.timestamp DESC
             """, {
                 'start_time': start_time.isoformat(),
@@ -440,24 +456,73 @@ class EntityAnomalyDetectionService:
             for rec in result:
                 timestamp_str = serialize_neo4j_datetime(rec['timestamp'])
                 anomalies.append({
-                    'id': generate_unique_id('curfew_violation', rec['entity_id'], 'HOSTEL_GATE', timestamp_str, str(rec['hour'])),
+                    'id': generate_unique_id('curfew_late_entry', rec['entity_id'], 'HOSTEL_GATE', timestamp_str, str(rec['hour'])),
                     'type': 'curfew_violation',
-                    'severity': 'medium',
+                    'severity': 'high',
                     'entity_id': rec['entity_id'],
                     'entity_name': rec['entity_name'],
                     'entity_role': rec['role'],
                     'location': 'HOSTEL_GATE',
                     'timestamp': timestamp_str,
-                    'description': f"{rec['entity_name']} entered hostel at {rec['hour']}:XX (after 23:00 curfew)",
+                    'description': f"{rec['entity_name']} returned to hostel at {rec['hour']}:{rec['minute']:02d} (after 23:00 curfew)",
                     'details': {
                         'entry_hour': rec['hour'],
+                        'entry_minute': rec['minute'],
+                        'direction': 'IN',
                         'curfew_time': '23:00',
-                        'late_entry_count': rec['late_entries']
+                        'violation_type': 'Late return to hostel'
                     },
                     'recommended_actions': [
                         "Log for disciplinary review",
-                        "Check if emergency/valid reason",
-                        "Pattern analysis for repeat offenders"
+                        "Check if emergency/valid reason documented",
+                        "Pattern analysis for repeat offenders",
+                        "Issue warning or penalty based on policy"
+                    ]
+                })
+
+            # Detect late exits (OUT after curfew) - potentially more concerning
+            result_exits = session.run("""
+                MATCH (e:Entity)-[r:SWIPED_CARD {direction: 'OUT'}]->(z:Zone {zone_id: 'HOSTEL_GATE'})
+                WHERE r.timestamp >= datetime($start_time)
+                AND r.timestamp <= datetime($end_time)
+                AND r.timestamp.hour >= 23
+                RETURN e.entity_id as entity_id,
+                       e.name as entity_name,
+                       e.role as role,
+                       r.timestamp as timestamp,
+                       r.timestamp.hour as hour,
+                       r.timestamp.minute as minute,
+                       'OUT' as direction
+                ORDER BY r.timestamp DESC
+            """, {
+                'start_time': start_time.isoformat(),
+                'end_time': end_time.isoformat()
+            })
+
+            for rec in result_exits:
+                timestamp_str = serialize_neo4j_datetime(rec['timestamp'])
+                anomalies.append({
+                    'id': generate_unique_id('curfew_late_exit', rec['entity_id'], 'HOSTEL_GATE', timestamp_str, str(rec['hour'])),
+                    'type': 'curfew_violation',
+                    'severity': 'critical',
+                    'entity_id': rec['entity_id'],
+                    'entity_name': rec['entity_name'],
+                    'entity_role': rec['role'],
+                    'location': 'HOSTEL_GATE',
+                    'timestamp': timestamp_str,
+                    'description': f"{rec['entity_name']} left hostel at {rec['hour']}:{rec['minute']:02d} (after 23:00 curfew - unauthorized exit)",
+                    'details': {
+                        'exit_hour': rec['hour'],
+                        'exit_minute': rec['minute'],
+                        'direction': 'OUT',
+                        'curfew_time': '23:00',
+                        'violation_type': 'Late exit from hostel'
+                    },
+                    'recommended_actions': [
+                        "Immediate security alert",
+                        "Contact warden/security personnel",
+                        "Check for valid emergency reason",
+                        "Review safety protocols"
                     ]
                 })
 
@@ -576,7 +641,275 @@ class EntityAnomalyDetectionService:
 
         return anomalies
 
+    def _detect_entry_without_exit(self, start_time: datetime, end_time: datetime) -> List[Dict]:
+        """Detect entries without corresponding exits (potential tailgating/piggybacking)"""
+        anomalies = []
 
-def close(self):
+        with self.driver.session() as session:
+            # Find entities with IN swipes but no matching OUT swipe within the same day
+            result = session.run("""
+                MATCH (e:Entity)-[entry:SWIPED_CARD {direction: 'IN'}]->(z:Zone)
+                WHERE entry.timestamp >= datetime($start_time)
+                AND entry.timestamp <= datetime($end_time)
+                WITH e, z, entry, date(entry.timestamp) as entry_date
+                OPTIONAL MATCH (e)-[exit:SWIPED_CARD {direction: 'OUT'}]->(z)
+                WHERE date(exit.timestamp) = entry_date
+                AND exit.timestamp > entry.timestamp
+                WITH e, z, entry, entry_date, collect(exit) as exits
+                WHERE size(exits) = 0
+                RETURN e.entity_id as entity_id,
+                       e.name as entity_name,
+                       e.role as role,
+                       z.zone_id as zone_id,
+                       z.name as zone_name,
+                       entry.timestamp as entry_time,
+                       entry_date as date
+                ORDER BY entry.timestamp DESC
+                LIMIT 100
+            """, {
+                'start_time': start_time.isoformat(),
+                'end_time': end_time.isoformat()
+            })
+
+            for rec in result:
+                timestamp_str = serialize_neo4j_datetime(rec['entry_time'])
+                anomalies.append({
+                    'id': generate_unique_id('entry_no_exit', rec['entity_id'], rec['zone_id'], timestamp_str),
+                    'type': 'entry_without_exit',
+                    'severity': 'medium',
+                    'entity_id': rec['entity_id'],
+                    'entity_name': rec['entity_name'],
+                    'entity_role': rec['role'],
+                    'location': rec['zone_id'],
+                    'location_name': rec['zone_name'],
+                    'timestamp': timestamp_str,
+                    'description': f"{rec['entity_name']} entered {rec['zone_name']} but no exit recorded (potential tailgating or card lending)",
+                    'details': {
+                        'entry_time': timestamp_str,
+                        'zone': rec['zone_id'],
+                        'date': serialize_neo4j_datetime(rec['date']),
+                        'anomaly_reason': 'No corresponding OUT swipe found after IN swipe'
+                    },
+                    'recommended_actions': [
+                        "Check CCTV footage for tailgating",
+                        "Verify if person left through alternate exit",
+                        "Investigate possible card lending",
+                        "Review badge-in/badge-out policy compliance"
+                    ]
+                })
+
+        return anomalies
+
+    def _detect_exit_without_entry(self, start_time: datetime, end_time: datetime) -> List[Dict]:
+        """Detect exits without corresponding entries (suspicious exit, possible piggybacking on entry)"""
+        anomalies = []
+
+        with self.driver.session() as session:
+            # Find entities with OUT swipes but no matching IN swipe before it on the same day
+            result = session.run("""
+                MATCH (e:Entity)-[exit:SWIPED_CARD {direction: 'OUT'}]->(z:Zone)
+                WHERE exit.timestamp >= datetime($start_time)
+                AND exit.timestamp <= datetime($end_time)
+                WITH e, z, exit, date(exit.timestamp) as exit_date
+                OPTIONAL MATCH (e)-[entry:SWIPED_CARD {direction: 'IN'}]->(z)
+                WHERE date(entry.timestamp) = exit_date
+                AND entry.timestamp < exit.timestamp
+                WITH e, z, exit, exit_date, collect(entry) as entries
+                WHERE size(entries) = 0
+                RETURN e.entity_id as entity_id,
+                       e.name as entity_name,
+                       e.role as role,
+                       z.zone_id as zone_id,
+                       z.name as zone_name,
+                       exit.timestamp as exit_time,
+                       exit_date as date
+                ORDER BY exit.timestamp DESC
+                LIMIT 100
+            """, {
+                'start_time': start_time.isoformat(),
+                'end_time': end_time.isoformat()
+            })
+
+            for rec in result:
+                timestamp_str = serialize_neo4j_datetime(rec['exit_time'])
+                anomalies.append({
+                    'id': generate_unique_id('exit_no_entry', rec['entity_id'], rec['zone_id'], timestamp_str),
+                    'type': 'exit_without_entry',
+                    'severity': 'high',
+                    'entity_id': rec['entity_id'],
+                    'entity_name': rec['entity_name'],
+                    'entity_role': rec['role'],
+                    'location': rec['zone_id'],
+                    'location_name': rec['zone_name'],
+                    'timestamp': timestamp_str,
+                    'description': f"{rec['entity_name']} exited {rec['zone_name']} without prior entry record (piggybacking suspected)",
+                    'details': {
+                        'exit_time': timestamp_str,
+                        'zone': rec['zone_id'],
+                        'date': serialize_neo4j_datetime(rec['date']),
+                        'anomaly_reason': 'OUT swipe recorded without prior IN swipe'
+                    },
+                    'recommended_actions': [
+                        "Review CCTV for unauthorized entry",
+                        "Check for piggybacking on another person's entry",
+                        "Investigate possible security breach",
+                        "Verify card system integrity"
+                    ]
+                })
+
+        return anomalies
+
+    def _detect_abnormal_dwell_time(self, start_time: datetime, end_time: datetime) -> List[Dict]:
+        """Detect abnormally long stays in zones (potential security concern)"""
+        anomalies = []
+
+        # Maximum expected dwell times per zone type (in hours)
+        max_dwell_times = {
+            'LAB_101': 8, 'LAB_102': 8, 'LAB_305': 6,
+            'LIB_ENT': 10, 'CAF_01': 3, 'GYM': 4,
+            'ADMIN_LOBBY': 2, 'AUDITORIUM': 5,
+            'HOSTEL_GATE': 1, 'SEM_01': 4,
+            'ROOM_A1': 3, 'ROOM_A2': 3
+        }
+
+        with self.driver.session() as session:
+            # Find entry-exit pairs with long dwell times
+            result = session.run("""
+                MATCH (e:Entity)-[entry:SWIPED_CARD {direction: 'IN'}]->(z:Zone)
+                WHERE entry.timestamp >= datetime($start_time)
+                AND entry.timestamp <= datetime($end_time)
+                MATCH (e)-[exit:SWIPED_CARD {direction: 'OUT'}]->(z)
+                WHERE exit.timestamp > entry.timestamp
+                AND date(exit.timestamp) = date(entry.timestamp)
+                WITH e, z, entry, exit,
+                     duration.between(entry.timestamp, exit.timestamp).hours as dwell_hours,
+                     duration.between(entry.timestamp, exit.timestamp).minutes as dwell_minutes
+                WHERE dwell_hours >= 1
+                RETURN e.entity_id as entity_id,
+                       e.name as entity_name,
+                       e.role as role,
+                       z.zone_id as zone_id,
+                       z.name as zone_name,
+                       entry.timestamp as entry_time,
+                       exit.timestamp as exit_time,
+                       dwell_hours,
+                       dwell_minutes
+                ORDER BY dwell_hours DESC
+                LIMIT 50
+            """, {
+                'start_time': start_time.isoformat(),
+                'end_time': end_time.isoformat()
+            })
+
+            for rec in result:
+                zone_id = rec['zone_id']
+                max_hours = max_dwell_times.get(zone_id, 8)
+                dwell_hours = rec['dwell_hours']
+
+                if dwell_hours > max_hours:
+                    timestamp_str = serialize_neo4j_datetime(rec['entry_time'])
+                    severity = 'critical' if dwell_hours > max_hours * 2 else 'high' if dwell_hours > max_hours * 1.5 else 'medium'
+
+                    anomalies.append({
+                        'id': generate_unique_id('abnormal_dwell', rec['entity_id'], rec['zone_id'], timestamp_str, str(dwell_hours)),
+                        'type': 'abnormal_dwell_time',
+                        'severity': severity,
+                        'entity_id': rec['entity_id'],
+                        'entity_name': rec['entity_name'],
+                        'entity_role': rec['role'],
+                        'location': rec['zone_id'],
+                        'location_name': rec['zone_name'],
+                        'timestamp': timestamp_str,
+                        'description': f"{rec['entity_name']} stayed in {rec['zone_name']} for {dwell_hours}h {rec['dwell_minutes']}m (expected max: {max_hours}h)",
+                        'details': {
+                            'entry_time': timestamp_str,
+                            'exit_time': serialize_neo4j_datetime(rec['exit_time']),
+                            'dwell_hours': dwell_hours,
+                            'dwell_minutes': rec['dwell_minutes'],
+                            'expected_max_hours': max_hours,
+                            'excess_hours': dwell_hours - max_hours
+                        },
+                        'recommended_actions': [
+                            "Verify legitimate extended access need",
+                            "Check for overnight stays in restricted areas",
+                            "Review access authorization for extended periods",
+                            "Investigate potential security or safety concerns"
+                        ]
+                    })
+
+        return anomalies
+
+    def _detect_consecutive_same_direction(self, start_time: datetime, end_time: datetime) -> List[Dict]:
+        """Detect consecutive swipes in the same direction (IN-IN or OUT-OUT) suggesting card sharing"""
+        anomalies = []
+
+        with self.driver.session() as session:
+            # Find consecutive IN swipes without OUT in between
+            result = session.run("""
+                MATCH (e:Entity)-[r1:SWIPED_CARD]->(z:Zone)
+                MATCH (e)-[r2:SWIPED_CARD]->(z)
+                WHERE r1.timestamp >= datetime($start_time)
+                AND r1.timestamp <= datetime($end_time)
+                AND r2.timestamp > r1.timestamp
+                AND r1.direction = r2.direction
+                AND duration.between(r1.timestamp, r2.timestamp).hours < 2
+                WITH e, z, r1, r2,
+                     duration.between(r1.timestamp, r2.timestamp).minutes as minutes_between,
+                     r1.direction as direction
+                WHERE NOT EXISTS {
+                    MATCH (e)-[middle:SWIPED_CARD]->(z)
+                    WHERE middle.timestamp > r1.timestamp
+                    AND middle.timestamp < r2.timestamp
+                    AND middle.direction <> r1.direction
+                }
+                RETURN e.entity_id as entity_id,
+                       e.name as entity_name,
+                       e.role as role,
+                       z.zone_id as zone_id,
+                       z.name as zone_name,
+                       r1.timestamp as first_swipe,
+                       r2.timestamp as second_swipe,
+                       direction,
+                       minutes_between
+                ORDER BY r1.timestamp DESC
+                LIMIT 50
+            """, {
+                'start_time': start_time.isoformat(),
+                'end_time': end_time.isoformat()
+            })
+
+            for rec in result:
+                timestamp_str = serialize_neo4j_datetime(rec['first_swipe'])
+                direction = rec['direction']
+
+                anomalies.append({
+                    'id': generate_unique_id('consecutive_direction', rec['entity_id'], rec['zone_id'], timestamp_str, direction),
+                    'type': 'consecutive_same_direction',
+                    'severity': 'high' if direction == 'IN' else 'medium',
+                    'entity_id': rec['entity_id'],
+                    'entity_name': rec['entity_name'],
+                    'entity_role': rec['role'],
+                    'location': rec['zone_id'],
+                    'location_name': rec['zone_name'],
+                    'timestamp': timestamp_str,
+                    'description': f"{rec['entity_name']} swiped {direction} twice at {rec['zone_name']} ({rec['minutes_between']} min apart) - possible card sharing",
+                    'details': {
+                        'first_swipe': timestamp_str,
+                        'second_swipe': serialize_neo4j_datetime(rec['second_swipe']),
+                        'direction': direction,
+                        'minutes_between': rec['minutes_between'],
+                        'anomaly_reason': f'Two consecutive {direction} swipes without opposite direction in between'
+                    },
+                    'recommended_actions': [
+                        "Investigate possible card sharing/lending",
+                        "Check for buddy punching",
+                        "Review CCTV footage for verification",
+                        "Verify card system is not malfunctioning"
+                    ]
+                })
+
+        return anomalies
+
+    def close(self):
         """Close database connection"""
         self.driver.close()

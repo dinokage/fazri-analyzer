@@ -15,6 +15,11 @@ class AnomalyType(Enum):
     UNDERUTILIZATION = "underutilization"
     QUEUE_CONGESTION = "queue_congestion"
     DATA_INTEGRITY_ANOMALY = "data_integrity_anomaly"
+    ENTRY_WITHOUT_EXIT = "entry_without_exit"
+    EXIT_WITHOUT_ENTRY = "exit_without_entry"
+    ABNORMAL_DWELL_TIME = "abnormal_dwell_time"
+    CONSECUTIVE_SAME_DIRECTION = "consecutive_same_direction"
+    NEGATIVE_OCCUPANCY = "negative_occupancy"
 
 class SeverityLevel(Enum):
     LOW = "low"
@@ -163,22 +168,22 @@ class AnomalyDetectionService:
             return []
 
     def _detect_overcrowding_simplified(self, start_time: datetime, end_time: datetime) -> List[Dict]:
-        """Detect overcrowding using SpatialActivity data"""
+        """Detect overcrowding using SpatialActivity data with direction-aware entry counts"""
         anomalies = []
-        
+
         with self.driver.session() as session:
-            # Find periods where occupancy exceeds capacity
+            # Find periods where entry count exceeds capacity (using new direction-based data)
             result = session.run("""
                 MATCH (z:Zone)<-[:OCCURRED_IN]-(sa:SpatialActivity)
                 WHERE sa.timestamp >= datetime($start_time)
                 AND sa.timestamp <= datetime($end_time)
-                AND sa.occupancy > 0
+                AND sa.entry_count > 0
                 WITH z, sa,
                      sa.timestamp.year as year,
                      sa.timestamp.month as month,
                      sa.timestamp.day as day,
                      sa.hour as hour
-                WHERE sa.occupancy > z.capacity
+                WHERE sa.entry_count > z.capacity
                 RETURN z.zone_id as zone_id,
                        z.name as zone_name,
                        z.capacity as capacity,
@@ -186,17 +191,22 @@ class AnomalyDetectionService:
                        month,
                        day,
                        hour,
-                       max(sa.occupancy) as max_occupancy,
-                       avg(sa.occupancy) as avg_occupancy,
+                       max(sa.entry_count) as max_entries,
+                       max(sa.exit_count) as max_exits,
+                       max(sa.net_flow) as max_net_flow,
+                       avg(sa.entry_count) as avg_entries,
+                       max(sa.unique_visitors) as max_unique_visitors,
                        count(sa) as incident_count
-                ORDER BY max_occupancy DESC
+                ORDER BY max_entries DESC
             """, {
                 'start_time': start_time.isoformat(),
                 'end_time': end_time.isoformat()
             })
-            
+
             for record in result:
-                severity = SeverityLevel.CRITICAL.value if record['max_occupancy'] > record['capacity'] * 1.5 else SeverityLevel.HIGH.value
+                max_entries = record['max_entries']
+                capacity = record['capacity']
+                severity = SeverityLevel.CRITICAL.value if max_entries > capacity * 1.5 else SeverityLevel.HIGH.value
 
                 # Construct date string and timestamp from components
                 date_str = f"{record['year']}-{record['month']:02d}-{record['day']:02d}"
@@ -208,13 +218,16 @@ class AnomalyDetectionService:
                     'location': record['zone_id'],
                     'severity': severity,
                     'timestamp': timestamp,
-                    'description': f"Overcrowding in {record['zone_name']}: {record['max_occupancy']} people (capacity: {record['capacity']})",
+                    'description': f"Overcrowding in {record['zone_name']}: {max_entries} entries (capacity: {capacity})",
                     'details': {
                         'zone_name': record['zone_name'],
-                        'max_occupancy': record['max_occupancy'],
-                        'avg_occupancy': round(record['avg_occupancy'], 1),
-                        'capacity': record['capacity'],
-                        'occupancy_rate': round((record['max_occupancy'] / record['capacity']) * 100, 1),
+                        'max_entries': max_entries,
+                        'max_exits': record['max_exits'],
+                        'net_flow': record['max_net_flow'],
+                        'avg_entries': round(record['avg_entries'], 1),
+                        'unique_visitors': record['max_unique_visitors'],
+                        'capacity': capacity,
+                        'occupancy_rate': round((max_entries / capacity) * 100, 1),
                         'incident_count': record['incident_count'],
                         'date': date_str,
                         'hour': record['hour']
@@ -222,10 +235,11 @@ class AnomalyDetectionService:
                     'recommended_actions': [
                         "Implement capacity management",
                         "Deploy crowd control measures",
-                        "Send real-time alerts to administrators"
+                        "Send real-time alerts to administrators",
+                        "Monitor exit patterns to manage flow"
                     ]
                 })
-        
+
         return anomalies
 
     def _detect_underutilization_simplified(self, start_time: datetime, end_time: datetime) -> List[Dict]:
@@ -286,14 +300,14 @@ class AnomalyDetectionService:
         return anomalies
 
     def _detect_data_integrity_anomalies_simplified(self, start_time: datetime, end_time: datetime) -> List[Dict]:
-        """Detect data integrity issues"""
+        """Detect data integrity issues including direction-based anomalies"""
         anomalies = []
-        
+
         with self.driver.session() as session:
             # Check for missing timestamps
             null_timestamps = session.run("""
                 MATCH (sa:SpatialActivity)
-                WHERE sa.timestamp >= datetime($start_time) 
+                WHERE sa.timestamp >= datetime($start_time)
                 AND sa.timestamp <= datetime($end_time)
                 AND sa.timestamp IS NULL
                 RETURN count(sa) as null_count
@@ -301,7 +315,7 @@ class AnomalyDetectionService:
                 'start_time': start_time.isoformat(),
                 'end_time': end_time.isoformat()
             }).single()['null_count']
-            
+
             if null_timestamps > 0:
                 anomalies.append({
                     'id': f"data_integrity_null_timestamps_{start_time.date()}",
@@ -320,11 +334,65 @@ class AnomalyDetectionService:
                         "Investigate data source reliability"
                     ]
                 })
-            
-            # Check for negative occupancy values
+
+            # Check for negative net flow (more exits than entries - possible tailgating or data issue)
+            negative_flow = session.run("""
+                MATCH (z:Zone)<-[:OCCURRED_IN]-(sa:SpatialActivity)
+                WHERE sa.timestamp >= datetime($start_time)
+                AND sa.timestamp <= datetime($end_time)
+                AND sa.net_flow IS NOT NULL
+                AND sa.net_flow < -5
+                RETURN z.zone_id as zone_id,
+                       z.name as zone_name,
+                       sa.timestamp as timestamp,
+                       sa.hour as hour,
+                       sa.entry_count as entries,
+                       sa.exit_count as exits,
+                       sa.net_flow as net_flow,
+                       date(sa.timestamp) as date
+                ORDER BY sa.net_flow ASC
+                LIMIT 20
+            """, {
+                'start_time': start_time.isoformat(),
+                'end_time': end_time.isoformat()
+            })
+
+            for record in negative_flow:
+                date_str = str(record['date'])
+                timestamp = record['timestamp']
+                if hasattr(timestamp, 'to_native'):
+                    timestamp = timestamp.to_native()
+                if timestamp.tzinfo is None:
+                    timestamp = timestamp.replace(tzinfo=timezone.utc)
+
+                anomalies.append({
+                    'id': f"negative_flow_{record['zone_id']}_{date_str}_{record['hour']}",
+                    'type': AnomalyType.NEGATIVE_OCCUPANCY.value,
+                    'location': record['zone_id'],
+                    'severity': SeverityLevel.HIGH.value,
+                    'timestamp': timestamp,
+                    'description': f"Negative occupancy flow in {record['zone_name']}: {record['exits']} exits vs {record['entries']} entries (net: {record['net_flow']})",
+                    'details': {
+                        'zone_name': record['zone_name'],
+                        'entry_count': record['entries'],
+                        'exit_count': record['exits'],
+                        'net_flow': record['net_flow'],
+                        'date': date_str,
+                        'hour': record['hour'],
+                        'anomaly_reason': 'More people exiting than entered - indicates tailgating on entry or data issue'
+                    },
+                    'recommended_actions': [
+                        "Review CCTV footage for tailgating/piggybacking on entry",
+                        "Check card reader hardware at entry points",
+                        "Audit IN swipe compliance at entry gates",
+                        "Consider turnstile or mantrap installation"
+                    ]
+                })
+
+            # Check for legacy negative occupancy values
             negative_occupancy = session.run("""
                 MATCH (sa:SpatialActivity)
-                WHERE sa.timestamp >= datetime($start_time) 
+                WHERE sa.timestamp >= datetime($start_time)
                 AND sa.timestamp <= datetime($end_time)
                 AND sa.occupancy < 0
                 RETURN count(sa) as negative_count, collect(DISTINCT sa.zone_id) as affected_zones
@@ -332,7 +400,7 @@ class AnomalyDetectionService:
                 'start_time': start_time.isoformat(),
                 'end_time': end_time.isoformat()
             }).single()
-            
+
             if negative_occupancy['negative_count'] > 0:
                 anomalies.append({
                     'id': f"data_integrity_negative_occupancy_{start_time.date()}",
@@ -352,7 +420,7 @@ class AnomalyDetectionService:
                         "Review sensor calibration"
                     ]
                 })
-        
+
         return anomalies
 
     def get_all_historical_anomalies(self) -> List[Dict]:
