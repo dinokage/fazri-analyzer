@@ -143,7 +143,22 @@ backend:deploy:
     - printf "[profile default]\nrole_arn=%s\nweb_identity_token_file=/tmp/web_identity_token" "${ROLE_ARN}" > ~/.aws/config
     - aws sts get-caller-identity
     - echo "Deploying backend image"
-    - aws ssm send-command --document-name "AWS-RunShellScript" --targets "Key=instanceIds,Values=${EC2_INSTANCE_ID}" --parameters "commands=[\"echo ${CI_REGISTRY_PASSWORD} | docker login ${CI_REGISTRY} -u ${CI_REGISTRY_USER} --password-stdin\",\"docker pull ${CI_REGISTRY_IMAGE}/backend:${CI_COMMIT_SHORT_SHA}\",\"docker stop ${BACKEND_CONTAINER_NAME} || true\",\"docker rm ${BACKEND_CONTAINER_NAME} || true\",\"docker network create backend_fazri-network || true\",\"docker run -d --restart unless-stopped --network backend_fazri-network -p 8000:8000 -v app_data:/app/augmented -v app_models:/app/models -v app_logs:/app/logs -e POSTGRES_HOST=postgres_db -e POSTGRES_USER=${POSTGRES_USER} -e POSTGRES_PASSWORD=${POSTGRES_PASSWORD} -e POSTGRES_DB=${POSTGRES_DB} -e NEO4J_URI=neo4j://neo4j_db:7687 -e NEO4J_USER=${NEO4J_USER} -e NEO4J_PASSWORD=${NEO4J_PASSWORD} -e REDIS_HOST=redis_db -e REDIS_PORT=6379 -e ENVIRONMENT=production --name ${BACKEND_CONTAINER_NAME} ${CI_REGISTRY_IMAGE}/backend:${CI_COMMIT_SHORT_SHA}\"]" --output text
+    - |
+      aws ssm send-command \
+        --document-name "AWS-RunShellScript" \
+        --targets "Key=instanceIds,Values=${EC2_INSTANCE_ID}" \
+        --parameters "commands=[
+          \"mkdir -p /opt/fazri/credentials\",
+          \"echo '${GCP_SERVICE_ACCOUNT_JSON}' > /opt/fazri/credentials/service-account.json\",
+          \"chmod 600 /opt/fazri/credentials/service-account.json\",
+          \"echo ${CI_REGISTRY_PASSWORD} | docker login ${CI_REGISTRY} -u ${CI_REGISTRY_USER} --password-stdin\",
+          \"docker pull ${CI_REGISTRY_IMAGE}/backend:${CI_COMMIT_SHORT_SHA}\",
+          \"docker stop ${BACKEND_CONTAINER_NAME} || true\",
+          \"docker rm ${BACKEND_CONTAINER_NAME} || true\",
+          \"docker network create backend_fazri-network || true\",
+          \"docker run -d --restart unless-stopped --network backend_fazri-network -p 8000:8000 -v /opt/fazri/credentials/service-account.json:/app/credentials/service-account.json:ro -v app_data:/app/augmented -v app_models:/app/models -v app_logs:/app/logs -e POSTGRES_HOST=postgres_db -e POSTGRES_USER=${POSTGRES_USER} -e POSTGRES_PASSWORD=${POSTGRES_PASSWORD} -e POSTGRES_DB=${POSTGRES_DB} -e NEO4J_URI=neo4j://neo4j_db:7687 -e NEO4J_USER=${NEO4J_USER} -e NEO4J_PASSWORD=${NEO4J_PASSWORD} -e REDIS_HOST=redis_db -e REDIS_PORT=6379 -e ENVIRONMENT=production -e GOOGLE_APPLICATION_CREDENTIALS=/app/credentials/service-account.json --name ${BACKEND_CONTAINER_NAME} ${CI_REGISTRY_IMAGE}/backend:${CI_COMMIT_SHORT_SHA}\"
+        ]" \
+        --output text
     - sleep 30
     - echo "Backend deployment command sent"
   environment:
