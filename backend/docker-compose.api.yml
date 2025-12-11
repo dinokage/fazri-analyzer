@@ -19,7 +19,7 @@ services:
       - "8000:8000"
     volumes:
       - app_data:/app/augmented
-      - app_models:/app/models
+      - app_ml_models:/app/ml_models
       - app_logs:/app/logs
       # Mount GCP service account credentials from EC2 host
       - /opt/fazri/credentials/service-account.json:/app/credentials/service-account.json:ro
@@ -39,5 +39,5 @@ networks:
 
 volumes:
   app_data:
-  app_models:
+  app_ml_models:
   app_logs:

@@ -83,8 +83,10 @@ services:
       - "8000:8000"
     volumes:
       - app_data:/app/augmented
-      - app_models:/app/models
+      - app_ml_models:/app/ml_models
       - app_logs:/app/logs
+      # Mount GCP service account credentials for Vertex AI
+      - ./credentials/service-account.json:/app/credentials/service-account.json:ro
     depends_on:
       db:
         condition: service_healthy
@@ -111,5 +113,5 @@ volumes:
   neo4j_data:
   redis_data:
   app_data:
-  app_models:
+  app_ml_models:
   app_logs:
