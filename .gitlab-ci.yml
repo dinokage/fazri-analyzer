@@ -6,7 +6,11 @@ image: docker:latest
 stages:
   - validate
   - build
+  - test
   - deploy
+
+include:
+  - template: Security/Dependency-Scanning.gitlab-ci.yml
 
 variables:
   DOCKER_DRIVER: overlay2
