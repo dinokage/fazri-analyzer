@@ -44,8 +44,13 @@ def get_chat_orchestrator() -> ChatOrchestrator:
     if not settings.CHATBOT_ENABLED:
         raise HTTPException(status_code=503, detail="Chatbot is currently disabled")
 
-    if not settings.GOOGLE_API_KEY:
-        raise HTTPException(status_code=503, detail="Chatbot is not configured (missing API key)")
+    # Check for appropriate credentials based on backend
+    if settings.USE_VERTEX_AI:
+        if not settings.VERTEX_PROJECT_ID:
+            raise HTTPException(status_code=503, detail="Chatbot is not configured (missing VERTEX_PROJECT_ID)")
+    else:
+        if not settings.GOOGLE_API_KEY:
+            raise HTTPException(status_code=503, detail="Chatbot is not configured (missing API key)")
 
     return ChatOrchestrator(
         neo4j_uri=settings.NEO4J_URI,
