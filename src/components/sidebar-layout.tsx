@@ -25,9 +25,10 @@ import {
   Bug,
   User,
   Activity,
-  Lightbulb,
   LogOut,
+  ShieldAlert,
 } from "lucide-react"
+import { useActiveAlertCount } from "@/hooks/useAlerts"
 
 import { Button } from "@/components/ui/button"
 
@@ -40,6 +41,9 @@ export function SidebarLayout({ children }: { children: React.ReactNode }) {
   const isSuperAdmin = session?.user?.role === "SUPER_ADMIN"
   const isAuthenticated = status === "authenticated"
   const isLoading = status === "loading"
+
+  // Get active alert count for badge
+  const { count: activeAlertCount } = useActiveAlertCount(30000)
 
   React.useEffect(() => {
     if (status === "unauthenticated") {
@@ -112,6 +116,25 @@ export function SidebarLayout({ children }: { children: React.ReactNode }) {
                             >
                               <Activity className="h-5 w-5 flex-shrink-0" />
                               <span className="truncate">Zones</span>
+                            </Link>
+                          </SidebarMenuButton>
+                        </SidebarMenuItem>
+                        <SidebarMenuItem>
+                          <SidebarMenuButton
+                            asChild
+                            data-active={isActive("/dashboard/alerts") || pathname.startsWith("/dashboard/alerts/")}
+                          >
+                            <Link
+                              href="/dashboard/alerts"
+                              className="flex items-center gap-3"
+                            >
+                              <ShieldAlert className="h-5 w-5 flex-shrink-0" />
+                              <span className="truncate">Security Alerts</span>
+                              {activeAlertCount > 0 && (
+                                <span className="ml-auto flex h-5 min-w-5 items-center justify-center rounded-full bg-red-600 px-1.5 text-xs font-medium text-white">
+                                  {activeAlertCount > 99 ? '99+' : activeAlertCount}
+                                </span>
+                              )}
                             </Link>
                           </SidebarMenuButton>
                         </SidebarMenuItem>
