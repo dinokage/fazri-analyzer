@@ -41,6 +41,5 @@ yarn-error.log*
 next-env.d.ts
 
 /src/generated/prisma
-/backend/models/*
 /backend/backup*
 /backend/anal/*
