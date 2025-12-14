@@ -91,15 +91,20 @@ class AnomalyDetectionService:
                            start_date: Optional[str] = None,
                            end_date: Optional[str] = None,
                            include_entity_anomalies: bool = True) -> List[Dict]:
-        """Detect anomalies - SIMPLIFIED for current data structure"""
+        """Detect anomalies - SIMPLIFIED for current data structure
+
+        Note: Uses local time (no timezone) to match how data is stored in Neo4j.
+        The simulator creates SpatialActivity nodes with local timestamps.
+        """
         anomalies = []
 
-        # Determine time range, ensuring all datetimes are timezone-aware (UTC)
+        # Determine time range - use local time to match Neo4j data
         if start_date and end_date:
-            start_time = datetime.fromisoformat(f"{start_date}T00:00:00").replace(tzinfo=timezone.utc)
-            end_time = datetime.fromisoformat(f"{end_date}T23:59:59").replace(tzinfo=timezone.utc)
+            # Parse as local time (no timezone) to match Neo4j data
+            start_time = datetime.fromisoformat(f"{start_date}T00:00:00")
+            end_time = datetime.fromisoformat(f"{end_date}T23:59:59")
         elif time_window_hours:
-            end_time = datetime.now(timezone.utc)
+            end_time = datetime.now()  # Local time
             start_time = end_time - timedelta(hours=time_window_hours)
         else:
             # Use entire dataset
@@ -112,14 +117,14 @@ class AnomalyDetectionService:
                     start_time = start_time.to_native()
                 if hasattr(end_time, 'to_native'):
                     end_time = end_time.to_native()
-                # Ensure they are aware
-                if start_time.tzinfo is None:
-                    start_time = start_time.replace(tzinfo=timezone.utc)
-                if end_time.tzinfo is None:
-                    end_time = end_time.replace(tzinfo=timezone.utc)
+                # Strip timezone if present to match local data
+                if start_time.tzinfo is not None:
+                    start_time = start_time.replace(tzinfo=None)
+                if end_time.tzinfo is not None:
+                    end_time = end_time.replace(tzinfo=None)
             else:
                 # Fallback to last 30 days
-                end_time = datetime.now(timezone.utc)
+                end_time = datetime.now()  # Local time
                 start_time = end_time - timedelta(days=30)
 
         try:
@@ -168,22 +173,21 @@ class AnomalyDetectionService:
             return []
 
     def _detect_overcrowding_simplified(self, start_time: datetime, end_time: datetime) -> List[Dict]:
-        """Detect overcrowding using SpatialActivity data with direction-aware entry counts"""
+        """Detect overcrowding using SpatialActivity data based on occupancy exceeding capacity"""
         anomalies = []
 
         with self.driver.session() as session:
-            # Find periods where entry count exceeds capacity (using new direction-based data)
+            # Find periods where occupancy exceeds capacity
             result = session.run("""
                 MATCH (z:Zone)<-[:OCCURRED_IN]-(sa:SpatialActivity)
                 WHERE sa.timestamp >= datetime($start_time)
                 AND sa.timestamp <= datetime($end_time)
-                AND sa.entry_count > 0
+                AND sa.occupancy > z.capacity
                 WITH z, sa,
                      sa.timestamp.year as year,
                      sa.timestamp.month as month,
                      sa.timestamp.day as day,
                      sa.hour as hour
-                WHERE sa.entry_count > z.capacity
                 RETURN z.zone_id as zone_id,
                        z.name as zone_name,
                        z.capacity as capacity,
@@ -191,26 +195,23 @@ class AnomalyDetectionService:
                        month,
                        day,
                        hour,
-                       max(sa.entry_count) as max_entries,
-                       max(sa.exit_count) as max_exits,
-                       max(sa.net_flow) as max_net_flow,
-                       avg(sa.entry_count) as avg_entries,
-                       max(sa.unique_visitors) as max_unique_visitors,
+                       max(sa.occupancy) as max_occupancy,
+                       avg(sa.occupancy) as avg_occupancy,
                        count(sa) as incident_count
-                ORDER BY max_entries DESC
+                ORDER BY max_occupancy DESC
             """, {
                 'start_time': start_time.isoformat(),
                 'end_time': end_time.isoformat()
             })
 
             for record in result:
-                max_entries = record['max_entries']
+                max_occupancy = record['max_occupancy']
                 capacity = record['capacity']
-                severity = SeverityLevel.CRITICAL.value if max_entries > capacity * 1.5 else SeverityLevel.HIGH.value
+                severity = SeverityLevel.CRITICAL.value if max_occupancy > capacity * 1.5 else SeverityLevel.HIGH.value
 
                 # Construct date string and timestamp from components
                 date_str = f"{record['year']}-{record['month']:02d}-{record['day']:02d}"
-                timestamp = datetime(record['year'], record['month'], record['day'], record['hour'], 0, tzinfo=timezone.utc)
+                timestamp = datetime(record['year'], record['month'], record['day'], record['hour'], 0)
 
                 anomalies.append({
                     'id': f"overcrowding_{record['zone_id']}_{date_str}_{record['hour']}",
@@ -218,16 +219,13 @@ class AnomalyDetectionService:
                     'location': record['zone_id'],
                     'severity': severity,
                     'timestamp': timestamp,
-                    'description': f"Overcrowding in {record['zone_name']}: {max_entries} entries (capacity: {capacity})",
+                    'description': f"Overcrowding in {record['zone_name']}: {max_occupancy} people (capacity: {capacity})",
                     'details': {
                         'zone_name': record['zone_name'],
-                        'max_entries': max_entries,
-                        'max_exits': record['max_exits'],
-                        'net_flow': record['max_net_flow'],
-                        'avg_entries': round(record['avg_entries'], 1),
-                        'unique_visitors': record['max_unique_visitors'],
+                        'max_occupancy': max_occupancy,
+                        'avg_occupancy': round(record['avg_occupancy'], 1),
                         'capacity': capacity,
-                        'occupancy_rate': round((max_entries / capacity) * 100, 1),
+                        'occupancy_rate': round((max_occupancy / capacity) * 100, 1),
                         'incident_count': record['incident_count'],
                         'date': date_str,
                         'hour': record['hour']

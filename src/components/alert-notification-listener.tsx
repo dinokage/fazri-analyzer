@@ -78,7 +78,7 @@ interface AlertNotificationListenerProps {
 
 export function AlertNotificationListener({
   enabled = true,
-  pollInterval = 30000,
+  pollInterval = 10000, // Reduced from 30s to 10s for faster alert detection
 }: AlertNotificationListenerProps) {
   const router = useRouter();
   const notifiedIdsRef = useRef<Set<string>>(new Set());

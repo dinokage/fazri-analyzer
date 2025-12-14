@@ -65,9 +65,14 @@ class SpatialForecastingService:
         """Get current occupancy for a zone based on recent activities"""
         with self.driver.session() as session:
             # Get recent synthetic activities (last 2 hours)
+            # Note: We use localdatetime() since simulator creates timestamps without timezone
+            # and we compare against local time window
+            now = datetime.now()
+            two_hours_ago = now - timedelta(hours=2)
+
             result = session.run("""
                 MATCH (z:Zone {zone_id: $zone_id})<-[:OCCURRED_IN]-(sa:SpatialActivity)
-                WHERE sa.timestamp >= datetime() - duration({hours: 2})
+                WHERE sa.timestamp >= datetime($cutoff_time)
                 WITH z, sa
                 ORDER BY sa.timestamp DESC
                 LIMIT 1
@@ -76,7 +81,7 @@ class SpatialForecastingService:
                        z.capacity as capacity,
                        sa.occupancy as current_occupancy,
                        sa.timestamp as last_updated
-            """, zone_id=zone_id)
+            """, zone_id=zone_id, cutoff_time=two_hours_ago.isoformat())
             
             record = result.single()
             if record:
@@ -189,12 +194,15 @@ class SpatialForecastingService:
     
     def get_campus_summary(self) -> Dict:
         """Get overall campus activity summary"""
+        now = datetime.now()
+        two_hours_ago = now - timedelta(hours=2)
+
         with self.driver.session() as session:
             # Get current occupancy for all zones
             current_occupancy = session.run("""
                 MATCH (z:Zone)
                 OPTIONAL MATCH (z)<-[:OCCURRED_IN]-(sa:SpatialActivity)
-                WHERE sa.timestamp >= datetime() - duration({hours: 2})
+                WHERE sa.timestamp >= datetime($cutoff_time)
                 WITH z, sa
                 ORDER BY sa.timestamp DESC
                 WITH z, collect(sa)[0] as latest_activity
@@ -202,11 +210,11 @@ class SpatialForecastingService:
                        z.name as zone_name,
                        z.zone_type as zone_type,
                        z.capacity as capacity,
-                       CASE WHEN latest_activity IS NOT NULL 
-                            THEN latest_activity.occupancy 
+                       CASE WHEN latest_activity IS NOT NULL
+                            THEN latest_activity.occupancy
                             ELSE 0 END as current_occupancy
                 ORDER BY z.zone_id
-            """).data()
+            """, cutoff_time=two_hours_ago.isoformat()).data()
             
             # Calculate summary statistics
             total_capacity = sum(record["capacity"] for record in current_occupancy)

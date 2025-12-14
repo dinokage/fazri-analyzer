@@ -115,8 +115,12 @@ class ToolExecutor:
             return {"error": str(e), "tool": tool_name}
 
     def _get_time_range(self, time_range: str) -> tuple[datetime, datetime]:
-        """Convert time range string to datetime objects"""
-        now = datetime.now(timezone.utc)
+        """Convert time range string to datetime objects.
+
+        Note: Uses local time (no timezone) to match how data is stored in Neo4j.
+        The simulator creates SpatialActivity nodes with local timestamps.
+        """
+        now = datetime.now()  # Local time, no timezone - matches Neo4j data
 
         if time_range == "last_hour":
             start = now - timedelta(hours=1)
@@ -204,15 +208,17 @@ class ToolExecutor:
                 zone_data = self.spatial_service.get_zone_details(zone_id)
                 if zone_data:
                     occupancy = self.spatial_service.get_current_occupancy(zone_id)
+                    current = occupancy.get("current_occupancy", 0) if occupancy else 0
+                    capacity = zone_data.get("capacity", 0)
                     return {
                         "zone_id": zone_id,
                         "zone_name": zone_data.get("name", zone_id),
-                        "current_occupancy": occupancy.get("current_count", 0) if occupancy else 0,
-                        "capacity": zone_data.get("capacity", 0),
+                        "current_occupancy": current,
+                        "capacity": capacity,
                         "utilization_percent": round(
-                            (occupancy.get("current_count", 0) / zone_data.get("capacity", 1)) * 100, 1
-                        ) if occupancy and zone_data.get("capacity") else 0,
-                        "last_updated": datetime.now(timezone.utc).isoformat()
+                            (current / capacity) * 100, 1
+                        ) if capacity else 0,
+                        "last_updated": datetime.now().isoformat()
                     }
                 else:
                     return {"error": f"Zone {zone_id} not found"}
@@ -264,7 +270,7 @@ class ToolExecutor:
                         "total_capacity": sum(z["capacity"] for z in zone_occupancies),
                         "total_occupancy": sum(z["current_occupancy"] for z in zone_occupancies)
                     },
-                    "last_updated": datetime.now(timezone.utc).isoformat()
+                    "last_updated": datetime.now().isoformat()
                 }
 
         except Exception as e:
@@ -1351,7 +1357,7 @@ class ToolExecutor:
             summary = self.spatial_service.get_campus_summary()
 
             response = {
-                "timestamp": datetime.now(timezone.utc).isoformat(),
+                "timestamp": datetime.now().isoformat(),
                 "overall": {
                     "total_zones": summary["summary"]["total_zones"],
                     "total_capacity": summary["summary"]["total_capacity"],

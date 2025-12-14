@@ -246,11 +246,12 @@ async def quick_start_demo(
     - escalation_demo: Long demo showing escalation (10x speed recommended)
     """
     presets = {
-        "unauthorized_access": {"speed": 3.0, "auto_advance": True},
-        "suspicious_loitering": {"speed": 3.0, "auto_advance": True},
-        "coordinated_activity": {"speed": 2.0, "auto_advance": True},
-        "after_hours_equipment": {"speed": 5.0, "auto_advance": True},
-        "escalation_demo": {"speed": 30.0, "auto_advance": True},
+        # Slower speeds to allow time for notifications to appear
+        "unauthorized_access": {"speed": 1.0, "auto_advance": True},
+        "suspicious_loitering": {"speed": 1.0, "auto_advance": True},
+        "coordinated_activity": {"speed": 1.0, "auto_advance": True},
+        "after_hours_equipment": {"speed": 2.0, "auto_advance": True},
+        "escalation_demo": {"speed": 5.0, "auto_advance": True},
     }
 
     config = presets.get(preset, {"speed": 3.0, "auto_advance": True})
