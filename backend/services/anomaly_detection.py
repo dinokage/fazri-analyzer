@@ -151,10 +151,16 @@ class AnomalyDetectionService:
                 except Exception as e:
                     logger.warning(f"Could not detect entity anomalies: {str(e)}")
 
-            # Convert all timestamps to datetime objects before sorting
+            # Convert all timestamps to naive datetime objects before sorting
             for anomaly in anomalies:
-                if isinstance(anomaly['timestamp'], str):
-                    anomaly['timestamp'] = datetime.fromisoformat(anomaly['timestamp'].replace('Z', '+00:00'))
+                ts = anomaly['timestamp']
+                if isinstance(ts, str):
+                    ts = datetime.fromisoformat(ts.replace('Z', '+00:00'))
+                if hasattr(ts, 'to_native'):
+                    ts = ts.to_native()
+                if isinstance(ts, datetime) and ts.tzinfo is not None:
+                    ts = ts.replace(tzinfo=None)
+                anomaly['timestamp'] = ts
 
             # Sort by severity and timestamp
             anomalies.sort(key=lambda x: (
