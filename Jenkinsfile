@@ -199,8 +199,9 @@ stage('Detect Changes') {
                     // Copy GCP service account into running container
                     withCredentials([file(credentialsId: 'fazri-gcp-service-account', variable: 'GCP_SA_FILE')]) {
                         sh """
-                            docker exec ${CONTAINER_NAME} mkdir -p /app/credentials
+                            docker exec -u root ${CONTAINER_NAME} mkdir -p /app/credentials
                             docker cp \$GCP_SA_FILE ${CONTAINER_NAME}:/app/credentials/service-account.json
+                            docker exec -u root ${CONTAINER_NAME} chown appuser:appuser /app/credentials/service-account.json
                         """
                     }
                 }
