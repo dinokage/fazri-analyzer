@@ -1,11 +1,12 @@
 #!/usr/bin/env python3
 """Update zone capacities to realistic values"""
 
+import os
 from neo4j import GraphDatabase
 
-NEO4J_URI = "neo4j://localhost:7687"
-NEO4J_USER = "neo4j"
-NEO4J_PASSWORD = "[REDACTED]"
+NEO4J_URI = os.getenv("NEO4J_URI", "neo4j://localhost:7687")
+NEO4J_USER = os.getenv("NEO4J_USER", "neo4j")
+NEO4J_PASSWORD = os.getenv("NEO4J_PASSWORD", "")
 
 # Realistic capacities based on zone types
 REALISTIC_CAPACITIES = {

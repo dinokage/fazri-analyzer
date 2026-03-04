@@ -1,12 +1,13 @@
 #!/usr/bin/env python3
 """Diagnostic script to troubleshoot why anomalies are not being detected"""
 
+import os
 from neo4j import GraphDatabase
 from datetime import datetime
 
-NEO4J_URI = "neo4j://localhost:7687"
-NEO4J_USER = "neo4j"
-NEO4J_PASSWORD = "[REDACTED]"
+NEO4J_URI = os.getenv("NEO4J_URI", "neo4j://localhost:7687")
+NEO4J_USER = os.getenv("NEO4J_USER", "neo4j")
+NEO4J_PASSWORD = os.getenv("NEO4J_PASSWORD", "")
 
 driver = GraphDatabase.driver(NEO4J_URI, auth=(NEO4J_USER, NEO4J_PASSWORD))
 

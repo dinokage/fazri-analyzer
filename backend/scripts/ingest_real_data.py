@@ -4,6 +4,7 @@ Ingest real CSV data into Neo4j graph database
 This script creates Entity nodes and links them to Zone activities
 """
 
+import os
 from neo4j import GraphDatabase
 import csv
 from datetime import datetime
@@ -398,9 +399,9 @@ class RealDataIngestion:
 
 
 def main():
-    NEO4J_URI = "neo4j://localhost:7687"
-    NEO4J_USER = "neo4j"
-    NEO4J_PASSWORD = "[REDACTED]"
+    NEO4J_URI = os.getenv("NEO4J_URI", "neo4j://localhost:7687")
+    NEO4J_USER = os.getenv("NEO4J_USER", "neo4j")
+    NEO4J_PASSWORD = os.getenv("NEO4J_PASSWORD", "")
     DATA_DIR = "/Users/dinokage/dev/fazri-analyzer/backend/augmented"
 
     try:

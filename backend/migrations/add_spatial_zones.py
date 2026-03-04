@@ -1,4 +1,5 @@
 # backend/app/scripts/simple_zone_migration.py
+import os
 from neo4j import GraphDatabase
 from datetime import datetime, timedelta
 import random
@@ -198,9 +199,9 @@ def main():
     print("Simple Zone Migration")
     print("=" * 30)
     
-    NEO4J_URI = "neo4j://localhost:7687"
-    NEO4J_USER = "neo4j"
-    NEO4J_PASSWORD = "[REDACTED]"
+    NEO4J_URI = os.getenv("NEO4J_URI", "neo4j://localhost:7687")
+    NEO4J_USER = os.getenv("NEO4J_USER", "neo4j")
+    NEO4J_PASSWORD = os.getenv("NEO4J_PASSWORD", "")
     
     try:
         with SimpleZoneMigration(NEO4J_URI, NEO4J_USER, NEO4J_PASSWORD) as migration:
