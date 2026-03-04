@@ -402,7 +402,7 @@ def main():
     NEO4J_URI = os.getenv("NEO4J_URI", "neo4j://localhost:7687")
     NEO4J_USER = os.getenv("NEO4J_USER", "neo4j")
     NEO4J_PASSWORD = os.getenv("NEO4J_PASSWORD", "")
-    DATA_DIR = "/Users/dinokage/dev/fazri-analyzer/backend/augmented"
+    DATA_DIR = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "augmented")
 
     try:
         with RealDataIngestion(NEO4J_URI, NEO4J_USER, NEO4J_PASSWORD, DATA_DIR) as ingestion:
