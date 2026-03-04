@@ -23,9 +23,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     libjpeg62-turbo \
     libpng16-16 \
     libtiff6 \
-    libavcodec59 \
-    libavformat59 \
-    libswscale6 \
+    ffmpeg \
     libv4l-0 \
     curl \
     ca-certificates \
