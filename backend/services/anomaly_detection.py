@@ -100,11 +100,12 @@ class AnomalyDetectionService:
 
         # Determine time range - use local time to match Neo4j data
         if start_date and end_date:
-            # Parse as local time (no timezone) to match Neo4j data
-            start_time = datetime.fromisoformat(f"{start_date}T00:00:00")
-            end_time = datetime.fromisoformat(f"{end_date}T23:59:59")
+            from datetime import timezone as tz
+            start_time = datetime.fromisoformat(f"{start_date}T00:00:00+00:00")
+            end_time = datetime.fromisoformat(f"{end_date}T23:59:59+00:00")
         elif time_window_hours:
-            end_time = datetime.now()  # Local time
+            from datetime import timezone as tz
+            end_time = datetime.now(tz.utc)
             start_time = end_time - timedelta(hours=time_window_hours)
         else:
             # Use entire dataset
@@ -117,14 +118,16 @@ class AnomalyDetectionService:
                     start_time = start_time.to_native()
                 if hasattr(end_time, 'to_native'):
                     end_time = end_time.to_native()
-                # Strip timezone if present to match local data
-                if start_time.tzinfo is not None:
-                    start_time = start_time.replace(tzinfo=None)
-                if end_time.tzinfo is not None:
-                    end_time = end_time.replace(tzinfo=None)
+                # Ensure timezone-aware to match Neo4j UTC data
+                from datetime import timezone as tz
+                if start_time.tzinfo is None:
+                    start_time = start_time.replace(tzinfo=tz.utc)
+                if end_time.tzinfo is None:
+                    end_time = end_time.replace(tzinfo=tz.utc)
             else:
                 # Fallback to last 30 days
-                end_time = datetime.now()  # Local time
+                from datetime import timezone as tz
+                end_time = datetime.now(tz.utc)
                 start_time = end_time - timedelta(days=30)
 
         try:

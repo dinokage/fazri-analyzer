@@ -13,7 +13,7 @@ def verify_ingestion():
     print("🔍 Verifying Ingestion")
     print("="*60)
     
-    data_dir = Path(__file__).parent.parent / "datasets"
+    data_dir = Path(__file__).parent.parent / "augmented"
     graph = get_graph_builder()
     
     # Load profiles
@@ -22,7 +22,7 @@ def verify_ingestion():
     print(f"   Sample entity_ids: {profiles_df['entity_id'].head(3).tolist()}")
     
     # Load swipes
-    swipes_df = pd.read_csv(data_dir / "campus_card_swipes.csv")
+    swipes_df = pd.read_csv(data_dir / "campus_card_swipes_augmented.csv")
     print(f"\n📊 Swipes: {len(swipes_df)} rows")
     print(f"   Sample card_ids: {swipes_df['card_id'].head(3).tolist()}")
     
