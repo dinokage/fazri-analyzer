@@ -1,5 +1,6 @@
 # backend/scripts/ingest_graph.py
 import sys
+import os
 from pathlib import Path
 
 # Add parent directory to path
@@ -61,7 +62,7 @@ def main():
     helpdesk_df = pd.read_csv(data_dir / "helpdesk_augmented.csv")
     
     # How many events to ingest?
-    event_limit = 40000
+    event_limit = int(os.environ.get("INGEST_LIMIT", "5000"))
     print(f"\n⚙️  Ingesting up to {event_limit} events from each dataset...")
     
     print("\n1️⃣  Ingesting card swipes...")
