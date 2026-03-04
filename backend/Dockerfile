@@ -1,25 +1,54 @@
+# syntax=docker/dockerfile:1
 # Multi-stage build for FastAPI application with ML dependencies
-FROM python:3.11-slim AS base
 
-# Set environment variables
+# ---- Runtime base: only libraries needed at runtime ----
+FROM python:3.11-slim AS runtime-base
+
 ENV PYTHONUNBUFFERED=1 \
     PYTHONDONTWRITEBYTECODE=1 \
-    PIP_NO_CACHE_DIR=1 \
     PIP_DISABLE_PIP_VERSION_CHECK=1 \
     DEBIAN_FRONTEND=noninteractive
 
 WORKDIR /app
 
-# Install system dependencies including CMake and CV libraries
+# Runtime-only system libraries (no compilers)
 RUN apt-get update && apt-get install -y --no-install-recommends \
-    # Build tools
+    libgl1 \
+    libglib2.0-0 \
+    libsm6 \
+    libxext6 \
+    libxrender1 \
+    libgomp1 \
+    libgeos-dev \
+    libjpeg62-turbo \
+    libpng16-16 \
+    libtiff6 \
+    libavcodec59 \
+    libavformat59 \
+    libswscale6 \
+    libv4l-0 \
+    curl \
+    ca-certificates \
+    && rm -rf /var/lib/apt/lists/*
+
+# ---- Builder: compilers + pip install ----
+FROM python:3.11-slim AS builder
+
+ENV PYTHONUNBUFFERED=1 \
+    PYTHONDONTWRITEBYTECODE=1 \
+    PIP_DISABLE_PIP_VERSION_CHECK=1 \
+    DEBIAN_FRONTEND=noninteractive
+
+WORKDIR /app
+
+# Build tools + dev headers (only in this stage)
+RUN apt-get update && apt-get install -y --no-install-recommends \
     gcc \
     g++ \
     cmake \
     make \
     build-essential \
     pkg-config \
-    # OpenCV dependencies
     libgl1 \
     libglib2.0-0 \
     libsm6 \
@@ -27,7 +56,6 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     libxrender-dev \
     libgomp1 \
     libgeos-dev \
-    # Image processing
     libjpeg-dev \
     libpng-dev \
     libtiff-dev \
@@ -35,34 +63,26 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     libavformat-dev \
     libswscale-dev \
     libv4l-dev \
-    # Utilities
     wget \
-    curl \
     git \
     ca-certificates \
     && rm -rf /var/lib/apt/lists/*
 
-# Verify CMake installation
-RUN cmake --version
-
-# Builder stage for compiling dependencies
-FROM base AS builder
-
 COPY requirements.txt .
 
-# Install Python packages with build dependencies
-RUN pip install --upgrade pip setuptools wheel && \
-    pip install --no-cache-dir -r requirements.txt
-
-# Development stage
-FROM base AS development
-
-COPY requirements.txt .
-RUN pip install --upgrade pip setuptools wheel && \
+# BuildKit cache mount keeps pip cache across builds — dlib/tensorflow won't recompile
+RUN --mount=type=cache,target=/root/.cache/pip \
+    pip install --upgrade pip setuptools wheel && \
     pip install -r requirements.txt
 
-# Install development tools
-RUN pip install --no-cache-dir \
+# ---- Development stage ----
+FROM runtime-base AS development
+
+COPY --from=builder /usr/local/lib/python3.11/site-packages /usr/local/lib/python3.11/site-packages
+COPY --from=builder /usr/local/bin /usr/local/bin
+
+RUN --mount=type=cache,target=/root/.cache/pip \
+    pip install --no-cache-dir \
     pytest \
     pytest-cov \
     pytest-asyncio \
@@ -74,8 +94,8 @@ COPY . .
 
 CMD ["uvicorn", "main:app", "--host", "0.0.0.0", "--port", "8000", "--reload"]
 
-# Production stage
-FROM base AS production
+# ---- Production stage ----
+FROM runtime-base AS production
 
 # Copy installed packages from builder
 COPY --from=builder /usr/local/lib/python3.11/site-packages /usr/local/lib/python3.11/site-packages
@@ -86,10 +106,7 @@ COPY . .
 
 # Create non-root user
 RUN useradd -m -u 1000 appuser && \
-    chown -R appuser:appuser /app && \
-    # Clean up
-    apt-get clean && \
-    rm -rf /var/lib/apt/lists/* /tmp/* /var/tmp/*
+    chown -R appuser:appuser /app
 
 USER appuser
 

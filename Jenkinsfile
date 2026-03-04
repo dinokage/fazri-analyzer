@@ -1,24 +1,23 @@
 pipeline {
     agent any
-    
+
     environment {
-        // Docker configuration
-        IMAGE_NAME = 'fazri-analyzer-frontend'
+        IMAGE_NAME = 'fazri-analyzer-backend'
         IMAGE_TAG = "${env.BUILD_NUMBER}"
-        CONTAINER_NAME = "${IMAGE_NAME}-prod"
-        DOCKERFILE_PATH = 'Dockerfile.prod'
-        
-        // Container configuration
-        CONTAINER_PORT = '3000'
-        HOST_PORT = '3000'
+        CONTAINER_NAME = 'fazri-api'
+        CONTAINER_PORT = '8000'
+        HOST_PORT = '8000'
+        NETWORK_NAME = 'backend_fazri-network'
+        GCP_CREDS_DIR = '/opt/fazri/credentials'
+        DOCKER_BUILDKIT = '1'
     }
-    
+
     options {
         buildDiscarder(logRotator(numToKeepStr: '10'))
         disableConcurrentBuilds()
         timeout(time: 30, unit: 'MINUTES')
     }
-    
+
     stages {
         stage('Checkout') {
             steps {
@@ -28,130 +27,168 @@ pipeline {
                 }
             }
         }
-        
-        stage('Load Environment Variables') {
+
+stage('Detect Changes') {
             steps {
                 script {
-                    // Try to load credentials, if not found, use defaults or fail gracefully
+                    def backendChanged = true
                     try {
-                        withCredentials([
-                            string(credentialsId: 'NEXT_PUBLIC_FASTAPI_BASE_URL', variable: 'FASTAPI_URL'),
-                            string(credentialsId: 'NEXT_PUBLIC_CDN_URL', variable: 'CDN_URL')
-                        ]) {
-                            env.NEXT_PUBLIC_FASTAPI_BASE_URL = FASTAPI_URL
-                            env.NEXT_PUBLIC_CDN_URL = CDN_URL
-                        }
+                        def changes = sh(
+                            script: 'git diff --name-only HEAD~1 HEAD -- backend/ Jenkinsfile',
+                            returnStdout: true
+                        ).trim()
+                        backendChanged = changes.length() > 0
                     } catch (Exception e) {
-                        echo "⚠️  Warning: Credentials not found. Using default values."
-                        echo "Please add credentials in Jenkins: Manage Jenkins > Credentials"
-                        echo "Required credential IDs:"
-                        echo "  - NEXT_PUBLIC_FASTAPI_BASE_URL"
-                        echo "  - NEXT_PUBLIC_CDN_URL"
-                        
-                        // Set default values or fail
-                        env.NEXT_PUBLIC_FASTAPI_BASE_URL = 'http://localhost:8000'
-                        env.NEXT_PUBLIC_CDN_URL = 'http://localhost:3000'
-                        
-                        // Uncomment to fail if credentials are missing:
-                        // error("Required credentials not found: ${e.message}")
+                        echo "Could not detect changes (first run?), proceeding with build"
+                        backendChanged = true
                     }
-                    
-                    echo "Using FASTAPI_BASE_URL: ${env.NEXT_PUBLIC_FASTAPI_BASE_URL}"
-                    echo "Using CDN_URL: ${env.NEXT_PUBLIC_CDN_URL}"
+
+                    if (!backendChanged) {
+                        echo "No changes in backend/, skipping build"
+                        currentBuild.result = 'NOT_BUILT'
+                        error("No backend changes detected — skipping build")
+                    }
+
+                    echo "Backend changes detected, proceeding with build"
                 }
             }
         }
-        
-        stage('Cleanup Old Container') {
+
+        stage('Build Image') {
             steps {
                 script {
                     sh """
-                        echo "Cleaning up old containers and images..."
-                        
-                        # Stop and remove existing container if it exists
-                        docker stop ${CONTAINER_NAME} 2>/dev/null || true
-                        docker rm ${CONTAINER_NAME} 2>/dev/null || true
-                        
-                        # Remove old images (keep last 3)
-                        docker images ${IMAGE_NAME} --format "{{.ID}} {{.CreatedAt}}" | \
-                        tail -n +4 | awk '{print \$1}' | xargs -r docker rmi -f 2>/dev/null || true
-                        
-                        echo "Cleanup completed"
-                    """
-                }
-            }
-        }
-        
-        stage('Build Docker Image') {
-            steps {
-                script {
-                    sh """
-                        echo "Building Docker image..."
-                        
+                        echo "Building backend Docker image..."
+
                         docker build \
-                            -f ${DOCKERFILE_PATH} \
-                            --build-arg NEXT_PUBLIC_FASTAPI_BASE_URL=${env.NEXT_PUBLIC_FASTAPI_BASE_URL} \
-                            --build-arg NEXT_PUBLIC_CDN_URL=${env.NEXT_PUBLIC_CDN_URL} \
+                            -f backend/Dockerfile \
+                            --target production \
                             -t ${IMAGE_NAME}:${IMAGE_TAG} \
                             -t ${IMAGE_NAME}:latest \
-                            .
-                        
-                        echo "Docker image built successfully"
+                            backend/
+
+                        echo "Docker image built successfully: ${IMAGE_NAME}:${IMAGE_TAG}"
                     """
                 }
             }
         }
-        
-        stage('Run Container') {
+
+        stage('Deploy') {
             steps {
                 script {
+                    // Ensure GCP credentials directory exists
+                    sh "mkdir -p ${GCP_CREDS_DIR}"
+
+                    // Write GCP service account file from Jenkins secret file credential
+                    withCredentials([file(credentialsId: 'fazri-gcp-service-account', variable: 'GCP_SA_FILE')]) {
+                        sh "cp \$GCP_SA_FILE ${GCP_CREDS_DIR}/service-account.json && chmod 644 ${GCP_CREDS_DIR}/service-account.json"
+                    }
+
+                    // Stop and remove old container
                     sh """
-                        echo "Starting container..."
-                        
-                        docker run -d \
-                            --name ${CONTAINER_NAME} \
-                            --restart unless-stopped \
-                            -p ${HOST_PORT}:${CONTAINER_PORT} \
-                            ${IMAGE_NAME}:${IMAGE_TAG}
-                        
-                        echo "Container started: ${CONTAINER_NAME}"
+                        echo "Stopping old container..."
+                        docker stop ${CONTAINER_NAME} 2>/dev/null || true
+                        docker rm ${CONTAINER_NAME} 2>/dev/null || true
                     """
+
+                    // Start new container with all env vars from Jenkins credentials
+                    withCredentials([
+                        // PostgreSQL
+                        string(credentialsId: 'fazri-postgres-server', variable: 'POSTGRES_SERVER'),
+                        string(credentialsId: 'fazri-postgres-user', variable: 'POSTGRES_USER'),
+                        string(credentialsId: 'fazri-postgres-password', variable: 'POSTGRES_PASSWORD'),
+                        string(credentialsId: 'fazri-postgres-db', variable: 'POSTGRES_DB'),
+                        string(credentialsId: 'fazri-postgres-port', variable: 'POSTGRES_PORT'),
+                        // Neo4j
+                        string(credentialsId: 'fazri-neo4j-uri', variable: 'NEO4J_URI'),
+                        string(credentialsId: 'fazri-neo4j-user', variable: 'NEO4J_USER'),
+                        string(credentialsId: 'fazri-neo4j-password', variable: 'NEO4J_PASSWORD'),
+                        // Redis
+                        string(credentialsId: 'fazri-redis-host', variable: 'REDIS_HOST'),
+                        string(credentialsId: 'fazri-redis-port', variable: 'REDIS_PORT'),
+                        // App secrets
+                        string(credentialsId: 'fazri-secret-key', variable: 'SECRET_KEY'),
+                        // Vertex AI / Gemini
+                        string(credentialsId: 'fazri-google-api-key', variable: 'GOOGLE_API_KEY'),
+                        string(credentialsId: 'fazri-vertex-project-id', variable: 'VERTEX_PROJECT_ID'),
+                        string(credentialsId: 'fazri-vertex-location', variable: 'VERTEX_LOCATION'),
+                        // GitLab integration
+                        string(credentialsId: 'fazri-gitlab-url', variable: 'GITLAB_URL'),
+                        string(credentialsId: 'fazri-gitlab-token', variable: 'GITLAB_TOKEN'),
+                        string(credentialsId: 'fazri-gitlab-project-id', variable: 'GITLAB_PROJECT_ID')
+                    ]) {
+                        sh """
+                            echo "Starting new container..."
+
+                            docker run -d \
+                                --name ${CONTAINER_NAME} \
+                                --restart unless-stopped \
+                                --network ${NETWORK_NAME} \
+                                -p ${HOST_PORT}:${CONTAINER_PORT} \
+                                -e POSTGRES_SERVER=\$POSTGRES_SERVER \
+                                -e POSTGRES_USER=\$POSTGRES_USER \
+                                -e POSTGRES_PASSWORD=\$POSTGRES_PASSWORD \
+                                -e POSTGRES_DB=\$POSTGRES_DB \
+                                -e POSTGRES_PORT=\$POSTGRES_PORT \
+                                -e NEO4J_URI=\$NEO4J_URI \
+                                -e NEO4J_USER=\$NEO4J_USER \
+                                -e NEO4J_PASSWORD=\$NEO4J_PASSWORD \
+                                -e REDIS_HOST=\$REDIS_HOST \
+                                -e REDIS_PORT=\$REDIS_PORT \
+                                -e SECRET_KEY=\$SECRET_KEY \
+                                -e GOOGLE_API_KEY=\$GOOGLE_API_KEY \
+                                -e USE_VERTEX_AI=true \
+                                -e VERTEX_PROJECT_ID=\$VERTEX_PROJECT_ID \
+                                -e VERTEX_LOCATION=\$VERTEX_LOCATION \
+                                -e GOOGLE_APPLICATION_CREDENTIALS=/app/credentials/service-account.json \
+                                -e GITLAB_URL=\$GITLAB_URL \
+                                -e GITLAB_TOKEN=\$GITLAB_TOKEN \
+                                -e GITLAB_PROJECT_ID=\$GITLAB_PROJECT_ID \
+                                -v app_data:/app/augmented \
+                                -v app_ml_models:/app/ml_models \
+                                -v app_logs:/app/logs \
+                                -v ${GCP_CREDS_DIR}/service-account.json:/app/credentials/service-account.json:ro \
+                                ${IMAGE_NAME}:${IMAGE_TAG}
+
+                            echo "Container started: ${CONTAINER_NAME}"
+                        """
+                    }
                 }
             }
         }
-        
+
         stage('Health Check') {
             steps {
                 script {
                     sh """
                         echo "Running health checks..."
-                        
-                        # Wait for container to start
+
+                        # Wait for container to initialize
                         sleep 10
-                        
+
                         # Check if container is running
                         if ! docker ps | grep -q ${CONTAINER_NAME}; then
-                            echo "❌ Container failed to start"
+                            echo "Container failed to start"
                             docker logs ${CONTAINER_NAME}
                             exit 1
                         fi
-                        
-                        # Check if application responds
+
+                        # Poll health endpoint
                         max_attempts=12
                         attempt=0
-                        
+
                         while [ \$attempt -lt \$max_attempts ]; do
-                            if curl -f http://10.69.5.100:${HOST_PORT} > /dev/null 2>&1; then
-                                echo "✅ Application is healthy!"
+                            if curl -sf http://localhost:${HOST_PORT}/health > /dev/null 2>&1; then
+                                echo "Application is healthy!"
                                 docker ps | grep ${CONTAINER_NAME}
                                 exit 0
                             fi
                             attempt=\$((attempt + 1))
-                            echo "⏳ Attempt \$attempt/\$max_attempts: Application not ready yet..."
+                            echo "Attempt \$attempt/\$max_attempts: Application not ready yet..."
                             sleep 5
                         done
-                        
-                        echo "❌ Health check failed after \$max_attempts attempts"
+
+                        echo "Health check failed after \$max_attempts attempts"
                         echo "Container logs:"
                         docker logs ${CONTAINER_NAME}
                         exit 1
@@ -159,36 +196,52 @@ pipeline {
                 }
             }
         }
+
+        stage('Cleanup') {
+            steps {
+                script {
+                    sh """
+                        echo "Pruning old images..."
+
+                        # Remove old images, keep current and latest
+                        docker images ${IMAGE_NAME} --format "{{.ID}} {{.Tag}}" | \
+                            grep -v -E "^.* (${IMAGE_TAG}|latest)\$" | \
+                            awk '{print \$1}' | xargs -r docker rmi -f 2>/dev/null || true
+
+                        echo "Cleanup completed"
+                    """
+                }
+            }
+        }
     }
-    
+
     post {
         success {
             script {
                 echo """
                 ====================================
-                ✅ Deployment Successful!
+                Deployment Successful!
                 ====================================
                 Image: ${IMAGE_NAME}:${IMAGE_TAG}
                 Container: ${CONTAINER_NAME}
-                URL: http://10.69.5.100:${HOST_PORT}
+                URL: http://localhost:${HOST_PORT}
                 Build: #${env.BUILD_NUMBER}
                 Commit: ${env.GIT_COMMIT}
                 ====================================
                 """
             }
         }
-        
+
         failure {
             script {
                 echo """
                 ====================================
-                ❌ Deployment Failed
+                Deployment Failed
                 ====================================
                 Build: #${env.BUILD_NUMBER}
                 ====================================
                 """
-                
-                // Only try to get logs if container might exist
+
                 sh """
                     if docker ps -a | grep -q ${CONTAINER_NAME}; then
                         echo "Container logs:"
@@ -198,16 +251,6 @@ pipeline {
                     fi
                 """
             }
-        }
-        
-        always {
-            cleanWs(
-                deleteDirs: true,
-                patterns: [
-                    [pattern: 'node_modules', type: 'INCLUDE'],
-                    [pattern: '.next', type: 'INCLUDE']
-                ]
-            )
         }
     }
 }
