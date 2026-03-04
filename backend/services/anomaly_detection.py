@@ -1,6 +1,6 @@
 # backend/app/services/anomaly_detection_fixed.py
 from neo4j import GraphDatabase
-from datetime import datetime, timedelta, timezone
+from datetime import datetime, timedelta
 from typing import List, Dict, Optional, Tuple
 from enum import Enum
 import logging
@@ -93,19 +93,17 @@ class AnomalyDetectionService:
                            include_entity_anomalies: bool = True) -> List[Dict]:
         """Detect anomalies - SIMPLIFIED for current data structure
 
-        Note: Uses local time (no timezone) to match how data is stored in Neo4j.
-        The simulator creates SpatialActivity nodes with local timestamps.
+        Note: Uses timezone-naive datetimes to match how data is stored in Neo4j.
+        The simulator and ingest scripts create nodes with local timestamps (no timezone).
         """
         anomalies = []
 
-        # Determine time range - use local time to match Neo4j data
+        # Determine time range - use naive datetimes to match Neo4j data
         if start_date and end_date:
-            from datetime import timezone as tz
-            start_time = datetime.fromisoformat(f"{start_date}T00:00:00+00:00")
-            end_time = datetime.fromisoformat(f"{end_date}T23:59:59+00:00")
+            start_time = datetime.fromisoformat(f"{start_date}T00:00:00")
+            end_time = datetime.fromisoformat(f"{end_date}T23:59:59")
         elif time_window_hours:
-            from datetime import timezone as tz
-            end_time = datetime.now(tz.utc)
+            end_time = datetime.now()
             start_time = end_time - timedelta(hours=time_window_hours)
         else:
             # Use entire dataset
@@ -118,16 +116,14 @@ class AnomalyDetectionService:
                     start_time = start_time.to_native()
                 if hasattr(end_time, 'to_native'):
                     end_time = end_time.to_native()
-                # Ensure timezone-aware to match Neo4j UTC data
-                from datetime import timezone as tz
-                if start_time.tzinfo is None:
-                    start_time = start_time.replace(tzinfo=tz.utc)
-                if end_time.tzinfo is None:
-                    end_time = end_time.replace(tzinfo=tz.utc)
+                # Strip timezone info to match Neo4j naive datetimes
+                if start_time.tzinfo is not None:
+                    start_time = start_time.replace(tzinfo=None)
+                if end_time.tzinfo is not None:
+                    end_time = end_time.replace(tzinfo=None)
             else:
                 # Fallback to last 30 days
-                from datetime import timezone as tz
-                end_time = datetime.now(tz.utc)
+                end_time = datetime.now()
                 start_time = end_time - timedelta(days=30)
 
         try:
@@ -363,8 +359,8 @@ class AnomalyDetectionService:
                 timestamp = record['timestamp']
                 if hasattr(timestamp, 'to_native'):
                     timestamp = timestamp.to_native()
-                if timestamp.tzinfo is None:
-                    timestamp = timestamp.replace(tzinfo=timezone.utc)
+                if timestamp.tzinfo is not None:
+                    timestamp = timestamp.replace(tzinfo=None)
 
                 anomalies.append({
                     'id': f"negative_flow_{record['zone_id']}_{date_str}_{record['hour']}",
