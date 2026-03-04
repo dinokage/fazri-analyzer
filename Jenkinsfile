@@ -229,7 +229,7 @@ stage('Detect Changes') {
                         attempt=0
 
                         while [ \$attempt -lt \$max_attempts ]; do
-                            if curl -sf http://localhost:${HOST_PORT}/health > /dev/null 2>&1; then
+                            if docker exec ${CONTAINER_NAME} curl -sf http://localhost:${CONTAINER_PORT}/health > /dev/null 2>&1; then
                                 echo "Application is healthy!"
                                 docker ps | grep ${CONTAINER_NAME}
                                 exit 0
