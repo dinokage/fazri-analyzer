@@ -54,6 +54,59 @@ stage('Detect Changes') {
             }
         }
 
+        stage('Validate Credentials') {
+            steps {
+                script {
+                    def missing = []
+                    def requiredCreds = [
+                        'fazri-postgres-server',
+                        'fazri-postgres-user',
+                        'fazri-postgres-password',
+                        'fazri-postgres-db',
+                        'fazri-postgres-port',
+                        'fazri-neo4j-uri',
+                        'fazri-neo4j-user',
+                        'fazri-neo4j-password',
+                        'fazri-redis-host',
+                        'fazri-redis-port',
+                        'fazri-secret-key',
+                        'fazri-vertex-project-id',
+                        'fazri-vertex-location',
+                        'fazri-gitlab-url',
+                        'fazri-gitlab-token',
+                        'fazri-gitlab-project-id'
+                    ]
+
+                    for (credId in requiredCreds) {
+                        try {
+                            withCredentials([string(credentialsId: credId, variable: 'TEST_VAR')]) {
+                                // credential exists
+                            }
+                        } catch (Exception e) {
+                            missing.add(credId)
+                        }
+                    }
+
+                    // Check secret file credential separately
+                    try {
+                        withCredentials([file(credentialsId: 'fazri-gcp-service-account', variable: 'TEST_FILE')]) {
+                            // credential exists
+                        }
+                    } catch (Exception e) {
+                        missing.add('fazri-gcp-service-account')
+                    }
+
+                    if (missing.size() > 0) {
+                        echo "Missing Jenkins credentials:"
+                        missing.each { echo "  - ${it}" }
+                        error("${missing.size()} credential(s) missing. Add them in Jenkins > Manage Credentials before deploying.")
+                    }
+
+                    echo "All ${requiredCreds.size() + 1} credentials validated"
+                }
+            }
+        }
+
         stage('Build Image') {
             steps {
                 script {
@@ -108,8 +161,7 @@ stage('Detect Changes') {
                         string(credentialsId: 'fazri-redis-port', variable: 'REDIS_PORT'),
                         // App secrets
                         string(credentialsId: 'fazri-secret-key', variable: 'SECRET_KEY'),
-                        // Vertex AI / Gemini
-                        string(credentialsId: 'fazri-google-api-key', variable: 'GOOGLE_API_KEY'),
+                        // Vertex AI
                         string(credentialsId: 'fazri-vertex-project-id', variable: 'VERTEX_PROJECT_ID'),
                         string(credentialsId: 'fazri-vertex-location', variable: 'VERTEX_LOCATION'),
                         // GitLab integration
@@ -136,7 +188,6 @@ stage('Detect Changes') {
                                 -e REDIS_HOST=\$REDIS_HOST \
                                 -e REDIS_PORT=\$REDIS_PORT \
                                 -e SECRET_KEY=\$SECRET_KEY \
-                                -e GOOGLE_API_KEY=\$GOOGLE_API_KEY \
                                 -e USE_VERTEX_AI=true \
                                 -e VERTEX_PROJECT_ID=\$VERTEX_PROJECT_ID \
                                 -e VERTEX_LOCATION=\$VERTEX_LOCATION \
