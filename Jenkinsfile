@@ -129,14 +129,6 @@ stage('Detect Changes') {
         stage('Deploy') {
             steps {
                 script {
-                    // Ensure GCP credentials directory exists
-                    sh "mkdir -p ${GCP_CREDS_DIR}"
-
-                    // Write GCP service account file from Jenkins secret file credential
-                    withCredentials([file(credentialsId: 'fazri-gcp-service-account', variable: 'GCP_SA_FILE')]) {
-                        sh "cp \$GCP_SA_FILE ${GCP_CREDS_DIR}/service-account.json && chmod 644 ${GCP_CREDS_DIR}/service-account.json"
-                    }
-
                     // Stop and remove old container
                     sh """
                         echo "Stopping old container..."
@@ -198,10 +190,17 @@ stage('Detect Changes') {
                                 -v app_data:/app/augmented \
                                 -v app_ml_models:/app/ml_models \
                                 -v app_logs:/app/logs \
-                                -v ${GCP_CREDS_DIR}/service-account.json:/app/credentials/service-account.json:ro \
                                 ${IMAGE_NAME}:${IMAGE_TAG}
 
                             echo "Container started: ${CONTAINER_NAME}"
+                        """
+                    }
+
+                    // Copy GCP service account into running container
+                    withCredentials([file(credentialsId: 'fazri-gcp-service-account', variable: 'GCP_SA_FILE')]) {
+                        sh """
+                            docker exec ${CONTAINER_NAME} mkdir -p /app/credentials
+                            docker cp \$GCP_SA_FILE ${CONTAINER_NAME}:/app/credentials/service-account.json
                         """
                     }
                 }
