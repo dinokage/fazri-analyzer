@@ -44,7 +44,7 @@ class CampusGraphBuilder:
             if isinstance(timestamp_str, pd.Timestamp):
                 dt = timestamp_str
             else:
-                dt = pd.to_datetime(timestamp_str)
+                dt = pd.to_datetime(timestamp_str, format='ISO8601')
             
             # Format as ISO 8601 which Neo4j understands
             return dt.strftime('%Y-%m-%dT%H:%M:%S')
@@ -201,7 +201,7 @@ class CampusGraphBuilder:
         
         # Convert timestamp column once
         swipes_df = swipes_df.copy()
-        swipes_df['timestamp'] = pd.to_datetime(swipes_df['timestamp'])
+        swipes_df['timestamp'] = pd.to_datetime(swipes_df['timestamp'], format='ISO8601')
         
         ingested = 0
         for idx, row in swipes_df.iterrows():
@@ -250,7 +250,7 @@ class CampusGraphBuilder:
         
         # Convert timestamp column once
         wifi_df = wifi_df.copy()
-        wifi_df['timestamp'] = pd.to_datetime(wifi_df['timestamp'])
+        wifi_df['timestamp'] = pd.to_datetime(wifi_df['timestamp'], format='ISO8601')
         
         ingested = 0
         for idx, row in wifi_df.iterrows():
@@ -299,7 +299,7 @@ class CampusGraphBuilder:
         
         # Library uses 'timestamp' column
         library_df = library_df.copy()
-        library_df['timestamp'] = pd.to_datetime(library_df['timestamp'])
+        library_df['timestamp'] = pd.to_datetime(library_df['timestamp'], format='ISO8601')
         
         ingested = 0
         errors = 0
@@ -378,7 +378,7 @@ class CampusGraphBuilder:
         
         # Convert timestamp
         helpdesk_df = helpdesk_df.copy()
-        helpdesk_df['timestamp'] = pd.to_datetime(helpdesk_df['timestamp'])
+        helpdesk_df['timestamp'] = pd.to_datetime(helpdesk_df['timestamp'], format='ISO8601')
         
         ingested = 0
         errors = 0
@@ -445,7 +445,7 @@ class CampusGraphBuilder:
         
         # Convert timestamp
         cctv_df = cctv_df.copy()
-        cctv_df['timestamp'] = pd.to_datetime(cctv_df['timestamp'])
+        cctv_df['timestamp'] = pd.to_datetime(cctv_df['timestamp'], format='ISO8601')
         
         ingested = 0
         errors = 0
