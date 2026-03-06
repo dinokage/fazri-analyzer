@@ -43,3 +43,6 @@ next-env.d.ts
 /src/generated/prisma
 /backend/backup*
 /backend/anal/*
+
+# git worktrees
+.worktrees/
