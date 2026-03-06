@@ -10,7 +10,7 @@ logger = logging.getLogger(__name__)
 
 
 class ConnectorType(Enum):
-    """Types of data connectors"""
+    """Types of data connectors."""
     CARD_SWIPE = "card_swipe"
     WIFI = "wifi"
     CCTV = "cctv"
@@ -20,7 +20,7 @@ class ConnectorType(Enum):
 
 
 class ConnectionMethod(Enum):
-    """Methods for connecting to data sources"""
+    """Methods for connecting to data sources."""
     REST_API = "rest_api"
     DATABASE = "database"
     FILE_UPLOAD = "file_upload"
@@ -31,7 +31,7 @@ class ConnectionMethod(Enum):
 
 @dataclass
 class ConnectorConfig:
-    """Configuration for a data connector"""
+    """Configuration for a data connector."""
     connector_id: str
     institution_id: str
     connector_type: ConnectorType
@@ -54,29 +54,35 @@ class ConnectorConfig:
 
 
 class BaseConnector(ABC):
-    """Abstract base class for all data connectors"""
+    """Abstract base class for all data connectors."""
 
-    def __init__(self, config: ConnectorConfig):
+    def __init__(self, config: ConnectorConfig) -> None:
+        """Initialize connector with configuration."""
         self.config = config
         self.logger = logging.getLogger(f"connector.{config.connector_id}")
 
     @abstractmethod
     async def test_connection(self) -> bool:
-        """Test if connection to data source is valid"""
+        """Test if connection to data source is valid."""
         pass
 
     @abstractmethod
     async def fetch_data(self, since: datetime) -> List[Dict[str, Any]]:
-        """Fetch data from source since last sync"""
+        """Fetch data from source since last sync."""
         pass
 
     @abstractmethod
     async def get_sample_data(self, n_records: int = 10) -> List[Dict[str, Any]]:
-        """Get sample data for schema detection"""
+        """Get sample data for schema detection."""
         pass
 
-    def normalize_data(self, raw_data: List[Dict]) -> List[Dict]:
-        """Apply field mappings to normalize data"""
+    def normalize_data(self, raw_data: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+        """
+        Apply field mappings to normalize data.
+
+        Note: If multiple source fields map to the same target field,
+        the last mapped value will be used.
+        """
         normalized = []
         for record in raw_data:
             mapped_record = {}
