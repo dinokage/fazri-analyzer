@@ -7,27 +7,35 @@ services:
       - "6379:6379"
     volumes:
       - redis_data:/data
-    command: redis-server --appendonly yes --maxmemory 2gb --maxmemory-policy allkeys-lru
+    command: redis-server --appendonly yes --maxmemory 2gb --maxmemory-policy allkeys-lru --requirepass ${REDIS_PASSWORD:-fazri_dev_redis_pass}
+    restart: unless-stopped
     healthcheck:
-      test: ["CMD", "redis-cli", "ping"]
+      test: ["CMD", "redis-cli", "--pass", "${REDIS_PASSWORD:-fazri_dev_redis_pass}", "ping"]
       interval: 10s
       timeout: 3s
       retries: 3
 
-  celery-worker-entity:
+  celery-worker:
     build:
       context: ./backend
       dockerfile: Dockerfile
-    command: celery -A services.data_pipeline.celery_app worker -Q entity_resolution -c 8 --loglevel=info --hostname=entity@%h
+    command: celery -A services.data_pipeline.celery_app worker -Q face_recognition,anomaly_detection,entity_resolution,graph_building,default -c 8 --loglevel=info --hostname=worker@%h
     depends_on:
-      - redis
+      redis:
+        condition: service_healthy
+    restart: unless-stopped
     environment:
-      - CELERY_BROKER_URL=redis://redis:6379/0
-      - CELERY_RESULT_BACKEND=redis://redis:6379/1
+      - CELERY_BROKER_URL=redis://:${REDIS_PASSWORD:-fazri_dev_redis_pass}@redis:6379/0
+      - CELERY_RESULT_BACKEND=redis://:${REDIS_PASSWORD:-fazri_dev_redis_pass}@redis:6379/1
       - DATABASE_URL=${DATABASE_URL}
       - NEO4J_URI=${NEO4J_URI}
     volumes:
       - ./backend:/app
+    healthcheck:
+      test: ["CMD-SHELL", "celery -A services.data_pipeline.celery_app inspect ping -d worker@$$HOSTNAME"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
 
   celery-beat:
     build:
@@ -35,9 +43,11 @@ services:
       dockerfile: Dockerfile
     command: celery -A services.data_pipeline.celery_app beat --loglevel=info
     depends_on:
-      - redis
+      redis:
+        condition: service_healthy
+    restart: unless-stopped
     environment:
-      - CELERY_BROKER_URL=redis://redis:6379/0
+      - CELERY_BROKER_URL=redis://:${REDIS_PASSWORD:-fazri_dev_redis_pass}@redis:6379/0
     volumes:
       - ./backend:/app
 

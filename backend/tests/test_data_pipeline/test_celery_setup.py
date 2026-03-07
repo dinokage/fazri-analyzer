@@ -20,9 +20,51 @@ def test_celery_queues_have_priorities():
     """Test that priority queues are configured."""
     queues = app.conf.task_queues
     assert queues is not None
+    assert len(queues) == 5  # Verify all 5 queues exist
 
-    # Find face_recognition queue
-    face_queue = next((q for q in queues if q.name == 'face_recognition'), None)
-    assert face_queue is not None
-    # Check priority is configured in queue_arguments
+    # Create a dict of queues by name for easy lookup
+    queue_dict = {q.name: q for q in queues}
+
+    # Test face_recognition queue (highest priority)
+    assert 'face_recognition' in queue_dict
+    face_queue = queue_dict['face_recognition']
     assert face_queue.queue_arguments.get('x-max-priority') == 10
+    assert face_queue.priority == 10
+
+    # Test anomaly_detection queue
+    assert 'anomaly_detection' in queue_dict
+    anomaly_queue = queue_dict['anomaly_detection']
+    assert anomaly_queue.queue_arguments.get('x-max-priority') == 10
+    assert anomaly_queue.priority == 7
+
+    # Test entity_resolution queue
+    assert 'entity_resolution' in queue_dict
+    entity_queue = queue_dict['entity_resolution']
+    assert entity_queue.queue_arguments.get('x-max-priority') == 10
+    assert entity_queue.priority == 5
+
+    # Test graph_building queue
+    assert 'graph_building' in queue_dict
+    graph_queue = queue_dict['graph_building']
+    assert graph_queue.queue_arguments.get('x-max-priority') == 10
+    assert graph_queue.priority == 3
+
+    # Test default queue (lowest priority)
+    assert 'default' in queue_dict
+    default_queue = queue_dict['default']
+    assert default_queue.queue_arguments.get('x-max-priority') == 10
+    assert default_queue.priority == 1
+
+
+def test_celery_beat_schedule_configured():
+    """Test that periodic tasks are configured in beat schedule."""
+    beat_schedule = app.conf.beat_schedule
+    assert beat_schedule is not None
+
+    # Check poll-connectors task
+    assert 'poll-connectors' in beat_schedule
+    poll_task = beat_schedule['poll-connectors']
+    assert poll_task['task'] == 'services.data_pipeline.tasks.connector_poller.poll_all_connectors'
+    assert poll_task['schedule'] == 300.0  # Every 5 minutes
+    assert poll_task['options']['queue'] == 'default'
+    assert poll_task['options']['priority'] == 5
