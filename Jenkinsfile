@@ -234,15 +234,52 @@ stage('Detect Changes') {
                             fi
 
                             echo "Container started successfully: ${CONTAINER_NAME}"
+
+                            # Wait a bit for container to initialize
+                            echo "Waiting for container to initialize..."
+                            sleep 3
+
+                            # Check if container is still running after initial startup
+                            if ! docker ps --format '{{.Names}}' | grep -q "^${CONTAINER_NAME}\$"; then
+                                echo "ERROR: Container started but then immediately crashed"
+                                echo "Container status:"
+                                docker ps -a | grep ${CONTAINER_NAME}
+                                echo ""
+                                echo "Container logs:"
+                                docker logs ${CONTAINER_NAME} 2>&1
+                                exit 1
+                            fi
                         """
                     }
 
                     // Copy GCP service account into running container
                     withCredentials([file(credentialsId: 'fazri-gcp-service-account', variable: 'GCP_SA_FILE')]) {
                         sh """
-                            docker exec -u root ${CONTAINER_NAME} mkdir -p /app/credentials
-                            docker cp \$GCP_SA_FILE ${CONTAINER_NAME}:/app/credentials/service-account.json
-                            docker exec -u root ${CONTAINER_NAME} chown appuser:appuser /app/credentials/service-account.json
+                            echo "Copying GCP service account credentials..."
+
+                            # Create credentials directory
+                            if ! docker exec -u root ${CONTAINER_NAME} mkdir -p /app/credentials; then
+                                echo "ERROR: Failed to create credentials directory"
+                                echo "Container may have crashed. Checking status:"
+                                docker ps -a | grep ${CONTAINER_NAME}
+                                echo "Container logs:"
+                                docker logs ${CONTAINER_NAME} 2>&1
+                                exit 1
+                            fi
+
+                            # Copy credentials file
+                            if ! docker cp \$GCP_SA_FILE ${CONTAINER_NAME}:/app/credentials/service-account.json; then
+                                echo "ERROR: Failed to copy credentials file"
+                                exit 1
+                            fi
+
+                            # Set ownership
+                            if ! docker exec -u root ${CONTAINER_NAME} chown appuser:appuser /app/credentials/service-account.json; then
+                                echo "ERROR: Failed to set credentials file ownership"
+                                exit 1
+                            fi
+
+                            echo "Credentials copied successfully"
                         """
                     }
                 }
