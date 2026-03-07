@@ -1,0 +1,18 @@
+{
+  "audit_logs": [
+    {
+      "timestamp": 1709738400000,
+      "category": "CLIENTS",
+      "text": "Client 00:11:22:33:44:55 connected to AP-Office-1",
+      "site": "Main Office",
+      "controller": "USA-Production"
+    },
+    {
+      "timestamp": 1709738460000,
+      "category": "CLIENTS",
+      "text": "Client AA:BB:CC:DD:EE:FF disconnected from AP-Lab-2",
+      "site": "Main Office",
+      "controller": "USA-Production"
+    }
+  ]
+}

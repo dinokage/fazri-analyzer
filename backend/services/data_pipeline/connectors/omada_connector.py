@@ -9,7 +9,7 @@ Connection methods:
 - REST_API: Omada Northbound API with OAuth 2.0
 """
 from typing import Dict, List, Any, Optional
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 import logging
 import re
 import hashlib
@@ -42,7 +42,7 @@ class OmadaWiFiConnector(BaseConnector):
         """Initialize Omada WiFi connector."""
         super().__init__(config)
         self._validate_config()
-        self.http_client: Optional[httpx.Client] = None
+        self.http_client: Optional[httpx.AsyncClient] = None
         self.access_token: Optional[str] = None
         self.token_expires_at: Optional[datetime] = None
 
@@ -63,7 +63,7 @@ class OmadaWiFiConnector(BaseConnector):
         # Use custom endpoint if provided, otherwise use default
         base_url = self.config.endpoint or self.OMADA_BASE_URL
 
-        self.http_client = httpx.Client(
+        self.http_client = httpx.AsyncClient(
             base_url=base_url,
             timeout=30.0,
             headers={"Content-Type": "application/json"}
@@ -84,7 +84,7 @@ class OmadaWiFiConnector(BaseConnector):
         token_url = f"/openapi/authorize/token?grant_type=client_credentials"
 
         try:
-            response = self.http_client.post(
+            response = await self.http_client.post(
                 token_url,
                 auth=(
                     self.config.credentials["client_id"],
@@ -98,7 +98,7 @@ class OmadaWiFiConnector(BaseConnector):
             expires_in = token_data.get("expiresIn", self.TOKEN_VALIDITY_SECONDS)
 
             # Calculate expiration time
-            self.token_expires_at = datetime.utcnow() + timedelta(seconds=expires_in)
+            self.token_expires_at = datetime.now(timezone.utc) + timedelta(seconds=expires_in)
 
             logger.info(f"OAuth token obtained, expires at: {self.token_expires_at}")
 
@@ -116,7 +116,7 @@ class OmadaWiFiConnector(BaseConnector):
             return
 
         # Refresh if token expires within 5 minutes
-        time_until_expiry = (self.token_expires_at - datetime.utcnow()).total_seconds()
+        time_until_expiry = (self.token_expires_at - datetime.now(timezone.utc)).total_seconds()
         if time_until_expiry < self.TOKEN_REFRESH_MARGIN_SECONDS:
             logger.info("Access token expiring soon, refreshing...")
             await self._get_access_token()
@@ -137,7 +137,7 @@ class OmadaWiFiConnector(BaseConnector):
             site_id = self.config.credentials["site_id"]
             url = f"/openapi/v1/{omadac_id}/sites/{site_id}"
 
-            response = self.http_client.get(
+            response = await self.http_client.get(
                 url,
                 headers=self._get_auth_header()
             )
@@ -164,11 +164,11 @@ class OmadaWiFiConnector(BaseConnector):
 
         # Default to last 24 hours if no timestamp provided
         if since is None:
-            since = datetime.utcnow() - timedelta(hours=24)
+            since = datetime.now(timezone.utc) - timedelta(hours=24)
 
         # Convert to milliseconds for Omada API
         start_timestamp = int(since.timestamp() * 1000)
-        end_timestamp = int(datetime.utcnow().timestamp() * 1000)
+        end_timestamp = int(datetime.now(timezone.utc).timestamp() * 1000)
 
         logger.info(f"Fetching Omada audit logs from {since} to now")
 
@@ -190,7 +190,7 @@ class OmadaWiFiConnector(BaseConnector):
                     "category": "CLIENTS"  # Filter for client events
                 }
 
-                response = self.http_client.get(
+                response = await self.http_client.get(
                     url,
                     params=params,
                     headers=self._get_auth_header()
@@ -269,7 +269,7 @@ class OmadaWiFiConnector(BaseConnector):
 
             event = {
                 "device_hash": device_hash,
-                "device_mac": mac_address,  # Store original for debugging (remove in production)
+                # device_mac removed for privacy/GDPR compliance
                 "location_id": location_id,
                 "timestamp": timestamp,
                 "event_type": "wifi",
@@ -296,10 +296,15 @@ class OmadaWiFiConnector(BaseConnector):
         Returns:
             Sample of recent WiFi events
         """
+        if n_records <= 0:
+            raise ValueError(f"n_records must be positive, got {n_records}")
+        if n_records > 10000:
+            raise ValueError(f"n_records too large (max 10000), got {n_records}")
+
         logger.info(f"Fetching sample data: {n_records} records")
 
         # Fetch last hour of data
-        since = datetime.utcnow() - timedelta(hours=1)
+        since = datetime.now(timezone.utc) - timedelta(hours=1)
         events = await self.fetch_data(since=since)
 
         # Return up to n_records
@@ -308,7 +313,7 @@ class OmadaWiFiConnector(BaseConnector):
     async def close(self) -> None:
         """Clean up resources."""
         if self.http_client:
-            self.http_client.close()
+            await self.http_client.aclose()
             self.http_client = None
 
         self.access_token = None
