@@ -129,11 +129,36 @@ stage('Detect Changes') {
         stage('Deploy') {
             steps {
                 script {
-                    // Stop and remove old container
+                    // Stop and remove old container with better error handling
                     sh """
-                        echo "Stopping old container..."
-                        docker stop ${CONTAINER_NAME} 2>/dev/null || true
-                        docker rm ${CONTAINER_NAME} 2>/dev/null || true
+                        echo "Checking for existing container..."
+
+                        if docker ps -a --format '{{.Names}}' | grep -q "^${CONTAINER_NAME}\$"; then
+                            echo "Found existing container ${CONTAINER_NAME}, removing it..."
+
+                            # Stop the container (force stop if necessary)
+                            echo "Stopping container..."
+                            docker stop ${CONTAINER_NAME} || docker kill ${CONTAINER_NAME} || true
+
+                            # Wait for container to fully stop
+                            sleep 2
+
+                            # Remove the container
+                            echo "Removing container..."
+                            docker rm -f ${CONTAINER_NAME} || true
+
+                            # Verify removal
+                            sleep 1
+                            if docker ps -a --format '{{.Names}}' | grep -q "^${CONTAINER_NAME}\$"; then
+                                echo "ERROR: Container ${CONTAINER_NAME} still exists after removal attempt"
+                                docker ps -a | grep ${CONTAINER_NAME} || true
+                                exit 1
+                            fi
+
+                            echo "Container successfully removed"
+                        else
+                            echo "No existing container found, proceeding with fresh deployment"
+                        fi
                     """
 
                     // Start new container with all env vars from Jenkins credentials
@@ -164,6 +189,14 @@ stage('Detect Changes') {
                         sh """
                             echo "Starting new container..."
 
+                            # Double-check no container exists before running
+                            if docker ps -a --format '{{.Names}}' | grep -q "^${CONTAINER_NAME}\$"; then
+                                echo "ERROR: Container ${CONTAINER_NAME} still exists!"
+                                docker ps -a | grep ${CONTAINER_NAME}
+                                exit 1
+                            fi
+
+                            # Start the new container
                             docker run -d \
                                 --name ${CONTAINER_NAME} \
                                 --restart unless-stopped \
@@ -192,7 +225,15 @@ stage('Detect Changes') {
                                 -v app_logs:/app/logs \
                                 ${IMAGE_NAME}:${IMAGE_TAG}
 
-                            echo "Container started: ${CONTAINER_NAME}"
+                            # Verify container started
+                            if ! docker ps --format '{{.Names}}' | grep -q "^${CONTAINER_NAME}\$"; then
+                                echo "ERROR: Container failed to start"
+                                docker ps -a | grep ${CONTAINER_NAME} || echo "Container not found"
+                                docker logs ${CONTAINER_NAME} 2>&1 || true
+                                exit 1
+                            fi
+
+                            echo "Container started successfully: ${CONTAINER_NAME}"
                         """
                     }
 
