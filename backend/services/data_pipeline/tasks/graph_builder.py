@@ -8,7 +8,7 @@ import logging
 from typing import Dict, Any
 from datetime import datetime
 
-from services.data_pipeline.celery_app import app
+from backend.services.data_pipeline.celery_app import app
 
 logger = logging.getLogger(__name__)
 

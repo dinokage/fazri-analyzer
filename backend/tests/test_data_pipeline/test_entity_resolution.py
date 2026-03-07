@@ -2,7 +2,7 @@
 
 import pytest
 from unittest.mock import patch, MagicMock
-from services.data_pipeline.tasks.entity_resolution import resolve_entity
+from backend.services.data_pipeline.tasks.entity_resolution import resolve_entity
 
 
 def test_resolve_entity_person():
@@ -15,10 +15,10 @@ def test_resolve_entity_person():
         'event_type': 'card_swipe'
     }
 
-    # Mock the graph building task - patch where it's imported
-    with patch('services.data_pipeline.tasks.graph_builder.build_graph_from_event') as mock_graph:
+    # Mock the graph building task - patch where it's defined
+    with patch('backend.services.data_pipeline.tasks.graph_builder.build_graph_from_event') as mock_graph:
         mock_graph.delay = MagicMock()
-        result = resolve_entity(event)
+        result = resolve_entity.apply(args=[event]).result
 
         assert result['status'] == 'success'
         assert result['entity_type'] == 'person'
@@ -34,9 +34,9 @@ def test_resolve_entity_device():
         'event_type': 'wifi'
     }
 
-    with patch('services.data_pipeline.tasks.graph_builder.build_graph_from_event') as mock_graph:
+    with patch('backend.services.data_pipeline.tasks.graph_builder.build_graph_from_event') as mock_graph:
         mock_graph.delay = MagicMock()
-        result = resolve_entity(event)
+        result = resolve_entity.apply(args=[event]).result
 
         assert result['status'] == 'success'
         assert result['entity_type'] == 'device'
@@ -50,9 +50,9 @@ def test_resolve_entity_no_identifier():
         'event_type': 'unknown'
     }
 
-    with patch('services.data_pipeline.tasks.graph_builder.build_graph_from_event') as mock_graph:
+    with patch('backend.services.data_pipeline.tasks.graph_builder.build_graph_from_event') as mock_graph:
         mock_graph.delay = MagicMock()
-        result = resolve_entity(event)
+        result = resolve_entity.apply(args=[event]).result
 
         assert result['status'] == 'no_entity'
         mock_graph.delay.assert_not_called()
@@ -67,9 +67,9 @@ def test_resolve_entity_card_id_only():
         'event_type': 'card_swipe'
     }
 
-    with patch('services.data_pipeline.tasks.graph_builder.build_graph_from_event') as mock_graph:
+    with patch('backend.services.data_pipeline.tasks.graph_builder.build_graph_from_event') as mock_graph:
         mock_graph.delay = MagicMock()
-        result = resolve_entity(event)
+        result = resolve_entity.apply(args=[event]).result
 
         assert result['status'] == 'success'
         assert result['entity_type'] == 'person'

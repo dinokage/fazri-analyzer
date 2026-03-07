@@ -8,7 +8,7 @@ import logging
 from typing import Dict, Any
 from datetime import datetime
 
-from services.data_pipeline.celery_app import app
+from backend.services.data_pipeline.celery_app import app
 
 logger = logging.getLogger(__name__)
 
@@ -24,7 +24,7 @@ def resolve_entity(event_data: Dict[str, Any]):
     Returns:
         Dict with resolution status and entity ID
     """
-    from services.data_pipeline.tasks.graph_builder import build_graph_from_event
+    from backend.services.data_pipeline.tasks.graph_builder import build_graph_from_event
 
     logger.info(f"Resolving entity from event: {event_data.get('event_type', 'unknown')}")
 

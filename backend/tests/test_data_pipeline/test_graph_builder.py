@@ -1,7 +1,7 @@
 """Tests for graph building"""
 
 import pytest
-from services.data_pipeline.tasks.graph_builder import build_graph_from_event
+from backend.services.data_pipeline.tasks.graph_builder import build_graph_from_event
 
 
 def test_build_person_graph():
@@ -17,7 +17,7 @@ def test_build_person_graph():
         }
     }
 
-    result = build_graph_from_event(entity)
+    result = build_graph_from_event.apply(args=[entity]).result
 
     assert result['status'] == 'success'
     assert result['nodes_created'] == 3
@@ -39,7 +39,7 @@ def test_build_device_graph():
         }
     }
 
-    result = build_graph_from_event(entity)
+    result = build_graph_from_event.apply(args=[entity]).result
 
     assert result['status'] == 'success'
     assert result['nodes_created'] == 3
@@ -55,7 +55,7 @@ def test_build_graph_unknown_type():
         'raw_event': {}
     }
 
-    result = build_graph_from_event(entity)
+    result = build_graph_from_event.apply(args=[entity]).result
 
     assert result['status'] == 'unknown_type'
     assert result['entity_type'] == 'unknown_type'
@@ -74,7 +74,7 @@ def test_build_person_graph_structure():
         }
     }
 
-    result = build_graph_from_event(entity)
+    result = build_graph_from_event.apply(args=[entity]).result
 
     graph_structure = result['graph_structure']
     assert len(graph_structure['nodes']) == 3

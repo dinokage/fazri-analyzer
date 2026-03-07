@@ -6,23 +6,23 @@ from kombu import Queue, Exchange
 app = Celery('fazri_ingestion')
 
 # Load configuration from config file
-app.config_from_object('services.data_pipeline.celery_config')
+app.config_from_object('backend.services.data_pipeline.celery_config')
 
 # Define task routes
 app.conf.task_routes = {
-    'services.data_pipeline.tasks.entity_resolution.*': {
+    'backend.services.data_pipeline.tasks.entity_resolution.*': {
         'queue': 'entity_resolution',
         'priority': 5
     },
-    'services.data_pipeline.tasks.face_recognition.*': {
+    'backend.services.data_pipeline.tasks.face_recognition.*': {
         'queue': 'face_recognition',
         'priority': 10  # Highest priority
     },
-    'services.data_pipeline.tasks.graph_builder.*': {
+    'backend.services.data_pipeline.tasks.graph_builder.*': {
         'queue': 'graph_building',
         'priority': 3
     },
-    'services.data_pipeline.tasks.anomaly_detection.*': {
+    'backend.services.data_pipeline.tasks.anomaly_detection.*': {
         'queue': 'anomaly_detection',
         'priority': 7
     },
@@ -30,7 +30,7 @@ app.conf.task_routes = {
 
 # Auto-discover tasks
 app.autodiscover_tasks([
-    'services.data_pipeline.tasks',
+    'backend.services.data_pipeline.tasks',
 ])
 
 if __name__ == '__main__':

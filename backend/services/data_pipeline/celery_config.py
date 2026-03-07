@@ -65,7 +65,7 @@ worker_task_log_format = '[%(asctime)s: %(levelname)s/%(processName)s][%(task_na
 # Beat schedule (periodic tasks)
 beat_schedule = {
     'poll-connectors': {
-        'task': 'services.data_pipeline.tasks.connector_poller.poll_all_connectors',
+        'task': 'backend.services.data_pipeline.tasks.connector_poller.poll_all_connectors',
         'schedule': 300.0,  # Every 5 minutes
         'options': {'queue': 'default', 'priority': 5}
     },

@@ -11,10 +11,10 @@ from typing import List, Dict, Any
 from dataclasses import asdict
 from celery import group
 
-from services.data_pipeline.celery_app import app
-from services.data_pipeline.connector_base import ConnectorConfig, ConnectorType, ConnectionMethod
-from services.data_pipeline.connectors.essl_connector import ESSLCardReaderConnector
-from services.data_pipeline.connectors.omada_connector import OmadaWiFiConnector
+from backend.services.data_pipeline.celery_app import app
+from backend.services.data_pipeline.connector_base import ConnectorConfig, ConnectorType, ConnectionMethod
+from backend.services.data_pipeline.connectors.essl_connector import ESSLCardReaderConnector
+from backend.services.data_pipeline.connectors.omada_connector import OmadaWiFiConnector
 
 logger = logging.getLogger(__name__)
 
@@ -119,7 +119,7 @@ async def fetch_connector_data(connector_config_dict: Dict[str, Any]):
     Args:
         connector_config_dict: Serialized ConnectorConfig
     """
-    from services.data_pipeline.tasks.entity_resolution import resolve_entity
+    from backend.services.data_pipeline.tasks.entity_resolution import resolve_entity
 
     # Reconstruct config from dict
     config = ConnectorConfig(**connector_config_dict)
