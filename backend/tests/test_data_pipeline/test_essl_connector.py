@@ -58,6 +58,11 @@ def test_essl_normalize_data(essl_config, sample_essl_data):
     assert "timestamp" in normalized[0]
     assert "location_id" in normalized[0]
 
+    # Verify metadata fields are added
+    assert normalized[0]["source_dataset"] == "essl_test"
+    assert normalized[0]["source_connector"] == "essl_card_reader"
+    assert normalized[0]["event_type"] == "card_swipe"
+
 
 def test_essl_parse_timestamp(essl_config):
     """Test parsing various eSSL timestamp formats."""
@@ -71,3 +76,9 @@ def test_essl_parse_timestamp(essl_config):
     # Test alternate format
     ts2 = connector._parse_timestamp("06/03/2026 14:30:45")
     assert isinstance(ts2, datetime)
+    assert ts2.year == 2026
+
+    # Test ISO format
+    ts3 = connector._parse_timestamp("2026-03-06T14:30:45")
+    assert isinstance(ts3, datetime)
+    assert ts3.year == 2026
