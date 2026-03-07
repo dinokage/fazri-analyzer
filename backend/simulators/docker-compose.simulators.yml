@@ -1,0 +1,66 @@
+version: '3.8'
+
+services:
+  # eSSL Card Reader MySQL Database Simulator
+  essl-mysql:
+    image: mysql:8.0
+    container_name: essl-simulator-mysql
+    restart: unless-stopped
+    environment:
+      MYSQL_ROOT_PASSWORD: essl_password
+      MYSQL_DATABASE: essl_db
+      MYSQL_USER: essl_user
+      MYSQL_PASSWORD: essl_user_password
+    ports:
+      - "3307:3306"  # Use 3307 to avoid conflict with other MySQL instances
+    volumes:
+      - essl_mysql_data:/var/lib/mysql
+      - ./essl_simulator/init.sql:/docker-entrypoint-initdb.d/01-init.sql:ro
+    networks:
+      - simulator-network
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "localhost", "-u", "root", "-pessl_password"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
+    command:
+      - --default-authentication-plugin=mysql_native_password
+      - --character-set-server=utf8mb4
+      - --collation-server=utf8mb4_unicode_ci
+
+  # Data generator (runs once to populate database)
+  essl-data-generator:
+    image: python:3.11-slim
+    container_name: essl-data-generator
+    depends_on:
+      essl-mysql:
+        condition: service_healthy
+    environment:
+      MYSQL_HOST: essl-mysql
+      MYSQL_PORT: 3306
+      MYSQL_USER: root
+      MYSQL_PASSWORD: essl_password
+      MYSQL_DB: essl_db
+    volumes:
+      - ./essl_simulator/generate_data.py:/app/generate_data.py:ro
+    networks:
+      - simulator-network
+    working_dir: /app
+    command: >
+      sh -c "
+        echo 'Installing dependencies...' &&
+        pip install --no-cache-dir mysql-connector-python &&
+        echo 'Starting data generation...' &&
+        python generate_data.py
+      "
+    profiles:
+      - tools  # Only run when explicitly requested
+
+volumes:
+  essl_mysql_data:
+    driver: local
+
+networks:
+  simulator-network:
+    driver: bridge
