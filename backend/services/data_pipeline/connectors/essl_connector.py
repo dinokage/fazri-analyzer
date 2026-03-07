@@ -15,6 +15,7 @@ Connection methods:
 from typing import Dict, List, Any, Optional
 from datetime import datetime
 import logging
+import re
 from backend.services.data_pipeline.connector_base import (
     BaseConnector,
     ConnectorConfig,
@@ -39,8 +40,31 @@ class ESSLCardReaderConnector(BaseConnector):
     def __init__(self, config: ConnectorConfig) -> None:
         """Initialize eSSL connector."""
         super().__init__(config)
+        self._validate_config()
         self.db_pool = None
         self.http_client = None
+
+    def _validate_config(self) -> None:
+        """Validate configuration has required credentials."""
+        if self.config.connection_method == ConnectionMethod.DATABASE:
+            required = ["host", "username", "password", "database"]
+            missing = [k for k in required if k not in self.config.credentials]
+            if missing:
+                raise ValueError(f"Missing required database credentials: {missing}")
+
+        elif self.config.connection_method == ConnectionMethod.REST_API:
+            if "api_key" not in self.config.credentials:
+                raise ValueError("Missing required API credential: api_key")
+
+    def _validate_table_name(self, table_name: str) -> str:
+        """
+        Validate table name to prevent SQL injection.
+
+        Only allows alphanumeric characters and underscores, starting with letter or underscore.
+        """
+        if not re.match(r'^[a-zA-Z_][a-zA-Z0-9_]*$', table_name):
+            raise ValueError(f"Invalid table name: {table_name}")
+        return table_name
 
     async def initialize(self) -> None:
         """Initialize connections based on connection method."""
@@ -144,6 +168,7 @@ class ESSLCardReaderConnector(BaseConnector):
         import aiomysql
 
         table_name = self.config.credentials.get("table_name", self.DB_SCHEMA["table"])
+        table_name = self._validate_table_name(table_name)
 
         # Build query - limit to 5000 records for safety
         query = f"""
@@ -187,6 +212,11 @@ class ESSLCardReaderConnector(BaseConnector):
 
     async def get_sample_data(self, n_records: int = 10) -> List[Dict[str, Any]]:
         """Get sample data for schema detection."""
+        if n_records <= 0:
+            raise ValueError(f"n_records must be positive, got {n_records}")
+        if n_records > 10000:
+            raise ValueError(f"n_records too large (max 10000), got {n_records}")
+
         if self.config.connection_method == ConnectionMethod.DATABASE:
             return await self._get_sample_from_database(n_records)
         elif self.config.connection_method == ConnectionMethod.REST_API:
@@ -201,6 +231,7 @@ class ESSLCardReaderConnector(BaseConnector):
         import aiomysql
 
         table_name = self.config.credentials.get("table_name", self.DB_SCHEMA["table"])
+        table_name = self._validate_table_name(table_name)
         query = f"SELECT * FROM {table_name} ORDER BY AccessTime DESC LIMIT %s"
 
         try:
@@ -288,7 +319,7 @@ class ESSLCardReaderConnector(BaseConnector):
 
         # If all formats fail, raise error with helpful message
         raise ValueError(
-            f"Unable to parse timestamp '{value}'. "
+            f"Could not parse timestamp '{value}'. "
             f"Supported formats: {', '.join(formats)}"
         )
 

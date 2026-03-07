@@ -82,3 +82,83 @@ def test_essl_parse_timestamp(essl_config):
     ts3 = connector._parse_timestamp("2026-03-06T14:30:45")
     assert isinstance(ts3, datetime)
     assert ts3.year == 2026
+
+
+def test_essl_invalid_timestamp_format(essl_config):
+    """Test that invalid timestamp format raises ValueError."""
+    connector = ESSLCardReaderConnector(essl_config)
+
+    with pytest.raises(ValueError, match="Could not parse timestamp"):
+        connector._parse_timestamp("invalid-timestamp")
+
+
+def test_essl_validate_table_name_valid(essl_config):
+    """Test that valid table names pass validation."""
+    connector = ESSLCardReaderConnector(essl_config)
+
+    # Valid names
+    assert connector._validate_table_name("AccessLogs") == "AccessLogs"
+    assert connector._validate_table_name("_private_table") == "_private_table"
+    assert connector._validate_table_name("Table123") == "Table123"
+
+
+def test_essl_validate_table_name_invalid(essl_config):
+    """Test that invalid table names raise ValueError."""
+    connector = ESSLCardReaderConnector(essl_config)
+
+    # SQL injection attempts
+    with pytest.raises(ValueError, match="Invalid table name"):
+        connector._validate_table_name("Users; DROP TABLE Students--")
+
+    with pytest.raises(ValueError, match="Invalid table name"):
+        connector._validate_table_name("123_table")  # Starts with number
+
+    with pytest.raises(ValueError, match="Invalid table name"):
+        connector._validate_table_name("table-name")  # Contains hyphen
+
+
+def test_essl_missing_database_credentials():
+    """Test that missing database credentials raise ValueError."""
+    config = ConnectorConfig(
+        connector_id="essl_test",
+        institution_id="test_university",
+        connector_type=ConnectorType.CARD_SWIPE,
+        connection_method=ConnectionMethod.DATABASE,
+        credentials={"host": "localhost"}  # Missing username, password, database
+    )
+
+    with pytest.raises(ValueError, match="Missing required database credentials"):
+        ESSLCardReaderConnector(config)
+
+
+def test_essl_missing_api_credentials():
+    """Test that missing API credentials raise ValueError."""
+    config = ConnectorConfig(
+        connector_id="essl_test",
+        institution_id="test_university",
+        connector_type=ConnectorType.CARD_SWIPE,
+        connection_method=ConnectionMethod.REST_API,
+        endpoint="https://api.example.com",
+        credentials={}  # Missing api_key
+    )
+
+    with pytest.raises(ValueError, match="Missing required API credential"):
+        ESSLCardReaderConnector(config)
+
+
+def test_essl_get_sample_data_invalid_n_records(essl_config):
+    """Test that invalid n_records parameter raises ValueError."""
+    import asyncio
+    connector = ESSLCardReaderConnector(essl_config)
+
+    # Negative value
+    with pytest.raises(ValueError, match="n_records must be positive"):
+        asyncio.run(connector.get_sample_data(n_records=-5))
+
+    # Zero value
+    with pytest.raises(ValueError, match="n_records must be positive"):
+        asyncio.run(connector.get_sample_data(n_records=0))
+
+    # Too large
+    with pytest.raises(ValueError, match="n_records too large"):
+        asyncio.run(connector.get_sample_data(n_records=20000))
