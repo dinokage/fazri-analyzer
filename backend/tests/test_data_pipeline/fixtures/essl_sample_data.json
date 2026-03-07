@@ -1,0 +1,18 @@
+[
+  {
+    "UserID": "E100001",
+    "CardNo": "1234567890",
+    "AccessTime": "2026-03-06 14:30:45",
+    "DoorID": "1",
+    "InOutStatus": "IN",
+    "DeviceID": "ESSL_MAIN"
+  },
+  {
+    "UserID": "E100002",
+    "CardNo": "0987654321",
+    "AccessTime": "2026-03-06 14:35:12",
+    "DoorID": "2",
+    "InOutStatus": "OUT",
+    "DeviceID": "ESSL_LAB"
+  }
+]
