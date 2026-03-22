@@ -2,11 +2,8 @@ pipeline {
     agent any
 
     environment {
-        IMAGE_NAME = 'fazri-analyzer-backend'
         IMAGE_TAG = "${env.BUILD_NUMBER}"
-        CONTAINER_NAME = 'fazri-api'
         CONTAINER_PORT = '8000'
-        HOST_PORT = '8000'
         NETWORK_NAME = 'backend_fazri-network'
         GCP_CREDS_DIR = '/opt/fazri/credentials'
         DOCKER_BUILDKIT = '1'
@@ -28,7 +25,27 @@ pipeline {
             }
         }
 
-stage('Detect Changes') {
+        stage('Set Environment') {
+            steps {
+                script {
+                    if (env.BRANCH_NAME == 'master') {
+                        env.DEPLOY_ENV     = 'production'
+                        env.IMAGE_NAME     = 'fazri-analyzer-backend'
+                        env.CONTAINER_NAME = 'fazri-api'
+                        env.HOST_PORT      = '8000'
+                    } else {
+                        env.DEPLOY_ENV     = 'staging'
+                        env.IMAGE_NAME     = 'fazri-analyzer-backend-staging'
+                        env.CONTAINER_NAME = 'fazri-api-staging'
+                        env.HOST_PORT      = '8001'
+                    }
+                    echo "Branch: ${env.BRANCH_NAME} → Deploy target: ${env.DEPLOY_ENV}"
+                    echo "Container: ${env.CONTAINER_NAME} | Port: ${env.HOST_PORT}"
+                }
+            }
+        }
+
+        stage('Detect Changes') {
             steps {
                 script {
                     def backendChanged = true
