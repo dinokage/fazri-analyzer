@@ -26,7 +26,7 @@ class Settings(BaseSettings):
     # Application Settings
     DEBUG: bool = False
     LOG_LEVEL: str = "INFO"
-    SECRET_KEY: str = "REMOVED_FROM_HISTORY_USE_ENV_VARS"
+    SECRET_KEY: str = ""  # REQUIRED: Set via environment variable - see .env.example
     ACCESS_TOKEN_EXPIRE_MINUTES: int = 30
 
     # File Paths
