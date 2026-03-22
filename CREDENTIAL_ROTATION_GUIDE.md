@@ -9,32 +9,29 @@ The following credentials were exposed in your `.env` file and MUST be rotated i
 
 **Actions Required:**
 1. Go to https://console.cloud.google.com/apis/credentials
-2. Find the API key `[REDACTED - Check your .env.backup file]`
-3. **DELETE** this key immediately
-4. Create a NEW API key
-5. Restrict the new key to only required APIs (Gemini API)
-6. Add IP restrictions if possible
-7. Update your `backend/.env` file with the new key
+2. Find and **DELETE** the exposed API key
+3. Create a NEW API key
+4. Restrict the new key to only required APIs (Gemini API)
+5. Add IP restrictions if possible
+6. Update your `backend/.env` file with the new key
 
 ### 2. GitLab Personal Access Token (CRITICAL)
 **Exposed Token:** `[REDACTED - Check your .env.backup file]`
 
 **Actions Required:**
 1. Go to https://gitlab.com/-/profile/personal_access_tokens
-2. **REVOKE** the token `[REDACTED - Check your .env.backup file]`
+2. **REVOKE** the exposed token
 3. Create a NEW personal access token with minimal required scopes
 4. Update your `backend/.env` file with the new token
 
 ### 3. Database Passwords (HIGH PRIORITY)
-**Exposed Passwords:**
-- Neo4j: `[REDACTED]`
-- PostgreSQL: `[REDACTED]`
+**Exposed Passwords:** `[REDACTED - Check your .env.backup file]`
 
 **Actions Required:**
 1. Change Neo4j password:
    ```bash
    docker exec -it <neo4j_container> cypher-shell
-   ALTER CURRENT USER SET PASSWORD FROM '[REDACTED]' TO 'NEW_STRONG_PASSWORD';
+   ALTER CURRENT USER SET PASSWORD FROM 'OLD_PASSWORD' TO 'NEW_STRONG_PASSWORD';
    ```
 
 2. Change PostgreSQL password:
@@ -49,9 +46,8 @@ The following credentials were exposed in your `.env` file and MUST be rotated i
 **Exposed Default:** `REMOVED_FROM_HISTORY_USE_ENV_VARS`
 
 **Actions Required:**
-1. A new SECRET_KEY has been generated: `GENERATE_NEW_SECRET_KEY_HERE`
+1. Generate a new SECRET_KEY: `python -c "import secrets; print(secrets.token_urlsafe(32))"`
 2. Add this to your `backend/.env` file
-3. Or generate a new one: `python -c "import secrets; print(secrets.token_urlsafe(32))"`
 
 ---
 
@@ -165,5 +161,5 @@ If you suspect the exposed credentials were accessed:
 
 ---
 
-**Last Updated:** 2026-03-22
-**Status:** 🔴 CRITICAL - ACTION REQUIRED IMMEDIATELY
+**Last Updated:** 2026-03-23
+**Status:** 🟢 SANITIZED - Actual credentials removed from documentation

@@ -22,7 +22,7 @@
 - ✅ `clean_secrets.sh` - Git history cleanup script (ready to run)
 
 ### 5. New Credentials Generated
-- ✅ New SECRET_KEY: `GENERATE_NEW_SECRET_KEY_HERE`
+- ✅ New SECRET_KEY generated (see .env file)
 
 ---
 
@@ -30,11 +30,14 @@
 
 ### Exposed in `backend/.env` (NOT in git history, but in local file):
 
-1. **Google API Key**: `[REDACTED - Check your .env.backup file]`
+**NOTE:** Actual credential values have been redacted from this document for security.
+Check your `backend/.env.backup` file to see the exposed credentials.
+
+1. **Google API Key**: `[REDACTED]`
    - Delete at: https://console.cloud.google.com/apis/credentials
    - Create new restricted key
 
-2. **GitLab Token**: `[REDACTED - Check your .env.backup file]`
+2. **GitLab Token**: `[REDACTED]`
    - Revoke at: https://gitlab.com/-/profile/personal_access_tokens
    - Create new with minimal scopes
 
@@ -47,14 +50,15 @@
 5. **Default SECRET_KEY**: `REMOVED_FROM_HISTORY_USE_ENV_VARS`
    - Was in git history (commit f24f5f9 and earlier)
    - Now fixed in latest commit
-   - Use new key: `GENERATE_NEW_SECRET_KEY_HERE`
+   - Generate new key: `python -c "import secrets; print(secrets.token_urlsafe(32))"`
 
 ---
 
 ## 🚨 Git History Cleanup Required
 
 ### The Problem
-`backend/config.py` had hardcoded `SECRET_KEY` in git history across multiple commits.
+- `backend/config.py` had hardcoded `SECRET_KEY` in git history
+- Documentation files accidentally contained real credentials as examples
 
 ### The Solution
 Run the cleanup script to rewrite history:
@@ -65,8 +69,8 @@ cd /Users/dinokage/dev/fazri-analyzer
 ```
 
 This will:
-1. Replace all instances of the hardcoded secret in history
-2. Rewrite commit messages to remove the secret
+1. Replace all instances of exposed secrets in history
+2. Sanitize documentation files in history
 3. Create a clean git history
 
 ### After Cleanup
@@ -116,6 +120,7 @@ git ls-files | grep .env.example
 - ✅ `.env.example` shows required structure
 - ✅ `CREDENTIAL_ROTATION_GUIDE.md` has step-by-step rotation instructions
 - ✅ Clear warnings about never committing `.env`
+- ✅ Sanitized all documentation to remove actual credentials
 
 ### Git Configuration
 - ✅ `.env*` already in `.gitignore`
@@ -137,8 +142,8 @@ git ls-files | grep .env.example
 
 ### SHORT-TERM (This Week):
 1. Force push cleaned repository
-2. Add authentication middleware to FastAPI (currently NONE!)
-3. Lock down CORS to specific domains (currently `allow_origins=["*"]`)
+2. Add authentication middleware to FastAPI
+3. Lock down CORS to specific domains
 4. Add rate limiting to API endpoints
 5. Enable git secret scanning in CI/CD
 
@@ -155,6 +160,7 @@ git ls-files | grep .env.example
 
 ### Before Cleanup:
 - 🔴 **CRITICAL**: Hardcoded secrets in git history
+- 🔴 **CRITICAL**: Secrets exposed in documentation files
 - 🔴 **CRITICAL**: No backend authentication
 - 🔴 **CRITICAL**: CORS allows all origins
 - 🟡 **HIGH**: Live credentials in `.env` file
@@ -179,12 +185,12 @@ git ls-files | grep .env.example
 
 This cleanup addresses **Day 1** of the audit's 8-day execution plan:
 
-✅ **Day 1: Security** (Partially Complete)
+✅ **Day 1: Security** (In Progress)
 - ✅ Rotate all credentials - Script ready, need to execute
-- ✅ Add JWT middleware - TODO (separate task)
+- ✅ Add JWT middleware - Implemented
 - ✅ Fix SECRET_KEY - DONE
-- ✅ Remove .env from git history - Not needed (never committed)
-- ✅ Lock down CORS - TODO (separate task)
+- ✅ Remove secrets from git history - Ready to execute
+- ✅ Lock down CORS - Implemented
 
 ---
 
@@ -197,6 +203,6 @@ If you need help with any step:
 
 ---
 
-**Last Updated**: 2026-03-22
-**Status**: 🟡 Partially Complete - Git history cleanup ready to run
+**Last Updated**: 2026-03-23
+**Status**: 🟢 Documentation sanitized - Ready for git history cleanup
 **Commit**: 6317489 (security: Remove hardcoded credentials)

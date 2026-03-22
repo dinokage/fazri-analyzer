@@ -13,12 +13,12 @@ cd /Users/dinokage/dev/fazri-analyzer
 
 **Google API Key** (2 min):
 1. Visit: https://console.cloud.google.com/apis/credentials
-2. Delete key: `[REDACTED - Check your .env.backup file]`
+2. Delete the exposed API key (see .env.backup for value)
 3. Create new key → Copy to clipboard
 
 **GitLab Token** (1 min):
 1. Visit: https://gitlab.com/-/profile/personal_access_tokens
-2. Revoke: `[REDACTED - Check your .env.backup file]`
+2. Revoke the exposed token (see .env.backup for value)
 3. Create new token → Copy to clipboard
 
 ### Step 3: Update .env File
@@ -27,21 +27,17 @@ cd backend
 nano .env  # or your preferred editor
 ```
 
-Replace these lines:
+Replace these lines with your NEW values:
 ```bash
-# OLD - DELETE THESE
-GOOGLE_API_KEY=[REDACTED - Check your .env.backup file]
-GITLAB_TOKEN=[REDACTED - Check your .env.backup file]
-NEO4J_PASSWORD=[REDACTED]
-POSTGRES_PASSWORD=[REDACTED]
-SECRET_KEY=REMOVED_FROM_HISTORY_USE_ENV_VARS
+# Generate a new SECRET_KEY
+python3 -c "import secrets; print(secrets.token_urlsafe(32))"
 
-# NEW - PASTE YOUR NEW VALUES
+# Update these in .env
 GOOGLE_API_KEY=<paste-new-key-here>
 GITLAB_TOKEN=<paste-new-token-here>
 NEO4J_PASSWORD=<generate-strong-password>
 POSTGRES_PASSWORD=<generate-strong-password>
-SECRET_KEY=GENERATE_NEW_SECRET_KEY_HERE
+SECRET_KEY=<paste-generated-key-here>
 ```
 
 ### Step 4: Force Push Clean Repository
@@ -52,13 +48,9 @@ git push origin --force --tags
 
 ### Step 5: Verify Security
 ```bash
-# Should return nothing
+# All of these should return nothing
 git log --all -p | grep "your-secret-key-here"
-
-# Should return nothing  
-git log --all -p | grep "AIzaSyBj"
-
-# Should return nothing
+git log --all -p | grep "AIzaSy"
 git log --all -p | grep "glpat-"
 ```
 
@@ -71,6 +63,7 @@ git log --all -p | grep "glpat-"
 - [ ] Created new Google API key
 - [ ] Revoked old GitLab token
 - [ ] Created new GitLab token
+- [ ] Generated new SECRET_KEY
 - [ ] Updated backend/.env with new credentials
 - [ ] Changed database passwords
 - [ ] Force pushed to origin
@@ -99,7 +92,7 @@ chmod +x clean_secrets.sh
 git push origin --force-with-lease --all
 ```
 
-**Lost your new SECRET_KEY?**
+**Need to generate strong password?**
 ```bash
 python3 -c "import secrets; print(secrets.token_urlsafe(32))"
 ```
@@ -107,4 +100,4 @@ python3 -c "import secrets; print(secrets.token_urlsafe(32))"
 ---
 
 **Time to complete:** ~10 minutes
-**Status:** 🔴 CRITICAL - Do not deploy until complete
+**Status:** 🟢 Documentation sanitized - Ready to execute cleanup
