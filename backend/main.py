@@ -42,7 +42,7 @@ async def lifespan(app: FastAPI):
 app = FastAPI(
     title="Fazri Analyzer API",
     description="API for campus security monitoring, entity tracking, and alert management",
-    version="1.0.0",
+    version="1.0.1",
     lifespan=lifespan,
 )
 
@@ -75,7 +75,7 @@ async def root():
     return {
         "message": "Campus Entity Resolution API",
         "status": "running",
-        "version": "1.0.0"
+        "version": "1.0.1"
     }
 
 @app.get("/health")
