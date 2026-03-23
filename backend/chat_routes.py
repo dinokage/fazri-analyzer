@@ -21,7 +21,6 @@ router = APIRouter(prefix="/api/v1/chat", tags=["chatbot"])
 # Redis client for conversation state
 _redis_client = None
 
-
 def get_redis_client():
     """Get or create Redis client"""
     global _redis_client
