@@ -365,8 +365,11 @@ pipeline {
                         sh """
                             echo "Creating Sentry release..."
 
-                            # Install sentry-cli if not already installed
-                            if ! command -v sentry-cli &> /dev/null; then
+                            # Install or update sentry-cli
+                            if command -v sentry-cli &> /dev/null; then
+                                echo "sentry-cli already installed, updating to latest version..."
+                                sentry-cli update 2>/dev/null || echo "Update skipped (already latest version)"
+                            else
                                 echo "Installing sentry-cli..."
                                 curl -sL https://sentry.io/get-cli/ | bash
                             fi
