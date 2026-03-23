@@ -11,44 +11,44 @@ def client():
     return TestClient(app)
 
 
-class TestHealthEndpoints:
-    """Test health check endpoints with authentication"""
+class TestPublicEndpoints:
+    """Test public endpoints that don't require authentication"""
 
-    def test_health_check_without_auth(self, client):
-        """Test health check requires authentication"""
+    def test_health_check_public(self, client):
+        """Test health check is publicly accessible"""
         response = client.get("/health")
-        assert response.status_code == 401
-
-    def test_health_check_with_student_auth(self, client, student_token):
-        """Test health check works with student auth"""
-        response = client.get(
-            "/health",
-            headers={"Authorization": f"Bearer {student_token}"}
-        )
         assert response.status_code == 200
         assert response.json()["status"] == "healthy"
 
-    def test_health_check_with_staff_auth(self, client, staff_token):
-        """Test health check works with staff auth"""
-        response = client.get(
-            "/health",
-            headers={"Authorization": f"Bearer {staff_token}"}
-        )
-        assert response.status_code == 200
-
-    def test_root_endpoint_without_auth(self, client):
-        """Test root endpoint requires authentication"""
+    def test_root_endpoint_public(self, client):
+        """Test root endpoint is publicly accessible"""
         response = client.get("/")
-        assert response.status_code == 401
-
-    def test_root_endpoint_with_auth(self, client, admin_token):
-        """Test root endpoint works with authentication"""
-        response = client.get(
-            "/",
-            headers={"Authorization": f"Bearer {admin_token}"}
-        )
         assert response.status_code == 200
         assert response.json()["status"] == "running"
+
+    def test_chat_health_public(self, client):
+        """Test chat health endpoint is publicly accessible"""
+        response = client.get("/api/v1/chat/health")
+        assert response.status_code == 200
+        assert "status" in response.json()
+
+    def test_gitlab_health_public(self, client):
+        """Test GitLab health endpoint is publicly accessible"""
+        response = client.get("/api/v1/gitlab/health")
+        assert response.status_code == 200
+        assert "status" in response.json()
+
+    def test_anomaly_health_public(self, client):
+        """Test anomaly health endpoint is publicly accessible"""
+        response = client.get("/api/v1/anomalies/health")
+        assert response.status_code == 200
+        assert "success" in response.json()
+
+    def test_spatial_health_public(self, client):
+        """Test spatial health endpoint is publicly accessible"""
+        response = client.get("/api/v1/spatial/health")
+        assert response.status_code == 200
+        assert "success" in response.json()
 
 
 class TestEntityEndpoints:
@@ -235,68 +235,70 @@ class TestGitLabEndpoints:
 class TestChatEndpoints:
     """Test chat endpoints (all authenticated users)"""
 
-    def test_chat_health_without_auth(self, client):
-        """Test chat health requires authentication"""
-        response = client.get("/api/v1/chat/health")
+    def test_chat_tools_without_auth(self, client):
+        """Test chat tools endpoint requires authentication"""
+        response = client.get("/api/v1/chat/tools")
         assert response.status_code == 401
 
-    def test_chat_health_student_allowed(self, client, student_token):
-        """Test students can access chat endpoints"""
+    def test_chat_tools_student_allowed(self, client, student_token):
+        """Test students can access chat tools endpoint"""
         response = client.get(
-            "/api/v1/chat/health",
+            "/api/v1/chat/tools",
             headers={"Authorization": f"Bearer {student_token}"}
         )
         # Should work or fail due to service, but not auth
         assert response.status_code not in [401, 403]
 
-    def test_chat_health_staff_allowed(self, client, staff_token):
-        """Test staff can access chat endpoints"""
-        response = client.get(
-            "/api/v1/chat/health",
-            headers={"Authorization": f"Bearer {staff_token}"}
+    def test_chat_message_staff_allowed(self, client, staff_token):
+        """Test staff can send chat messages"""
+        response = client.post(
+            "/api/v1/chat/message",
+            headers={"Authorization": f"Bearer {staff_token}"},
+            json={"message": "test", "conversation_id": "test-123"}
         )
+        # Should work or fail due to service, but not auth
         assert response.status_code not in [401, 403]
 
 
 class TestInvalidTokens:
-    """Test various invalid token scenarios"""
+    """Test various invalid token scenarios on protected endpoints"""
 
     def test_expired_token(self, client, expired_token):
-        """Test expired token is rejected"""
+        """Test expired token is rejected on protected endpoint"""
         response = client.get(
-            "/health",
+            "/api/v1/entities/",
             headers={"Authorization": f"Bearer {expired_token}"}
         )
         assert response.status_code == 401
 
     def test_invalid_signature(self, client, invalid_signature_token):
-        """Test token with invalid signature is rejected"""
+        """Test token with invalid signature is rejected on protected endpoint"""
         response = client.get(
-            "/health",
+            "/api/v1/entities/",
             headers={"Authorization": f"Bearer {invalid_signature_token}"}
         )
         assert response.status_code == 401
 
     def test_malformed_token(self, client, malformed_token):
-        """Test malformed token is rejected"""
+        """Test malformed token is rejected on protected endpoint"""
         response = client.get(
-            "/health",
+            "/api/v1/entities/",
             headers={"Authorization": f"Bearer {malformed_token}"}
         )
         assert response.status_code == 401
 
     def test_missing_bearer_prefix(self, client, student_token):
-        """Test token without Bearer prefix is rejected"""
+        """Test token without Bearer prefix is rejected on protected endpoint"""
         response = client.get(
-            "/health",
+            "/api/v1/entities/",
             headers={"Authorization": student_token}
         )
         assert response.status_code == 401
 
     def test_empty_authorization_header(self, client):
-        """Test empty authorization header is rejected"""
+        """Test empty authorization header is rejected on protected endpoint"""
         response = client.get(
-            "/health",
+            "/api/v1/entities/",
             headers={"Authorization": ""}
         )
         assert response.status_code == 401

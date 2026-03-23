@@ -386,10 +386,8 @@ async def get_anomalies_by_entity(
         raise HTTPException(status_code=500, detail=f"Error retrieving entity anomalies: {str(e)}")
 
 @router.get("/health")
-async def health_check(
-    current_user: AuthenticatedUser = Depends(require_staff())
-):
-    """Health check for anomaly detection service"""
+async def health_check():
+    """Public health check for anomaly detection service - no authentication required"""
     return {
         "success": True,
         "message": "Anomaly detection service is healthy",

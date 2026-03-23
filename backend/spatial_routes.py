@@ -160,10 +160,8 @@ async def get_campus_summary(
         raise HTTPException(status_code=500, detail=f"Error retrieving campus summary: {str(e)}")
 
 @router.get("/health")
-async def health_check(
-    current_user: AuthenticatedUser = Depends(require_staff())
-):
-    """Health check endpoint"""
+async def health_check():
+    """Public health check endpoint - no authentication required"""
     return {
         "success": True,
         "message": "Spatial forecasting API is healthy",

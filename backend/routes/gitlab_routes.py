@@ -284,10 +284,8 @@ async def get_pipeline_jobs(
 
 
 @router.get("/health")
-async def gitlab_health(
-    current_user: AuthenticatedUser = Depends(require_admin())
-):
-    """Check GitLab connection health"""
+async def gitlab_health():
+    """Public GitLab connection health check - no authentication required"""
     if not GITLAB_TOKEN or not GITLAB_PROJECT_ID:
         return {
             "status": "not_configured",

@@ -73,20 +73,18 @@ if settings.ALERT_SYSTEM_ENABLED:
     logger.info("Alert system routes registered")
 
 @app.get("/")
-async def root(current_user: AuthenticatedUser = Depends(get_current_user)):
+async def root():
+    """Public root endpoint - no authentication required"""
     return {
         "message": "Campus Entity Resolution API",
         "status": "running",
-        "version": "1.0.1",
-        "authenticated_user": current_user.entity_id
+        "version": "1.0.1"
     }
 
 @app.get("/health")
-async def health_check(current_user: AuthenticatedUser = Depends(get_current_user)):
-    return {
-        "status": "healthy",
-        "authenticated_user": current_user.entity_id
-    }
+async def health_check():
+    """Public health check endpoint - no authentication required"""
+    return {"status": "healthy"}
 
 if __name__ == "__main__":
     import uvicorn

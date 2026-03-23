@@ -141,10 +141,8 @@ async def clear_conversation(
     summary="Check chatbot health",
     description="Check if the chatbot service is healthy and properly configured"
 )
-async def health_check(
-    current_user: AuthenticatedUser = Depends(get_current_user)
-):
-    """Health check endpoint for the chatbot service"""
+async def health_check():
+    """Public health check endpoint for the chatbot service - no auth required"""
     use_vertex = settings.USE_VERTEX_AI
 
     health_status = {
