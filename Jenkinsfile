@@ -377,27 +377,27 @@ pipeline {
                             # Create release in Sentry
                             sentry-cli releases new "\$RELEASE_VERSION" \
                                 --auth-token \$SENTRY_AUTH_TOKEN \
-                                --org fazri-analyzer \
-                                --project fazri-analyzer-backend || echo "Release already exists"
+                                --org rayzrsole \
+                                --project fazri-backend || echo "Release already exists"
 
                             # Associate commits with the release
                             sentry-cli releases set-commits "\$RELEASE_VERSION" --auto \
                                 --auth-token \$SENTRY_AUTH_TOKEN \
-                                --org fazri-analyzer \
-                                --project fazri-analyzer-backend || true
+                                --org rayzrsole \
+                                --project fazri-backend || true
 
                             # Mark release as deployed
                             sentry-cli releases deploys "\$RELEASE_VERSION" new \
                                 --env ${DEPLOY_ENV} \
                                 --auth-token \$SENTRY_AUTH_TOKEN \
-                                --org fazri-analyzer \
-                                --project fazri-analyzer-backend
+                                --org rayzrsole \
+                                --project fazri-backend
 
                             # Finalize the release
                             sentry-cli releases finalize "\$RELEASE_VERSION" \
                                 --auth-token \$SENTRY_AUTH_TOKEN \
-                                --org fazri-analyzer \
-                                --project fazri-analyzer-backend
+                                --org rayzrsole \
+                                --project fazri-backend
 
                             echo "Sentry release created: \$RELEASE_VERSION"
                             echo "Environment: ${DEPLOY_ENV}"
