@@ -1,9 +1,12 @@
 from typing import List, Optional, Callable
 from fastapi import Header, Depends
+import logging
 
 from auth.jwt import decode_jwt_token
 from auth.models import AuthenticatedUser, UserRole
 from auth.exceptions import AuthenticationError, PermissionDeniedError
+
+logger = logging.getLogger(__name__)
 
 
 async def get_current_user(
@@ -32,6 +35,10 @@ async def get_current_user(
 
     if not token:
         raise AuthenticationError(detail="Token is empty")
+
+    # Debug logging (remove in production)
+    logger.debug(f"[Auth] Received token length: {len(token)}")
+    logger.debug(f"[Auth] Token preview: {token[:50]}...")
 
     # Decode and validate JWT (will raise TokenExpiredError or InvalidTokenError)
     payload = decode_jwt_token(token)

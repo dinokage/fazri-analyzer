@@ -6,7 +6,7 @@ import { PrismaClient } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
 import bcrypt from "bcrypt";
 import { UserRole } from "@prisma/client";
-import { encode } from "next-auth/jwt";
+import { SignJWT } from "jose";
 
 function CustomPrismaAdapter(p: PrismaClient): Adapter {
   const origin = PrismaAdapter(p);
@@ -111,12 +111,25 @@ export const OPTIONS: NextAuthOptions = {
           session.user.staff_id = token.staff_id as string;
           session.user.department = token.department as string;
 
-          // Encode JWT token for backend authentication
-          session.accessToken = await encode({
-            token,
-            secret: process.env.NEXTAUTH_SECRET!,
-            maxAge: 30 * 24 * 60 * 60, // 30 days
-          });
+          // Create JWT token for backend authentication using jose
+          const secret = new TextEncoder().encode(process.env.NEXTAUTH_SECRET!);
+          const now = Math.floor(Date.now() / 1000);
+
+          session.accessToken = await new SignJWT({
+            id: token.id,
+            entity_id: token.entity_id,
+            name: token.name,
+            email: token.email,
+            role: token.role,
+            face_id: token.face_id,
+            student_id: token.student_id,
+            staff_id: token.staff_id,
+            department: token.department,
+          })
+            .setProtectedHeader({ alg: "HS256" })
+            .setIssuedAt(now)
+            .setExpirationTime(now + (30 * 24 * 60 * 60)) // 30 days
+            .sign(secret);
         }
         return session;
       },
