@@ -11,6 +11,8 @@ import redis
 from models.chat import ChatRequest, ChatResponse, ErrorResponse
 from services.chatbot.orchestrator import ChatOrchestrator
 from config import settings
+from auth.dependencies import get_current_user
+from auth.models import AuthenticatedUser
 
 logger = logging.getLogger(__name__)
 
@@ -18,7 +20,6 @@ router = APIRouter(prefix="/api/v1/chat", tags=["chatbot"])
 
 # Redis client for conversation state
 _redis_client = None
-
 
 def get_redis_client():
     """Get or create Redis client"""
@@ -72,7 +73,8 @@ def get_chat_orchestrator() -> ChatOrchestrator:
 )
 async def send_message(
     request: ChatRequest,
-    orchestrator: ChatOrchestrator = Depends(get_chat_orchestrator)
+    orchestrator: ChatOrchestrator = Depends(get_chat_orchestrator),
+    current_user: AuthenticatedUser = Depends(get_current_user)
 ):
     """
     Send a message to the chatbot.
@@ -121,7 +123,8 @@ async def send_message(
 )
 async def clear_conversation(
     conversation_id: str,
-    orchestrator: ChatOrchestrator = Depends(get_chat_orchestrator)
+    orchestrator: ChatOrchestrator = Depends(get_chat_orchestrator),
+    current_user: AuthenticatedUser = Depends(get_current_user)
 ):
     """Clear conversation history for the given conversation ID"""
     success = await orchestrator.clear_conversation(conversation_id)
@@ -138,7 +141,7 @@ async def clear_conversation(
     description="Check if the chatbot service is healthy and properly configured"
 )
 async def health_check():
-    """Health check endpoint for the chatbot service"""
+    """Public health check endpoint for the chatbot service - no auth required"""
     use_vertex = settings.USE_VERTEX_AI
 
     health_status = {
@@ -179,7 +182,9 @@ async def health_check():
     summary="List available tools",
     description="List all tools available to the chatbot for querying data"
 )
-async def list_tools():
+async def list_tools(
+    current_user: AuthenticatedUser = Depends(get_current_user)
+):
     """List all available tools that the chatbot can use"""
     from services.chatbot.tools import TOOL_DEFINITIONS
 

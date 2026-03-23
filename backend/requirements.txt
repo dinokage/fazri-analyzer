@@ -113,3 +113,4 @@ wheel==0.45.1
 wrapt==1.17.3
 google-generativeai>=0.8.0
 google-cloud-aiplatform>=1.38.0
+sentry-sdk==2.24.0

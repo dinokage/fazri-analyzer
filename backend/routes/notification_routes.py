@@ -19,6 +19,8 @@ from models.schemas.alerts import (
     NotificationQueueStatusResponse,
     ProcessQueueResponse,
 )
+from auth.dependencies import require_staff
+from auth.models import AuthenticatedUser
 
 logger = logging.getLogger(__name__)
 
@@ -28,6 +30,7 @@ router = APIRouter(prefix="/api/v1/notifications", tags=["notifications"])
 @router.get("/status", response_model=NotificationQueueStatusResponse)
 async def get_queue_status(
     db: Session = Depends(get_db),
+    current_user: AuthenticatedUser = Depends(require_staff())
 ):
     """
     Get the current status of the notification queue.
@@ -44,6 +47,7 @@ async def get_queue_status(
 async def process_notification_queue(
     batch_size: int = Query(50, ge=1, le=200, description="Number of notifications to process"),
     db: Session = Depends(get_db),
+    current_user: AuthenticatedUser = Depends(require_staff())
 ):
     """
     Process pending notifications in the queue.
@@ -69,6 +73,7 @@ async def get_notification_history(
     alert_id: Optional[UUID] = Query(None, description="Filter by alert"),
     limit: int = Query(50, ge=1, le=200, description="Maximum results to return"),
     db: Session = Depends(get_db),
+    current_user: AuthenticatedUser = Depends(require_staff())
 ):
     """
     Get notification delivery history.
@@ -93,6 +98,7 @@ async def get_staff_notification_history(
     staff_id: UUID,
     limit: int = Query(50, ge=1, le=200, description="Maximum results to return"),
     db: Session = Depends(get_db),
+    current_user: AuthenticatedUser = Depends(require_staff())
 ):
     """
     Get notification history for a specific staff member.
@@ -114,6 +120,7 @@ async def get_alert_notification_history(
     alert_id: UUID,
     limit: int = Query(50, ge=1, le=200, description="Maximum results to return"),
     db: Session = Depends(get_db),
+    current_user: AuthenticatedUser = Depends(require_staff())
 ):
     """
     Get notification history for a specific alert.

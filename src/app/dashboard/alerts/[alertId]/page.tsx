@@ -12,13 +12,16 @@ interface AlertDetailPageProps {
   params: Promise<{ alertId: string }>;
 }
 
-async function getStaffIdByEmail(email: string): Promise<string | null> {
+async function getStaffIdByEmail(email: string, accessToken: string): Promise<string | null> {
   try {
     const baseUrl = process.env.NEXT_PUBLIC_FASTAPI_BASE_URL || 'http://localhost:8000';
     const response = await fetch(
       `${baseUrl}/api/v1/staff/by-email/${encodeURIComponent(email)}`,
       {
-        headers: { 'Content-Type': 'application/json' },
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${accessToken}`,
+        },
         cache: 'no-store'
       }
     );
@@ -42,8 +45,12 @@ export default async function AlertDetailPage({ params }: AlertDetailPageProps) 
     redirect('/dashboard/profile');
   }
 
+  if (!session.accessToken) {
+    redirect('/auth');
+  }
+
   // Look up the staff profile ID from the backend using the user's email
-  const staffId = await getStaffIdByEmail(session.user.email || '');
+  const staffId = await getStaffIdByEmail(session.user.email || '', session.accessToken);
 
   if (!staffId) {
     // User doesn't have a staff profile - show an error or create one

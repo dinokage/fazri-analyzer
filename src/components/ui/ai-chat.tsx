@@ -155,7 +155,7 @@ export default function AIChatCard({ className, userName }: AIChatCardProps) {
   const formatMessage = (text: string) => {
     return text
       .split('\n')
-      .map((line, i) => {
+      .map((line) => {
         // Handle bold
         line = line.replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>');
         // Handle bullet points

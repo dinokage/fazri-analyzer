@@ -539,7 +539,6 @@ const FazriAnalyzerLanding: React.FC = () => {
     RADIUS_BOOST,
     BASE_OPACITY_MIN,
     BASE_OPACITY_MAX,
-    BASE_RADIUS,
   ]);
 
   useEffect(() => {
@@ -949,13 +948,13 @@ const FazriAnalyzerLanding: React.FC = () => {
                 icon: <Brain className="h-10 w-10 text-emerald-500" />,
                 title: "Predictive AI",
                 description:
-                  "LSTM and XGBoost models for location prediction and anomaly detection with explainable results.",
+                  "ML-powered anomaly detection and behavioral pattern analysis with a configurable rule engine for explainable results.",
               },
               {
                 icon: <Shield className="h-10 w-10 text-emerald-500" />,
                 title: "Security Monitoring",
                 description:
-                  "Real-time anomaly detection and predictive monitoring using ML models trained on campus activity data.",
+                  "Real-time anomaly detection and behavioral monitoring using a configurable rule engine and pattern analysis.",
               },
               {
                 icon: <Activity className="h-10 w-10 text-emerald-500" />,
@@ -1060,10 +1059,10 @@ const FazriAnalyzerLanding: React.FC = () => {
 
             <Card className="group relative shadow-black/5 sm:col-span-3 bg-[#1a1a1a] border-gray-700">
               <CardHeader className="p-6 md:p-12">
-                <p className="font-medium text-white">ML Prediction Models</p>
+                <p className="font-medium text-white">ML Anomaly Detection</p>
                 <p className="text-gray-400 mt-2 max-w-sm text-sm">
-                  TensorFlow LSTM and XGBoost for location prediction with
-                  explainable AI.
+                  Behavioral pattern analysis and anomaly detection powered by a
+                  configurable rule engine with explainable results.
                 </p>
               </CardHeader>
               <CardContent className="relative h-fit px-6 pb-6 md:px-12 md:pb-12">

@@ -46,3 +46,8 @@ next-env.d.ts
 
 # git worktrees
 .worktrees/
+
+# Sentry
+.sentryclirc
+.sentry-*
+sentry-debug-files/

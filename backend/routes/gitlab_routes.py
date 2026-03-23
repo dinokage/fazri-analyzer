@@ -3,7 +3,7 @@ GitLab Integration Routes
 Fetches pipeline status, deployments, and project info from GitLab API.
 """
 
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, HTTPException, Depends
 from pydantic import BaseModel
 from typing import Optional, List
 from datetime import datetime
@@ -11,6 +11,8 @@ import httpx
 import logging
 
 from config import settings
+from auth.dependencies import require_admin
+from auth.models import AuthenticatedUser
 
 logger = logging.getLogger(__name__)
 
@@ -113,7 +115,9 @@ async def fetch_gitlab_api(endpoint: str) -> dict:
 
 
 @router.get("/status", response_model=GitLabStatusResponse)
-async def get_gitlab_status():
+async def get_gitlab_status(
+    current_user: AuthenticatedUser = Depends(require_admin())
+):
     """
     Get comprehensive GitLab project status including:
     - Project info
@@ -231,7 +235,10 @@ async def get_gitlab_status():
 
 
 @router.get("/pipelines")
-async def get_pipelines(limit: int = 10):
+async def get_pipelines(
+    limit: int = 10,
+    current_user: AuthenticatedUser = Depends(require_admin())
+):
     """Get recent pipelines"""
     pipelines_data = await fetch_gitlab_api(f"/pipelines?per_page={limit}")
 
@@ -252,7 +259,10 @@ async def get_pipelines(limit: int = 10):
 
 
 @router.get("/pipelines/{pipeline_id}/jobs")
-async def get_pipeline_jobs(pipeline_id: int):
+async def get_pipeline_jobs(
+    pipeline_id: int,
+    current_user: AuthenticatedUser = Depends(require_admin())
+):
     """Get jobs for a specific pipeline"""
     jobs_data = await fetch_gitlab_api(f"/pipelines/{pipeline_id}/jobs")
 
@@ -275,7 +285,7 @@ async def get_pipeline_jobs(pipeline_id: int):
 
 @router.get("/health")
 async def gitlab_health():
-    """Check GitLab connection health"""
+    """Public GitLab connection health check - no authentication required"""
     if not GITLAB_TOKEN or not GITLAB_PROJECT_ID:
         return {
             "status": "not_configured",

@@ -1,4 +1,7 @@
 // lib/api-client.ts
+import { getSession } from "next-auth/react";
+import * as Sentry from "@sentry/nextjs";
+
 const API_BASE_URL = process.env.NEXT_PUBLIC_FASTAPI_BASE_URL || 'http://localhost:8000';
 
 class ApiError extends Error {
@@ -12,7 +15,56 @@ class ApiError extends Error {
   }
 }
 
+async function getAuthHeaders(): Promise<HeadersInit> {
+  const session = await getSession();
+
+  if (!session?.accessToken) {
+    throw new ApiError("No active session", 401);
+  }
+
+  return {
+    'Content-Type': 'application/json',
+    'Authorization': `Bearer ${session.accessToken}`,
+  };
+}
+
 async function handleResponse(response: Response) {
+  if (response.status === 401) {
+    // Log authentication errors to Sentry as warnings
+    Sentry.captureMessage('Session expired - authentication required', {
+      level: 'warning',
+      tags: {
+        type: 'auth_expired',
+        status_code: '401',
+      },
+      extra: {
+        url: response.url,
+      },
+    });
+
+    // Redirect to login on auth failure
+    if (typeof window !== 'undefined') {
+      window.location.href = '/auth';
+    }
+    throw new ApiError('Session expired. Please log in again.', 401);
+  }
+
+  if (response.status === 403) {
+    // Log permission errors to Sentry as warnings
+    Sentry.captureMessage('Permission denied - insufficient privileges', {
+      level: 'warning',
+      tags: {
+        type: 'permission_denied',
+        status_code: '403',
+      },
+      extra: {
+        url: response.url,
+      },
+    });
+
+    throw new ApiError('You do not have permission to perform this action.', 403);
+  }
+
   if (!response.ok) {
     const error = await response.json().catch(() => ({}));
     // Handle cases where detail is an object (e.g., validation errors)
@@ -25,7 +77,23 @@ async function handleResponse(response: Response) {
       // Handle validation errors or structured error details
       message = JSON.stringify(error.detail);
     }
-    throw new ApiError(message, response.status, error);
+
+    // Capture API errors in Sentry
+    const apiError = new ApiError(message, response.status, error);
+    Sentry.captureException(apiError, {
+      tags: {
+        type: 'api_error',
+        status_code: response.status.toString(),
+      },
+      extra: {
+        url: response.url,
+        response_body: error,
+        error_message: message,
+      },
+      level: response.status >= 500 ? 'error' : 'warning',
+    });
+
+    throw apiError;
   }
   return response.json();
 }
@@ -33,7 +101,7 @@ async function handleResponse(response: Response) {
 export const apiClient = {
   async getEntity(entityId: string) {
     const response = await fetch(`${API_BASE_URL}/api/v1/entities/${entityId}`, {
-      headers: { 'Content-Type': 'application/json' },
+      headers: await getAuthHeaders(),
     });
     return handleResponse(response);
   },
@@ -41,7 +109,7 @@ export const apiClient = {
   async getEntityFusionReport(entityId: string) {
     const response = await fetch(
       `${API_BASE_URL}/api/v1/entities/${entityId}/fusion-report`,
-      { headers: { 'Content-Type': 'application/json' } }
+      { headers: await getAuthHeaders() }
     );
     return handleResponse(response);
   },
@@ -50,10 +118,10 @@ export const apiClient = {
     const params = new URLSearchParams();
     if (startDate) params.append('start_date', startDate);
     if (endDate) params.append('end_date', endDate);
-    
+
     const url = `${API_BASE_URL}/api/v1/graph/timeline/${entityId}${params.toString() ? `?${params}` : ''}`;
     const response = await fetch(url, {
-      headers: { 'Content-Type': 'application/json' },
+      headers: await getAuthHeaders(),
     });
     return handleResponse(response);
   },
@@ -67,7 +135,7 @@ export const apiClient = {
 
     const response = await fetch(
       `${API_BASE_URL}/api/v1/graph/timeline/${entityId}/with-gaps?${params}`,
-      { headers: { 'Content-Type': 'application/json' } }
+      { headers: await getAuthHeaders() }
     );
     return handleResponse(response);
   },
@@ -76,10 +144,10 @@ export const apiClient = {
     const params = new URLSearchParams();
     if (startDate) params.append('start_date', startDate);
     if (endDate) params.append('end_date', endDate);
-    
+
     const url = `${API_BASE_URL}/api/v1/graph/timeline/${entityId}/summary${params.toString() ? `?${params}` : ''}`;
     const response = await fetch(url, {
-      headers: { 'Content-Type': 'application/json' },
+      headers: await getAuthHeaders(),
     });
     return handleResponse(response);
   },
@@ -89,12 +157,12 @@ export const apiClient = {
       lookback_days: lookbackDays.toString(),
     });
     if (targetTime) params.append('target_time', targetTime);
-    
+
     const response = await fetch(
       `${API_BASE_URL}/api/v1/graph/predict/location/${entityId}?${params}`,
       {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: await getAuthHeaders(),
       }
     );
     return handleResponse(response);
@@ -105,12 +173,12 @@ export const apiClient = {
       gap_start: gapStart,
       gap_end: gapEnd,
     });
-    
+
     const response = await fetch(
       `${API_BASE_URL}/api/v1/graph/predict/gap/${entityId}?${params}`,
       {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: await getAuthHeaders(),
       }
     );
     return handleResponse(response);
@@ -119,7 +187,7 @@ export const apiClient = {
   async getActivityHeatmap(entityId: string, days = 7) {
     const response = await fetch(
       `${API_BASE_URL}/api/v1/graph/timeline/${entityId}/heatmap?days=${days}`,
-      { headers: { 'Content-Type': 'application/json' } }
+      { headers: await getAuthHeaders() }
     );
     return handleResponse(response);
   },
@@ -128,7 +196,7 @@ export const apiClient = {
     const params = date ? `?date=${date}` : '';
     const response = await fetch(
       `${API_BASE_URL}/api/v1/graph/timeline/${entityId}/daily-summary${params}`,
-      { headers: { 'Content-Type': 'application/json' } }
+      { headers: await getAuthHeaders() }
     );
     return handleResponse(response);
   },
@@ -136,7 +204,7 @@ export const apiClient = {
   async detectActivityPatterns(entityId: string, days = 7) {
     const response = await fetch(
       `${API_BASE_URL}/api/v1/graph/timeline/${entityId}/patterns?days=${days}`,
-      { headers: { 'Content-Type': 'application/json' } }
+      { headers: await getAuthHeaders() }
     );
     return handleResponse(response);
   },
@@ -145,7 +213,7 @@ export const apiClient = {
     const params = timestamp ? `?timestamp=${timestamp}` : '';
     const response = await fetch(
       `${API_BASE_URL}/api/v1/graph/location/${locationId}/entities${params}`,
-      { headers: { 'Content-Type': 'application/json' } }
+      { headers: await getAuthHeaders() }
     );
     return handleResponse(response);
   },
@@ -153,7 +221,7 @@ export const apiClient = {
   async getMissingEntities(hours = 12) {
     const response = await fetch(
       `${API_BASE_URL}/api/v1/graph/alerts/missing?hours=${hours}`,
-      { headers: { 'Content-Type': 'application/json' } }
+      { headers: await getAuthHeaders() }
     );
     return handleResponse(response);
   },
@@ -161,7 +229,7 @@ export const apiClient = {
   async getGraphStats() {
     const response = await fetch(
       `${API_BASE_URL}/api/v1/graph/stats`,
-      { headers: { 'Content-Type': 'application/json' } }
+      { headers: await getAuthHeaders() }
     );
     return handleResponse(response);
   },
@@ -176,7 +244,7 @@ export const apiClient = {
 
     const response = await fetch(
       `${API_BASE_URL}/api/v1/entities/?${params}`,
-      { headers: { 'Content-Type': 'application/json' } }
+      { headers: await getAuthHeaders() }
     );
     return handleResponse(response);
   },
@@ -186,7 +254,7 @@ export const apiClient = {
       `${API_BASE_URL}/api/v1/entities/search`,
       {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: await getAuthHeaders(),
         body: JSON.stringify({
           identifier_type: identifierType,
           identifier_value: identifierValue,
@@ -204,7 +272,7 @@ export const apiClient = {
 
     const response = await fetch(
       `${API_BASE_URL}/api/v1/entities/fuzzy-search?${params}`,
-      { headers: { 'Content-Type': 'application/json' } }
+      { headers: await getAuthHeaders() }
     );
     return handleResponse(response);
   },
@@ -216,7 +284,7 @@ export const apiClient = {
 
     const url = `${API_BASE_URL}/api/v1/anomalies/by-entity/${entityId}${params.toString() ? `?${params}` : ''}`;
     const response = await fetch(url, {
-      headers: { 'Content-Type': 'application/json' },
+      headers: await getAuthHeaders(),
     });
     return handleResponse(response);
   },
@@ -229,7 +297,7 @@ export const apiClient = {
 
     const response = await fetch(
       `${API_BASE_URL}/api/v1/anomalies/all?${params}`,
-      { headers: { 'Content-Type': 'application/json' } }
+      { headers: await getAuthHeaders() }
     );
     return handleResponse(response);
   },
@@ -237,7 +305,7 @@ export const apiClient = {
   // NEW METHOD: getAnomalySummary for the first three cards
   async getAnomalySummary() {
     const response = await fetch(`${API_BASE_URL}/api/v1/anomalies/summary`, {
-      headers: { 'Content-Type': 'application/json' },
+      headers: await getAuthHeaders(),
     });
     return handleResponse(response);
   },
@@ -250,7 +318,7 @@ export const apiClient = {
 
     const response = await fetch(
       `${API_BASE_URL}/api/v1/anomalies/date-range?${params}`,
-      { headers: { 'Content-Type': 'application/json' } }
+      { headers: await getAuthHeaders() }
     );
     return handleResponse(response);
   },
@@ -259,7 +327,7 @@ export const apiClient = {
   async getAllZones() {
     const response = await fetch(
       `${API_BASE_URL}/api/v1/spatial/zones`,
-      { headers: { 'Content-Type': 'application/json' } }
+      { headers: await getAuthHeaders() }
     );
     return handleResponse(response);
   },
@@ -267,7 +335,7 @@ export const apiClient = {
   async getZoneDetails(zoneId: string) {
     const response = await fetch(
       `${API_BASE_URL}/api/v1/spatial/zones/${zoneId}`,
-      { headers: { 'Content-Type': 'application/json' } }
+      { headers: await getAuthHeaders() }
     );
     return handleResponse(response);
   },
@@ -275,7 +343,7 @@ export const apiClient = {
   async getZoneOccupancy(zoneId: string) {
     const response = await fetch(
       `${API_BASE_URL}/api/v1/spatial/zones/${zoneId}/occupancy`,
-      { headers: { 'Content-Type': 'application/json' } }
+      { headers: await getAuthHeaders() }
     );
     return handleResponse(response);
   },
@@ -287,7 +355,7 @@ export const apiClient = {
 
     const response = await fetch(
       `${API_BASE_URL}/api/v1/spatial/zones/${zoneId}/history?${params}`,
-      { headers: { 'Content-Type': 'application/json' } }
+      { headers: await getAuthHeaders() }
     );
     return handleResponse(response);
   },
@@ -299,7 +367,7 @@ export const apiClient = {
 
     const response = await fetch(
       `${API_BASE_URL}/api/v1/spatial/zones/${zoneId}/forecast?${params}`,
-      { headers: { 'Content-Type': 'application/json' } }
+      { headers: await getAuthHeaders() }
     );
     return handleResponse(response);
   },
@@ -307,7 +375,7 @@ export const apiClient = {
   async getZoneConnections(zoneId: string) {
     const response = await fetch(
       `${API_BASE_URL}/api/v1/spatial/zones/${zoneId}/connections`,
-      { headers: { 'Content-Type': 'application/json' } }
+      { headers: await getAuthHeaders() }
     );
     return handleResponse(response);
   },
@@ -315,7 +383,7 @@ export const apiClient = {
   async getCampusSummary() {
     const response = await fetch(
       `${API_BASE_URL}/api/v1/spatial/campus/summary`,
-      { headers: { 'Content-Type': 'application/json' } }
+      { headers: await getAuthHeaders() }
     );
     return handleResponse(response);
   },
@@ -348,7 +416,7 @@ export const apiClient = {
 
     const response = await fetch(
       `${API_BASE_URL}/api/v1/alerts?${searchParams}`,
-      { headers: { 'Content-Type': 'application/json' } }
+      { headers: await getAuthHeaders() }
     );
     return handleResponse(response);
   },
@@ -356,7 +424,7 @@ export const apiClient = {
   async getAlert(alertId: string) {
     const response = await fetch(
       `${API_BASE_URL}/api/v1/alerts/${alertId}`,
-      { headers: { 'Content-Type': 'application/json' } }
+      { headers: await getAuthHeaders() }
     );
     return handleResponse(response);
   },
@@ -375,7 +443,7 @@ export const apiClient = {
       `${API_BASE_URL}/api/v1/alerts`,
       {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: await getAuthHeaders(),
         body: JSON.stringify(data),
       }
     );
@@ -387,7 +455,7 @@ export const apiClient = {
       `${API_BASE_URL}/api/v1/alerts/${alertId}/assign`,
       {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: await getAuthHeaders(),
         body: JSON.stringify({ staff_id: staffId, reason }),
       }
     );
@@ -401,7 +469,7 @@ export const apiClient = {
       `${API_BASE_URL}/api/v1/alerts/${alertId}/acknowledge?${params}`,
       {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: await getAuthHeaders(),
       }
     );
     return handleResponse(response);
@@ -418,7 +486,7 @@ export const apiClient = {
       `${API_BASE_URL}/api/v1/alerts/${alertId}/resolve?${params}`,
       {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: await getAuthHeaders(),
         body: JSON.stringify({
           resolution_type: data.resolution_type,
           resolution_notes: data.resolution_notes,
@@ -441,7 +509,7 @@ export const apiClient = {
       `${API_BASE_URL}/api/v1/alerts/${alertId}/escalate?${params}`,
       {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: await getAuthHeaders(),
       }
     );
     return handleResponse(response);
@@ -450,7 +518,7 @@ export const apiClient = {
   async getAlertHistory(alertId: string) {
     const response = await fetch(
       `${API_BASE_URL}/api/v1/alerts/${alertId}/history`,
-      { headers: { 'Content-Type': 'application/json' } }
+      { headers: await getAuthHeaders() }
     );
     return handleResponse(response);
   },
@@ -460,7 +528,7 @@ export const apiClient = {
       `${API_BASE_URL}/api/v1/staff/${staffId}/alerts/${alertId}/add-note`,
       {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: await getAuthHeaders(),
         body: JSON.stringify({ note }),
       }
     );
@@ -486,7 +554,7 @@ export const apiClient = {
     const url = queryString ? `${endpoint}?${queryString}` : endpoint;
 
     const response = await fetch(url, {
-      headers: { 'Content-Type': 'application/json' }
+      headers: await getAuthHeaders()
     });
     const data = await handleResponse(response);
     // Backend returns array directly, wrap it for consistent frontend interface
@@ -496,7 +564,7 @@ export const apiClient = {
   async getStaffMember(staffId: string) {
     const response = await fetch(
       `${API_BASE_URL}/api/v1/staff/${staffId}`,
-      { headers: { 'Content-Type': 'application/json' } }
+      { headers: await getAuthHeaders() }
     );
     return handleResponse(response);
   },
@@ -504,7 +572,7 @@ export const apiClient = {
   async getStaffByEmail(email: string) {
     const response = await fetch(
       `${API_BASE_URL}/api/v1/staff/by-email/${encodeURIComponent(email)}`,
-      { headers: { 'Content-Type': 'application/json' } }
+      { headers: await getAuthHeaders() }
     );
     return handleResponse(response);
   },
@@ -512,7 +580,7 @@ export const apiClient = {
   async getStaffDashboard(staffId: string) {
     const response = await fetch(
       `${API_BASE_URL}/api/v1/staff/${staffId}/dashboard`,
-      { headers: { 'Content-Type': 'application/json' } }
+      { headers: await getAuthHeaders() }
     );
     return handleResponse(response);
   },
@@ -524,7 +592,7 @@ export const apiClient = {
 
     const response = await fetch(
       `${API_BASE_URL}/api/v1/staff/${staffId}/alerts?${searchParams}`,
-      { headers: { 'Content-Type': 'application/json' } }
+      { headers: await getAuthHeaders() }
     );
     return handleResponse(response);
   },
@@ -546,7 +614,7 @@ export const apiClient = {
       `${API_BASE_URL}/api/v1/chat/message`,
       {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: await getAuthHeaders(),
         body: JSON.stringify(data),
       }
     );
@@ -558,7 +626,7 @@ export const apiClient = {
       `${API_BASE_URL}/api/v1/chat/conversation/${conversationId}`,
       {
         method: 'DELETE',
-        headers: { 'Content-Type': 'application/json' },
+        headers: await getAuthHeaders(),
       }
     );
     return handleResponse(response);
@@ -567,7 +635,7 @@ export const apiClient = {
   async getChatHealth() {
     const response = await fetch(
       `${API_BASE_URL}/api/v1/chat/health`,
-      { headers: { 'Content-Type': 'application/json' } }
+      { headers: await getAuthHeaders() }
     );
     return handleResponse(response);
   },
@@ -575,7 +643,7 @@ export const apiClient = {
   async getChatTools() {
     const response = await fetch(
       `${API_BASE_URL}/api/v1/chat/tools`,
-      { headers: { 'Content-Type': 'application/json' } }
+      { headers: await getAuthHeaders() }
     );
     return handleResponse(response);
   },
@@ -634,7 +702,7 @@ export const apiClient = {
   }> {
     const response = await fetch(
       `${API_BASE_URL}/api/v1/gitlab/status`,
-      { headers: { 'Content-Type': 'application/json' } }
+      { headers: await getAuthHeaders() }
     );
     return handleResponse(response);
   },
@@ -642,7 +710,7 @@ export const apiClient = {
   async getGitLabHealth() {
     const response = await fetch(
       `${API_BASE_URL}/api/v1/gitlab/health`,
-      { headers: { 'Content-Type': 'application/json' } }
+      { headers: await getAuthHeaders() }
     );
     return handleResponse(response);
   },

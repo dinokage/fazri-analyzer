@@ -11,6 +11,8 @@ from sqlalchemy.orm import Session
 
 from database import get_db
 from services.alerts import DemoService
+from auth.dependencies import require_admin
+from auth.models import AuthenticatedUser
 
 logger = logging.getLogger(__name__)
 
@@ -25,6 +27,7 @@ router = APIRouter(prefix="/api/v1/demo", tags=["demo"])
 async def list_scenarios(
     active_only: bool = Query(True, description="Only show active scenarios"),
     db: Session = Depends(get_db),
+    current_user: AuthenticatedUser = Depends(require_admin())
 ):
     """
     List all available demo scenarios.
@@ -55,6 +58,7 @@ async def list_scenarios(
 async def get_scenario_details(
     scenario_id: str,
     db: Session = Depends(get_db),
+    current_user: AuthenticatedUser = Depends(require_admin())
 ):
     """
     Get detailed information about a specific scenario.
@@ -77,6 +81,7 @@ async def get_scenario_details(
 @router.get("/state")
 async def get_demo_state(
     db: Session = Depends(get_db),
+    current_user: AuthenticatedUser = Depends(require_admin())
 ):
     """
     Get the current state of the running demo.
@@ -97,6 +102,7 @@ async def start_demo(
     speed: float = Query(1.0, ge=0.1, le=100, description="Playback speed multiplier"),
     auto_advance: bool = Query(True, description="Auto-advance through timeline"),
     db: Session = Depends(get_db),
+    current_user: AuthenticatedUser = Depends(require_admin())
 ):
     """
     Start a demo scenario.
@@ -125,6 +131,7 @@ async def start_demo(
 @router.post("/stop")
 async def stop_demo(
     db: Session = Depends(get_db),
+    current_user: AuthenticatedUser = Depends(require_admin())
 ):
     """
     Stop the current demo.
@@ -143,6 +150,7 @@ async def stop_demo(
 @router.post("/pause")
 async def pause_demo(
     db: Session = Depends(get_db),
+    current_user: AuthenticatedUser = Depends(require_admin())
 ):
     """
     Pause the current demo.
@@ -164,6 +172,7 @@ async def pause_demo(
 @router.post("/resume")
 async def resume_demo(
     db: Session = Depends(get_db),
+    current_user: AuthenticatedUser = Depends(require_admin())
 ):
     """
     Resume a paused demo.
@@ -185,6 +194,7 @@ async def resume_demo(
 @router.post("/advance")
 async def advance_step(
     db: Session = Depends(get_db),
+    current_user: AuthenticatedUser = Depends(require_admin())
 ):
     """
     Manually advance to the next step.
@@ -207,6 +217,7 @@ async def advance_step(
 async def set_speed(
     speed: float = Query(..., ge=0.1, le=100, description="New playback speed"),
     db: Session = Depends(get_db),
+    current_user: AuthenticatedUser = Depends(require_admin())
 ):
     """
     Set the demo playback speed.
@@ -234,6 +245,7 @@ async def set_speed(
 async def quick_start_demo(
     preset: str = Query("unauthorized_access", description="Preset scenario to run"),
     db: Session = Depends(get_db),
+    current_user: AuthenticatedUser = Depends(require_admin())
 ):
     """
     Quick start a demo with preset configuration.

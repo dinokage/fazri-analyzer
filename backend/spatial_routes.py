@@ -4,6 +4,8 @@ from fastapi import APIRouter, HTTPException, Depends, Query
 from typing import List, Optional
 from datetime import datetime, timedelta
 from services.spatial_forecasting import SpatialForecastingService
+from auth.dependencies import require_staff
+from auth.models import AuthenticatedUser
 import os
 
 router = APIRouter(prefix="/api/v1/spatial", tags=["spatial-forecasting"])
@@ -17,7 +19,10 @@ def get_spatial_service():
     return SpatialForecastingService(neo4j_uri, neo4j_user, neo4j_password)
 
 @router.get("/zones")
-async def get_all_zones(spatial_service: SpatialForecastingService = Depends(get_spatial_service)):
+async def get_all_zones(
+    spatial_service: SpatialForecastingService = Depends(get_spatial_service),
+    current_user: AuthenticatedUser = Depends(require_staff())
+):
     """Get list of all zones"""
     try:
         zones = spatial_service.get_all_zones()
@@ -31,8 +36,9 @@ async def get_all_zones(spatial_service: SpatialForecastingService = Depends(get
 
 @router.get("/zones/{zone_id}")
 async def get_zone_details(
-    zone_id: str, 
-    spatial_service: SpatialForecastingService = Depends(get_spatial_service)
+    zone_id: str,
+    spatial_service: SpatialForecastingService = Depends(get_spatial_service),
+    current_user: AuthenticatedUser = Depends(require_staff())
 ):
     """Get detailed information about a specific zone"""
     try:
@@ -52,7 +58,8 @@ async def get_zone_details(
 @router.get("/zones/{zone_id}/occupancy")
 async def get_current_occupancy(
     zone_id: str,
-    spatial_service: SpatialForecastingService = Depends(get_spatial_service)
+    spatial_service: SpatialForecastingService = Depends(get_spatial_service),
+    current_user: AuthenticatedUser = Depends(require_staff())
 ):
     """Get current occupancy for a zone"""
     try:
@@ -73,7 +80,8 @@ async def get_current_occupancy(
 async def get_zone_history(
     zone_id: str,
     days_back: int = Query(7, ge=1, le=300, description="Number of days to look back"),
-    spatial_service: SpatialForecastingService = Depends(get_spatial_service)
+    spatial_service: SpatialForecastingService = Depends(get_spatial_service),
+    current_user: AuthenticatedUser = Depends(require_staff())
 ):
     """Get historical occupancy data for a zone"""
     try:
@@ -91,7 +99,8 @@ async def get_zone_history(
 async def get_zone_forecast(
     zone_id: str,
     hours_ahead: int = Query(24, ge=1, le=168, description="Hours to forecast ahead"),
-    spatial_service: SpatialForecastingService = Depends(get_spatial_service)
+    spatial_service: SpatialForecastingService = Depends(get_spatial_service),
+    current_user: AuthenticatedUser = Depends(require_staff())
 ):
     """Get occupancy forecast for a zone"""
     try:
@@ -118,7 +127,8 @@ async def get_zone_forecast(
 @router.get("/zones/{zone_id}/connections")
 async def get_zone_connections(
     zone_id: str,
-    spatial_service: SpatialForecastingService = Depends(get_spatial_service)
+    spatial_service: SpatialForecastingService = Depends(get_spatial_service),
+    current_user: AuthenticatedUser = Depends(require_staff())
 ):
     """Get zones connected to the specified zone"""
     try:
@@ -135,7 +145,10 @@ async def get_zone_connections(
         raise HTTPException(status_code=500, detail=f"Error retrieving connections: {str(e)}")
 
 @router.get("/campus/summary")
-async def get_campus_summary(spatial_service: SpatialForecastingService = Depends(get_spatial_service)):
+async def get_campus_summary(
+    spatial_service: SpatialForecastingService = Depends(get_spatial_service),
+    current_user: AuthenticatedUser = Depends(require_staff())
+):
     """Get overall campus activity summary"""
     try:
         summary = spatial_service.get_campus_summary()
@@ -148,7 +161,7 @@ async def get_campus_summary(spatial_service: SpatialForecastingService = Depend
 
 @router.get("/health")
 async def health_check():
-    """Health check endpoint"""
+    """Public health check endpoint - no authentication required"""
     return {
         "success": True,
         "message": "Spatial forecasting API is healthy",
