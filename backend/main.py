@@ -1,6 +1,7 @@
 # backend/app/main.py
 import logging
 from contextlib import asynccontextmanager
+import re
 
 from fastapi import FastAPI, Depends
 from fastapi.middleware.cors import CORSMiddleware
@@ -48,9 +49,23 @@ app = FastAPI(
     lifespan=lifespan,
 )
 
+# CORS configuration for allowed domains and their subdomains
+ALLOWED_DOMAIN_PATTERNS = [
+    r"^https?://([a-zA-Z0-9-]+\.)*rayzrsole\.com$",
+    r"^https?://([a-zA-Z0-9-]+\.)*rdpdc\.in$",
+    r"^http://localhost(:[0-9]+)?$",  # Allow localhost for development
+]
+
+def is_origin_allowed(origin: str) -> bool:
+    """Check if origin matches allowed domain patterns"""
+    for pattern in ALLOWED_DOMAIN_PATTERNS:
+        if re.match(pattern, origin):
+            return True
+    return False
+
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
+    allow_origin_regex=r"^https?://([a-zA-Z0-9-]+\.)*rayzrsole\.com$|^https?://([a-zA-Z0-9-]+\.)*rdpdc\.in$|^http://localhost(:[0-9]+)?$",
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
