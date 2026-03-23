@@ -13,10 +13,7 @@ Sentry.init({
   tracesSampleRate: process.env.NODE_ENV === 'production' ? 0.1 : 1.0,
 
   integrations: [
-    Sentry.httpIntegration({
-      // Track HTTP requests from server
-      tracing: true,
-    }),
+    Sentry.httpIntegration(),
   ],
 
   // Filter sensitive data before sending to Sentry

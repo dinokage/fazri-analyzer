@@ -13,10 +13,6 @@ const nextConfig: NextConfig = {
       }
     ],
   },
-  // Enable instrumentation for Sentry
-  experimental: {
-    instrumentationHook: true,
-  },
 };
 
 export default withSentryConfig(nextConfig, {
@@ -27,8 +23,6 @@ export default withSentryConfig(nextConfig, {
 
   // Only upload source maps in production builds
   silent: true,
-  hideSourceMaps: true,
-  disableLogger: true,
 
   // Automatically tree-shake Sentry logger statements in production
   widenClientFileUpload: true,

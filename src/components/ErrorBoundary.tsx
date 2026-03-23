@@ -26,7 +26,7 @@ export class ErrorBoundary extends Component<Props, State> {
     this.state = { hasError: false };
   }
 
-  static getDerivedStateFromError(error: Error): State {
+  static getDerivedStateFromError(_error: Error): State {
     // Update state so the next render will show the fallback UI
     return { hasError: true };
   }
@@ -63,7 +63,7 @@ export class ErrorBoundary extends Component<Props, State> {
             <div className="flex-1">
               <h2 className="text-xl font-semibold mb-2">Something went wrong</h2>
               <p className="text-muted-foreground mb-4">
-                We've been notified about this error and are working on a fix.
+                We&apos;ve been notified about this error and are working on a fix.
                 You can try reloading the page or go back to the previous page.
               </p>
               <div className="flex gap-2">

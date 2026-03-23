@@ -21,13 +21,6 @@ Sentry.init({
       // Track navigation performance
       traceFetch: true,
       traceXHR: true,
-
-      // Only trace requests to our own domains
-      tracePropagationTargets: [
-        "localhost",
-        /^https:\/\/.*\.rayzrsole\.com/,
-        /^https:\/\/.*\.rdpdc\.in/,
-      ],
     }),
     Sentry.replayIntegration({
       // Privacy settings for session replay
@@ -37,6 +30,13 @@ Sentry.init({
       // Don't capture sensitive form inputs
       maskAllInputs: true,
     }),
+  ],
+
+  // Only trace requests to our own domains
+  tracePropagationTargets: [
+    "localhost",
+    /^https:\/\/.*\.rayzrsole\.com/,
+    /^https:\/\/.*\.rdpdc\.in/,
   ],
 
   // Filter sensitive data before sending to Sentry

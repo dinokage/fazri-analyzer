@@ -539,7 +539,6 @@ const FazriAnalyzerLanding: React.FC = () => {
     RADIUS_BOOST,
     BASE_OPACITY_MIN,
     BASE_OPACITY_MAX,
-    BASE_RADIUS,
   ]);
 
   useEffect(() => {
