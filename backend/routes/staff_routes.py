@@ -24,6 +24,9 @@ from models.schemas.alerts import (
     AlertResponse,
     AlertStatusEnum,
 )
+from auth.dependencies import require_staff, require_admin
+from auth.models import AuthenticatedUser, UserRole
+from auth.exceptions import PermissionDeniedError
 
 logger = logging.getLogger(__name__)
 
@@ -61,6 +64,7 @@ def staff_to_response(staff, db: Session) -> StaffProfileResponse:
 async def create_staff(
     staff_data: StaffProfileCreate,
     db: Session = Depends(get_db),
+    current_user: AuthenticatedUser = Depends(require_admin())
 ):
     """Create a new staff profile"""
     service = StaffService(db)
@@ -82,6 +86,7 @@ async def list_staff(
     limit: int = Query(50, ge=1, le=100, description="Maximum results"),
     offset: int = Query(0, ge=0, description="Results to skip"),
     db: Session = Depends(get_db),
+    current_user: AuthenticatedUser = Depends(require_staff())
 ):
     """List all staff with optional filters"""
     service = StaffService(db)
@@ -100,6 +105,7 @@ async def list_staff(
 async def list_available_staff(
     role: Optional[StaffRoleEnum] = Query(None, description="Filter by role"),
     db: Session = Depends(get_db),
+    current_user: AuthenticatedUser = Depends(require_staff())
 ):
     """
     List all staff available for new assignments.
@@ -118,6 +124,7 @@ async def list_available_staff(
 async def get_staff_by_email(
     email: str,
     db: Session = Depends(get_db),
+    current_user: AuthenticatedUser = Depends(require_staff())
 ):
     """Get a staff profile by email address"""
     service = StaffService(db)
@@ -133,6 +140,7 @@ async def get_staff_by_email(
 async def get_staff(
     staff_id: UUID,
     db: Session = Depends(get_db),
+    current_user: AuthenticatedUser = Depends(require_staff())
 ):
     """Get a specific staff profile by ID"""
     service = StaffService(db)
@@ -149,8 +157,13 @@ async def update_staff(
     staff_id: UUID,
     update_data: StaffProfileUpdate,
     db: Session = Depends(get_db),
+    current_user: AuthenticatedUser = Depends(require_staff())
 ):
     """Update a staff profile"""
+    # Check if user is admin or updating their own profile
+    if current_user.role != UserRole.SUPER_ADMIN and current_user.staff_id != staff_id:
+        raise PermissionDeniedError("You can only update your own profile unless you are an admin")
+
     service = StaffService(db)
     staff = service.update_staff(staff_id, update_data)
 
@@ -164,6 +177,7 @@ async def update_staff(
 async def delete_staff(
     staff_id: UUID,
     db: Session = Depends(get_db),
+    current_user: AuthenticatedUser = Depends(require_admin())
 ):
     """Delete a staff profile"""
     service = StaffService(db)
@@ -184,6 +198,7 @@ async def update_duty_status(
     staff_id: UUID,
     on_duty: bool = Query(..., description="New on-duty status"),
     db: Session = Depends(get_db),
+    current_user: AuthenticatedUser = Depends(require_staff())
 ):
     """Update a staff member's on-duty status"""
     service = StaffService(db)
@@ -204,6 +219,7 @@ async def update_location(
     staff_id: UUID,
     location_data: StaffLocationUpdate,
     db: Session = Depends(get_db),
+    current_user: AuthenticatedUser = Depends(require_staff())
 ):
     """Update a staff member's current location"""
     service = StaffService(db)
@@ -227,6 +243,7 @@ async def update_location(
 async def get_current_location(
     staff_id: UUID,
     db: Session = Depends(get_db),
+    current_user: AuthenticatedUser = Depends(require_staff())
 ):
     """Get a staff member's current location"""
     service = StaffService(db)
@@ -257,6 +274,7 @@ async def get_location_history(
     staff_id: UUID,
     limit: int = Query(20, ge=1, le=100, description="Maximum results"),
     db: Session = Depends(get_db),
+    current_user: AuthenticatedUser = Depends(require_staff())
 ):
     """Get a staff member's recent location history"""
     service = StaffService(db)
@@ -290,6 +308,7 @@ async def get_location_history(
 async def get_staff_in_zone(
     zone_id: str,
     db: Session = Depends(get_db),
+    current_user: AuthenticatedUser = Depends(require_staff())
 ):
     """Get all staff currently in a specific zone"""
     service = StaffService(db)
@@ -306,6 +325,7 @@ async def get_staff_in_zone(
 async def get_staff_statistics(
     staff_id: UUID,
     db: Session = Depends(get_db),
+    current_user: AuthenticatedUser = Depends(require_staff())
 ):
     """Get statistics for a staff member"""
     service = StaffService(db)
@@ -325,6 +345,7 @@ async def get_staff_statistics(
 async def get_staff_dashboard(
     staff_id: UUID,
     db: Session = Depends(get_db),
+    current_user: AuthenticatedUser = Depends(require_staff())
 ):
     """
     Get a comprehensive dashboard for a staff member.
@@ -398,6 +419,7 @@ async def get_staff_alerts(
     active_only: bool = Query(True, description="Only show active (non-resolved) alerts"),
     limit: int = Query(20, ge=1, le=100),
     db: Session = Depends(get_db),
+    current_user: AuthenticatedUser = Depends(require_staff())
 ):
     """
     Get all alerts assigned to a staff member.
@@ -448,6 +470,7 @@ async def start_investigation(
     alert_id: UUID,
     notes: Optional[str] = Query(None, description="Initial investigation notes"),
     db: Session = Depends(get_db),
+    current_user: AuthenticatedUser = Depends(require_staff())
 ):
     """
     Start investigating an alert.
@@ -501,6 +524,7 @@ async def request_backup(
     alert_id: UUID,
     reason: str = Query(..., description="Reason for requesting backup"),
     db: Session = Depends(get_db),
+    current_user: AuthenticatedUser = Depends(require_staff())
 ):
     """
     Request backup for an alert.
@@ -585,6 +609,7 @@ async def staff_add_note(
     alert_id: UUID,
     note: str = Query(..., min_length=1, description="Note content"),
     db: Session = Depends(get_db),
+    current_user: AuthenticatedUser = Depends(require_staff())
 ):
     """
     Add a note to an alert during investigation.
@@ -624,6 +649,7 @@ async def go_off_duty(
     staff_id: UUID,
     reassign_alerts: bool = Query(True, description="Reassign active alerts to other staff"),
     db: Session = Depends(get_db),
+    current_user: AuthenticatedUser = Depends(require_staff())
 ):
     """
     Mark staff as off duty.

@@ -4,6 +4,8 @@ from typing import List, Optional
 from datetime import datetime, timedelta
 from services.anomaly_detection import AnomalyDetectionService
 from config import settings
+from auth.dependencies import require_staff
+from auth.models import AuthenticatedUser
 import os
 from sqlalchemy import create_engine, Column, String, DateTime, JSON, Text
 from sqlalchemy.orm import sessionmaker, declarative_base
@@ -48,7 +50,8 @@ def get_anomaly_service():
 async def get_all_historical_anomalies(
     limit: Optional[int] = Query(None, description="Limit number of results (default: no limit)"),
     offset: Optional[int] = Query(0, description="Offset for pagination"),
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_db),
+    current_user: AuthenticatedUser = Depends(require_staff())
 ):
     """Get all anomalies from the cached dataset with optional pagination"""
     try:
@@ -97,7 +100,8 @@ async def get_all_historical_anomalies(
 async def get_anomalies_by_date_range(
     start_date: str = Query(..., description="Start date in YYYY-MM-DD format"),
     end_date: str = Query(..., description="End date in YYYY-MM-DD format"),
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_db),
+    current_user: AuthenticatedUser = Depends(require_staff())
 ):
     """Get anomalies within a specific date range from the cache"""
     try:
@@ -142,7 +146,8 @@ async def get_anomalies_by_date_range(
 @router.get("/by-location/{location}")
 async def get_anomalies_by_location(
     location: str,
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_db),
+    current_user: AuthenticatedUser = Depends(require_staff())
 ):
     """Get anomalies for a specific location from the cache"""
     try:
@@ -177,7 +182,8 @@ async def get_anomalies_by_location(
 @router.get("/by-severity/{severity}")
 async def get_anomalies_by_severity(
     severity: str,
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_db),
+    current_user: AuthenticatedUser = Depends(require_staff())
 ):
     """Get anomalies filtered by severity level from the cache"""
     try:
@@ -215,7 +221,10 @@ async def get_anomalies_by_severity(
         raise HTTPException(status_code=500, detail=f"Error retrieving severity anomalies: {str(e)}")
 
 @router.get("/types")
-async def get_anomaly_types(db: Session = Depends(get_db)):
+async def get_anomaly_types(
+    db: Session = Depends(get_db),
+    current_user: AuthenticatedUser = Depends(require_staff())
+):
     """Get list of all anomaly types from the cache"""
     try:
         query = db.query(Anomaly.type).distinct()
@@ -241,7 +250,8 @@ async def get_anomaly_types(db: Session = Depends(get_db)):
 
 @router.get("/summary")
 async def get_anomaly_summary(
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_db),
+    current_user: AuthenticatedUser = Depends(require_staff())
 ):
     """Get summary of anomalies by type and severity from the cache"""
     try:
@@ -281,8 +291,9 @@ caching_in_progress = False
 
 
 @router.post("/cache-anomalies")
-
-async def trigger_cache_anomalies():
+async def trigger_cache_anomalies(
+    current_user: AuthenticatedUser = Depends(require_staff())
+):
 
     """Endpoint to trigger the anomaly caching process in the background."""
 
@@ -326,7 +337,8 @@ async def trigger_cache_anomalies():
 @router.get("/by-entity/{entity_id}")
 async def get_anomalies_by_entity(
     entity_id: str,
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_db),
+    current_user: AuthenticatedUser = Depends(require_staff())
 ):
     """Get all anomalies for a specific entity from the cache"""
     try:
@@ -374,7 +386,9 @@ async def get_anomalies_by_entity(
         raise HTTPException(status_code=500, detail=f"Error retrieving entity anomalies: {str(e)}")
 
 @router.get("/health")
-async def health_check():
+async def health_check(
+    current_user: AuthenticatedUser = Depends(require_staff())
+):
     """Health check for anomaly detection service"""
     return {
         "success": True,

@@ -2,13 +2,15 @@
 import logging
 from contextlib import asynccontextmanager
 
-from fastapi import FastAPI
+from fastapi import FastAPI, Depends
 from fastapi.middleware.cors import CORSMiddleware
 
 import entity_routes, graph_routes, spatial_routes, anomaly_routes, chat_routes
 from routes import alert_router, staff_router, notification_router, demo_router
 from routes.gitlab_routes import router as gitlab_router
 from config import settings
+from auth.dependencies import get_current_user
+from auth.models import AuthenticatedUser
 
 # Configure logging
 logging.basicConfig(
@@ -71,16 +73,20 @@ if settings.ALERT_SYSTEM_ENABLED:
     logger.info("Alert system routes registered")
 
 @app.get("/")
-async def root():
+async def root(current_user: AuthenticatedUser = Depends(get_current_user)):
     return {
         "message": "Campus Entity Resolution API",
         "status": "running",
-        "version": "1.0.1"
+        "version": "1.0.1",
+        "authenticated_user": current_user.entity_id
     }
 
 @app.get("/health")
-async def health_check():
-    return {"status": "healthy"}
+async def health_check(current_user: AuthenticatedUser = Depends(get_current_user)):
+    return {
+        "status": "healthy",
+        "authenticated_user": current_user.entity_id
+    }
 
 if __name__ == "__main__":
     import uvicorn

@@ -3,6 +3,7 @@ import { UserRole } from "@prisma/client"; // <<< Ensure this import is correct
 
 declare module "next-auth" {
   interface Session {
+    accessToken?: string; // JWT token for backend authentication
     user: {
       id: string;
       entity_id: string; // From your User model

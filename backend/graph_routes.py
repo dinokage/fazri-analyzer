@@ -1,5 +1,5 @@
 # backend/app/api/graph_routes.py
-from fastapi import APIRouter, Query, HTTPException
+from fastapi import APIRouter, Query, HTTPException, Depends
 from typing import Optional, List
 from datetime import datetime, timedelta, timezone
 
@@ -8,6 +8,8 @@ from services.timeline_service import TimelineService
 from services.pattern_detection import PatternDetector
 from services.ml_predictor import LocationPredictor
 from pathlib import Path
+from auth.dependencies import require_staff
+from auth.models import AuthenticatedUser
 
 router = APIRouter(prefix="/api/v1/graph", tags=["graph"])
 
@@ -15,7 +17,8 @@ router = APIRouter(prefix="/api/v1/graph", tags=["graph"])
 async def get_entity_timeline(
     entity_id: str,
     start_date: Optional[str] = None,
-    end_date: Optional[str] = None
+    end_date: Optional[str] = None,
+    current_user: AuthenticatedUser = Depends(require_staff())
 ):
     """Get chronological timeline for entity"""
     graph = get_graph_builder()
@@ -36,7 +39,8 @@ async def get_entity_timeline(
 @router.get("/location/{location_id}/entities")
 async def get_entities_at_location(
     location_id: str,
-    timestamp: Optional[str] = None
+    timestamp: Optional[str] = None,
+    current_user: AuthenticatedUser = Depends(require_staff())
 ):
     """Find entities at location at specific time"""
     graph = get_graph_builder()
@@ -58,7 +62,8 @@ async def get_entities_at_location(
 
 @router.get("/alerts/missing")
 async def get_missing_entities(
-    hours: int = Query(12, ge=1, le=72, description="Hours since last activity")
+    hours: int = Query(12, ge=1, le=72, description="Hours since last activity"),
+    current_user: AuthenticatedUser = Depends(require_staff())
 ):
     """Find entities with no activity in last N hours"""
     graph = get_graph_builder()
@@ -75,7 +80,9 @@ async def get_missing_entities(
         raise HTTPException(status_code=500, detail=str(e))
 
 @router.get("/stats")
-async def get_graph_stats():
+async def get_graph_stats(
+    current_user: AuthenticatedUser = Depends(require_staff())
+):
     """Get database statistics"""
     graph = get_graph_builder()
     
@@ -105,7 +112,8 @@ async def get_graph_stats():
 async def get_timeline_summary(
     entity_id: str,
     start_date: Optional[str] = None,
-    end_date: Optional[str] = None
+    end_date: Optional[str] = None,
+    current_user: AuthenticatedUser = Depends(require_staff())
 ):
     """
     Get human-readable timeline summary
@@ -124,7 +132,8 @@ async def get_timeline_with_gaps(
     entity_id: str,
     start_date: Optional[str] = None,
     end_date: Optional[str] = None,
-    gap_threshold_hours: int = Query(2, ge=1, le=24)
+    gap_threshold_hours: int = Query(2, ge=1, le=24),
+    current_user: AuthenticatedUser = Depends(require_staff())
 ):
     """
     Get timeline with gap detection
@@ -143,7 +152,8 @@ async def get_timeline_with_gaps(
 @router.get("/timeline/{entity_id}/heatmap")
 async def get_activity_heatmap(
     entity_id: str,
-    days: int = Query(7, ge=1, le=30)
+    days: int = Query(7, ge=1, le=30),
+    current_user: AuthenticatedUser = Depends(require_staff())
 ):
     """
     Get activity heatmap data for visualization
@@ -160,7 +170,8 @@ async def get_activity_heatmap(
 @router.get("/timeline/{entity_id}/daily-summary")
 async def get_daily_summary(
     entity_id: str,
-    date: Optional[str] = None
+    date: Optional[str] = None,
+    current_user: AuthenticatedUser = Depends(require_staff())
 ):
     """
     Get detailed summary for a specific day
@@ -189,7 +200,8 @@ async def get_daily_summary(
 @router.get("/timeline/{entity_id}/patterns")
 async def detect_activity_patterns(
     entity_id: str,
-    days: int = Query(7, ge=1, le=30)
+    days: int = Query(7, ge=1, le=30),
+    current_user: AuthenticatedUser = Depends(require_staff())
 ):
     """
     Detect activity patterns and routines
@@ -225,7 +237,8 @@ async def detect_activity_patterns(
 async def predict_location(
     entity_id: str,
     target_time: Optional[str] = None,
-    lookback_days: int = Query(7, ge=1, le=30)
+    lookback_days: int = Query(7, ge=1, le=30),
+    current_user: AuthenticatedUser = Depends(require_staff())
 ):
     """
     Predict entity location at target time using ML
@@ -292,7 +305,8 @@ async def predict_location(
 async def predict_during_gap(
     entity_id: str,
     gap_start: str,
-    gap_end: str
+    gap_end: str,
+    current_user: AuthenticatedUser = Depends(require_staff())
 ):
     """
     Predict locations during an activity gap

@@ -1,11 +1,14 @@
 # backend/app/api/entity_routes.py
-from fastapi import APIRouter, HTTPException, Query
+from fastapi import APIRouter, HTTPException, Query, Depends
 from typing import Optional, List
 from pydantic import BaseModel
 
 from services.entity_resolver import get_resolver
 from services.confidence_scorer import ConfidenceScorer
 from models.entity import Entity
+from auth.dependencies import get_current_user, require_staff
+from auth.models import AuthenticatedUser, UserRole
+from auth.exceptions import PermissionDeniedError
 
 router = APIRouter(prefix="/api/v1/entities", tags=["entities"])
 
@@ -20,7 +23,10 @@ class EntitySearchResponse(BaseModel):
     confidence: float
 
 @router.post("/search", response_model=EntitySearchResponse)
-async def search_entity(request: EntitySearchRequest):
+async def search_entity(
+    request: EntitySearchRequest,
+    current_user: AuthenticatedUser = Depends(get_current_user)
+):
     """Search for entity by identifier"""
     resolver = get_resolver()
     
@@ -49,9 +55,10 @@ async def search_entity(request: EntitySearchRequest):
 @router.get("/fuzzy-search")
 async def fuzzy_search_by_name(
     name: str = Query(..., description="Name to search"),
-    threshold: float = Query(0.85, ge=0.0, le=1.0)
+    threshold: float = Query(0.85, ge=0.0, le=1.0),
+    current_user: AuthenticatedUser = Depends(require_staff())
 ):
-    """Fuzzy name search"""
+    """Fuzzy name search (STAFF+ only)"""
     resolver = get_resolver()
     matches = resolver.resolve_by_fuzzy_name(name, threshold)
     
@@ -68,10 +75,17 @@ async def fuzzy_search_by_name(
     }
 
 @router.get("/{entity_id}")
-async def get_entity(entity_id: str):
-    """Get entity by ID"""
+async def get_entity(
+    entity_id: str,
+    current_user: AuthenticatedUser = Depends(get_current_user)
+):
+    """Get entity by ID (students can only access their own data)"""
+    # Students can only access their own entity
+    if current_user.role == UserRole.STUDENT and current_user.entity_id != entity_id:
+        raise PermissionDeniedError("You can only access your own data")
+
     resolver = get_resolver()
-    
+
     if entity_id not in resolver.entities:
         raise HTTPException(status_code=404, detail="Entity not found")
     
@@ -90,9 +104,10 @@ async def list_entities(
     skip: int = 0,
     limit: int = 100,
     department: Optional[str] = Query(None, description="Filter by department"),
-    entity_type: Optional[str] = Query(None, description="Filter by role")
+    entity_type: Optional[str] = Query(None, description="Filter by role"),
+    current_user: AuthenticatedUser = Depends(require_staff())
 ):
-    """List all entities"""
+    """List all entities (STAFF+ only)"""
     resolver = get_resolver()
     entities = list(resolver.entities.values())
     if department and entity_type:
@@ -111,13 +126,21 @@ async def list_entities(
     }
 
 @router.get("/{entity_id}/fusion-report")
-async def get_entity_fusion_report(entity_id: str):
+async def get_entity_fusion_report(
+    entity_id: str,
+    current_user: AuthenticatedUser = Depends(get_current_user)
+):
     """
     Get detailed multi-modal fusion report for an entity
     Shows all data sources, identifiers, and confidence scores
+    (students can only access their own data)
     """
+    # Students can only access their own entity
+    if current_user.role == UserRole.STUDENT and current_user.entity_id != entity_id:
+        raise PermissionDeniedError("You can only access your own data")
+
     resolver = get_resolver()
-    
+
     if entity_id not in resolver.entities:
         raise HTTPException(status_code=404, detail="Entity not found")
     
