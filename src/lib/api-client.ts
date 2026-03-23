@@ -21,10 +21,6 @@ async function getAuthHeaders(): Promise<HeadersInit> {
     throw new ApiError("No active session", 401);
   }
 
-  // Debug: Log token info (remove in production)
-  console.log('[API Client] Token length:', session.accessToken.length);
-  console.log('[API Client] Token preview:', session.accessToken.substring(0, 50) + '...');
-
   return {
     'Content-Type': 'application/json',
     'Authorization': `Bearer ${session.accessToken}`,
@@ -33,22 +29,14 @@ async function getAuthHeaders(): Promise<HeadersInit> {
 
 async function handleResponse(response: Response) {
   if (response.status === 401) {
-    // DEBUG: Temporarily disabled auto-redirect to allow inspection
-    console.error('[API Client] 401 Unauthorized - Auto-redirect disabled for debugging');
-    const errorBody = await response.text();
-    console.error('[API Client] Response body:', errorBody);
-
-    // Uncomment to re-enable auto-redirect:
-    // if (typeof window !== 'undefined') {
-    //   window.location.href = '/auth';
-    // }
+    // Redirect to login on auth failure
+    if (typeof window !== 'undefined') {
+      window.location.href = '/auth';
+    }
     throw new ApiError('Session expired. Please log in again.', 401);
   }
 
   if (response.status === 403) {
-    console.error('[API Client] 403 Forbidden');
-    const errorBody = await response.text();
-    console.error('[API Client] Response body:', errorBody);
     throw new ApiError('You do not have permission to perform this action.', 403);
   }
 

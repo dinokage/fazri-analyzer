@@ -17,6 +17,7 @@ import {
 import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Loader2, ChevronLeft, ChevronRight } from "lucide-react";
+import { getSession } from "next-auth/react";
 
 // Types
 type Identifier = {
@@ -65,6 +66,13 @@ function useEntities(
       setError(null);
 
       try {
+        // Get auth session
+        const session = await getSession();
+
+        if (!session?.accessToken) {
+          throw new Error("No active session. Please log in.");
+        }
+
         const params = new URLSearchParams({
           limit: limit.toString(),
           skip: skip.toString(),
@@ -79,8 +87,22 @@ function useEntities(
         }
 
         const response = await fetch(
-          `${process.env.NEXT_PUBLIC_FASTAPI_BASE_URL}/api/v1/entities/?${params}`
+          `${process.env.NEXT_PUBLIC_FASTAPI_BASE_URL}/api/v1/entities/?${params}`,
+          {
+            headers: {
+              'Content-Type': 'application/json',
+              'Authorization': `Bearer ${session.accessToken}`,
+            },
+          }
         );
+
+        if (response.status === 401) {
+          throw new Error("Session expired. Please log in again.");
+        }
+
+        if (response.status === 403) {
+          throw new Error("You do not have permission to view entities.");
+        }
 
         if (!response.ok) {
           throw new Error(`HTTP error! status: ${response.status}`);
