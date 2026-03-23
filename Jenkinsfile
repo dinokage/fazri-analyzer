@@ -91,7 +91,8 @@ pipeline {
                         'fazri-vertex-location',
                         'fazri-gitlab-url',
                         'fazri-gitlab-token',
-                        'fazri-gitlab-project-id'
+                        'fazri-gitlab-project-id',
+                        'fazri-nextauth-secret'
                     ]
 
                     for (credId in requiredCreds) {
@@ -201,7 +202,9 @@ pipeline {
                         // GitLab integration
                         string(credentialsId: 'fazri-gitlab-url', variable: 'GITLAB_URL'),
                         string(credentialsId: 'fazri-gitlab-token', variable: 'GITLAB_TOKEN'),
-                        string(credentialsId: 'fazri-gitlab-project-id', variable: 'GITLAB_PROJECT_ID')
+                        string(credentialsId: 'fazri-gitlab-project-id', variable: 'GITLAB_PROJECT_ID'),
+                        // NextAuth / JWT
+                        string(credentialsId: 'fazri-nextauth-secret', variable: 'NEXTAUTH_SECRET')
                     ]) {
                         sh """
                             echo "Starting new container..."
@@ -237,6 +240,7 @@ pipeline {
                                 -e GITLAB_URL=\$GITLAB_URL \
                                 -e GITLAB_TOKEN=\$GITLAB_TOKEN \
                                 -e GITLAB_PROJECT_ID=\$GITLAB_PROJECT_ID \
+                                -e NEXTAUTH_SECRET=\$NEXTAUTH_SECRET \
                                 -v app_data:/app/augmented \
                                 -v app_ml_models:/app/ml_models \
                                 -v app_logs:/app/logs \
