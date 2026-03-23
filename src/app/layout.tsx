@@ -3,6 +3,7 @@ import { Geist, Geist_Mono } from "next/font/google";
 import SessionWrapper from "@/components/SessionWrapper";
 import { ThemeProvider } from "@/components/theme-provider";
 import {Providers} from "@/components/providers";
+import { SentryUserContext } from "@/components/SentryUserContext";
 import { siteConfig }  from "@/config/site";
 import "./globals.css";
 
@@ -37,6 +38,7 @@ export default function RootLayout({
       <body
         className={`${geistSans.variable} ${geistMono.variable} antialiased`}
       ><SessionWrapper>
+        <SentryUserContext />
         <Providers>
           <ThemeProvider
             attribute="class"

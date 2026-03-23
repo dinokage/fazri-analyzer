@@ -1,5 +1,6 @@
 // lib/api-client.ts
 import { getSession } from "next-auth/react";
+import * as Sentry from "@sentry/nextjs";
 
 const API_BASE_URL = process.env.NEXT_PUBLIC_FASTAPI_BASE_URL || 'http://localhost:8000';
 
@@ -29,6 +30,18 @@ async function getAuthHeaders(): Promise<HeadersInit> {
 
 async function handleResponse(response: Response) {
   if (response.status === 401) {
+    // Log authentication errors to Sentry as warnings
+    Sentry.captureMessage('Session expired - authentication required', {
+      level: 'warning',
+      tags: {
+        type: 'auth_expired',
+        status_code: '401',
+      },
+      extra: {
+        url: response.url,
+      },
+    });
+
     // Redirect to login on auth failure
     if (typeof window !== 'undefined') {
       window.location.href = '/auth';
@@ -37,6 +50,18 @@ async function handleResponse(response: Response) {
   }
 
   if (response.status === 403) {
+    // Log permission errors to Sentry as warnings
+    Sentry.captureMessage('Permission denied - insufficient privileges', {
+      level: 'warning',
+      tags: {
+        type: 'permission_denied',
+        status_code: '403',
+      },
+      extra: {
+        url: response.url,
+      },
+    });
+
     throw new ApiError('You do not have permission to perform this action.', 403);
   }
 
@@ -52,7 +77,23 @@ async function handleResponse(response: Response) {
       // Handle validation errors or structured error details
       message = JSON.stringify(error.detail);
     }
-    throw new ApiError(message, response.status, error);
+
+    // Capture API errors in Sentry
+    const apiError = new ApiError(message, response.status, error);
+    Sentry.captureException(apiError, {
+      tags: {
+        type: 'api_error',
+        status_code: response.status.toString(),
+      },
+      extra: {
+        url: response.url,
+        response_body: error,
+        error_message: message,
+      },
+      level: response.status >= 500 ? 'error' : 'warning',
+    });
+
+    throw apiError;
   }
   return response.json();
 }

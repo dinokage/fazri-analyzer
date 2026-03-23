@@ -1,5 +1,6 @@
 import type React from "react"
 import { SidebarLayout } from "@/components/sidebar-layout"
+import { ErrorBoundary } from "@/components/ErrorBoundary"
 
 export default function DashboardLayout({
   children,
@@ -7,6 +8,10 @@ export default function DashboardLayout({
   children: React.ReactNode
 }) {
   return (
-    <SidebarLayout>{children}</SidebarLayout>
+    <SidebarLayout>
+      <ErrorBoundary>
+        {children}
+      </ErrorBoundary>
+    </SidebarLayout>
   )
 }

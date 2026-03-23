@@ -59,6 +59,12 @@ class Settings(BaseSettings):
     CHATBOT_CONVERSATION_TTL: int = 3600  # 1 hour in seconds
     CHATBOT_ENABLED: bool = True
 
+    # Sentry Configuration (Error Tracking & Performance Monitoring)
+    SENTRY_DSN: str = ""  # Set via environment variable
+    SENTRY_ENVIRONMENT: str = "development"  # development, staging, production
+    SENTRY_TRACES_SAMPLE_RATE: float = 0.1  # 10% of transactions for performance monitoring
+    SENTRY_ENABLED: bool = False  # Enable Sentry error tracking
+
     # Anomaly Detection
     ANOMALY_DETECTION_ENABLED: bool = True
     ANOMALY_CACHE_TTL_SECONDS: int = 300

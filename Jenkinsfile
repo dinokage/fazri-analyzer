@@ -92,7 +92,9 @@ pipeline {
                         'fazri-gitlab-url',
                         'fazri-gitlab-token',
                         'fazri-gitlab-project-id',
-                        'fazri-nextauth-secret'
+                        'fazri-nextauth-secret',
+                        'fazri-sentry-backend-dsn',
+                        'fazri-sentry-auth-token'
                     ]
 
                     for (credId in requiredCreds) {
@@ -204,7 +206,10 @@ pipeline {
                         string(credentialsId: 'fazri-gitlab-token', variable: 'GITLAB_TOKEN'),
                         string(credentialsId: 'fazri-gitlab-project-id', variable: 'GITLAB_PROJECT_ID'),
                         // NextAuth / JWT
-                        string(credentialsId: 'fazri-nextauth-secret', variable: 'NEXTAUTH_SECRET')
+                        string(credentialsId: 'fazri-nextauth-secret', variable: 'NEXTAUTH_SECRET'),
+                        // Sentry
+                        string(credentialsId: 'fazri-sentry-backend-dsn', variable: 'SENTRY_DSN'),
+                        string(credentialsId: 'fazri-sentry-auth-token', variable: 'SENTRY_AUTH_TOKEN')
                     ]) {
                         sh """
                             echo "Starting new container..."
@@ -241,6 +246,10 @@ pipeline {
                                 -e GITLAB_TOKEN=\$GITLAB_TOKEN \
                                 -e GITLAB_PROJECT_ID=\$GITLAB_PROJECT_ID \
                                 -e NEXTAUTH_SECRET=\$NEXTAUTH_SECRET \
+                                -e SENTRY_DSN=\$SENTRY_DSN \
+                                -e SENTRY_ENVIRONMENT=${DEPLOY_ENV} \
+                                -e SENTRY_TRACES_SAMPLE_RATE=0.1 \
+                                -e SENTRY_ENABLED=true \
                                 -v app_data:/app/augmented \
                                 -v app_ml_models:/app/ml_models \
                                 -v app_logs:/app/logs \
@@ -347,6 +356,57 @@ pipeline {
             }
         }
 
+        stage('Sentry Release Tracking') {
+            steps {
+                script {
+                    withCredentials([
+                        string(credentialsId: 'fazri-sentry-auth-token', variable: 'SENTRY_AUTH_TOKEN')
+                    ]) {
+                        sh """
+                            echo "Creating Sentry release..."
+
+                            # Install sentry-cli if not already installed
+                            if ! command -v sentry-cli &> /dev/null; then
+                                echo "Installing sentry-cli..."
+                                curl -sL https://sentry.io/get-cli/ | bash
+                            fi
+
+                            # Set release version (using git commit SHA)
+                            RELEASE_VERSION="fazri-analyzer-backend@${env.GIT_COMMIT}"
+
+                            # Create release in Sentry
+                            sentry-cli releases new "\$RELEASE_VERSION" \
+                                --auth-token \$SENTRY_AUTH_TOKEN \
+                                --org fazri-analyzer \
+                                --project fazri-analyzer-backend || echo "Release already exists"
+
+                            # Associate commits with the release
+                            sentry-cli releases set-commits "\$RELEASE_VERSION" --auto \
+                                --auth-token \$SENTRY_AUTH_TOKEN \
+                                --org fazri-analyzer \
+                                --project fazri-analyzer-backend || true
+
+                            # Mark release as deployed
+                            sentry-cli releases deploys "\$RELEASE_VERSION" new \
+                                --env ${DEPLOY_ENV} \
+                                --auth-token \$SENTRY_AUTH_TOKEN \
+                                --org fazri-analyzer \
+                                --project fazri-analyzer-backend
+
+                            # Finalize the release
+                            sentry-cli releases finalize "\$RELEASE_VERSION" \
+                                --auth-token \$SENTRY_AUTH_TOKEN \
+                                --org fazri-analyzer \
+                                --project fazri-analyzer-backend
+
+                            echo "Sentry release created: \$RELEASE_VERSION"
+                            echo "Environment: ${DEPLOY_ENV}"
+                        """
+                    }
+                }
+            }
+        }
+
         stage('Cleanup') {
             steps {
                 script {
@@ -377,6 +437,8 @@ pipeline {
                 URL: http://localhost:${HOST_PORT}
                 Build: #${env.BUILD_NUMBER}
                 Commit: ${env.GIT_COMMIT}
+                Environment: ${DEPLOY_ENV}
+                Sentry: Enabled (${DEPLOY_ENV})
                 ====================================
                 """
             }

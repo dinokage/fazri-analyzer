@@ -3,8 +3,9 @@ import logging
 from contextlib import asynccontextmanager
 import re
 
-from fastapi import FastAPI, Depends
+from fastapi import FastAPI, Depends, Request, status
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import JSONResponse
 
 import entity_routes, graph_routes, spatial_routes, anomaly_routes, chat_routes
 from routes import alert_router, staff_router, notification_router, demo_router
@@ -12,6 +13,104 @@ from routes.gitlab_routes import router as gitlab_router
 from config import settings
 from auth.dependencies import get_current_user
 from auth.models import AuthenticatedUser
+from middleware import SentryContextMiddleware
+
+# Sentry imports
+import sentry_sdk
+from sentry_sdk.integrations.fastapi import FastApiIntegration
+from sentry_sdk.integrations.starlette import StarletteIntegration
+from sentry_sdk.integrations.sqlalchemy import SqlalchemyIntegration
+from sentry_sdk.integrations.redis import RedisIntegration
+from sentry_sdk.integrations.logging import LoggingIntegration
+
+
+# =========================================================================
+# Sentry Error Tracking & Performance Monitoring
+# =========================================================================
+
+def filter_sensitive_data(event, hint):
+    """
+    Filter sensitive data from Sentry events before sending
+    Removes Authorization headers, JWT tokens, passwords, etc.
+    """
+    # Remove sensitive headers
+    if event.get('request', {}).get('headers'):
+        headers = event['request']['headers']
+        sensitive_headers = ['authorization', 'cookie', 'x-api-key']
+        for header in sensitive_headers:
+            if header in headers:
+                headers[header] = '[Filtered]'
+
+    # Remove query parameters that might contain tokens
+    if event.get('request', {}).get('query_string'):
+        # Don't send query strings that might contain tokens
+        event['request']['query_string'] = '[Filtered]'
+
+    # Filter JWT tokens from exception messages
+    if event.get('exception', {}).get('values'):
+        for exc in event['exception']['values']:
+            if exc.get('value'):
+                # Replace Bearer tokens with [Filtered]
+                exc['value'] = re.sub(
+                    r'Bearer [A-Za-z0-9-_=]+\.[A-Za-z0-9-_=]+\.?[A-Za-z0-9-_.+/=]*',
+                    'Bearer [Filtered]',
+                    exc['value']
+                )
+                # Replace password patterns
+                exc['value'] = re.sub(
+                    r'password["\']?\s*[:=]\s*["\']?[^"\'\s]+',
+                    'password=[Filtered]',
+                    exc['value'],
+                    flags=re.IGNORECASE
+                )
+
+    # Filter sensitive data from extra context
+    if event.get('extra'):
+        sensitive_keys = ['password', 'token', 'secret', 'api_key', 'authorization']
+        for key in list(event['extra'].keys()):
+            if any(sensitive in key.lower() for sensitive in sensitive_keys):
+                event['extra'][key] = '[Filtered]'
+
+    return event
+
+
+# Initialize Sentry if enabled
+if settings.SENTRY_ENABLED and settings.SENTRY_DSN:
+    sentry_sdk.init(
+        dsn=settings.SENTRY_DSN,
+        environment=settings.SENTRY_ENVIRONMENT,
+        traces_sample_rate=settings.SENTRY_TRACES_SAMPLE_RATE,
+
+        # Performance and error tracking integrations
+        integrations=[
+            FastApiIntegration(transaction_style="url"),
+            StarletteIntegration(transaction_style="url"),
+            SqlalchemyIntegration(),
+            RedisIntegration(),
+            LoggingIntegration(
+                level=logging.INFO,  # Capture info and above as breadcrumbs
+                event_level=logging.ERROR  # Send errors and above as events
+            ),
+        ],
+
+        # Enable performance monitoring
+        enable_tracing=True,
+
+        # Filter sensitive data before sending
+        before_send=filter_sensitive_data,
+
+        # Release tracking (will be set by CI/CD)
+        release=f"fazri-analyzer-backend@{settings.PROJECT_NAME}",
+
+        # Send default PII (we'll filter manually)
+        send_default_pii=False,
+    )
+    logger_init = logging.getLogger(__name__)
+    logger_init.info(f"Sentry initialized for environment: {settings.SENTRY_ENVIRONMENT}")
+else:
+    logger_init = logging.getLogger(__name__)
+    logger_init.info("Sentry disabled - error tracking not active")
+
 
 # Configure logging
 logging.basicConfig(
@@ -70,6 +169,60 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+# Add Sentry context middleware if Sentry is enabled
+if settings.SENTRY_ENABLED:
+    app.add_middleware(SentryContextMiddleware)
+    logger.info("Sentry context middleware enabled")
+
+
+# =========================================================================
+# Global Exception Handlers (Sentry Integration)
+# =========================================================================
+
+@app.exception_handler(Exception)
+async def global_exception_handler(request: Request, exc: Exception):
+    """
+    Global exception handler that captures unhandled exceptions in Sentry
+    and returns a user-friendly error response
+    """
+    # Capture exception in Sentry if enabled
+    if settings.SENTRY_ENABLED:
+        sentry_sdk.capture_exception(exc)
+
+    # Log the error
+    logger.error(
+        f"Unhandled exception: {type(exc).__name__}: {str(exc)}",
+        exc_info=True,
+        extra={
+            "path": request.url.path,
+            "method": request.method,
+            "client": request.client.host if request.client else None,
+        }
+    )
+
+    # Return user-friendly error response
+    return JSONResponse(
+        status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+        content={
+            "detail": "An internal server error occurred. The error has been logged and will be investigated.",
+            "type": type(exc).__name__
+        }
+    )
+
+
+@app.exception_handler(ValueError)
+async def value_error_handler(request: Request, exc: ValueError):
+    """Handle validation errors"""
+    if settings.SENTRY_ENABLED:
+        sentry_sdk.capture_exception(exc)
+
+    logger.warning(f"Validation error: {str(exc)}")
+
+    return JSONResponse(
+        status_code=status.HTTP_400_BAD_REQUEST,
+        content={"detail": str(exc)}
+    )
 
 # Include existing routers
 app.include_router(entity_routes.router)

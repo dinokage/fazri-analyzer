@@ -1,5 +1,5 @@
 from typing import List, Optional, Callable
-from fastapi import Header, Depends
+from fastapi import Header, Depends, Request
 
 from auth.jwt import decode_jwt_token
 from auth.models import AuthenticatedUser, UserRole
@@ -7,6 +7,7 @@ from auth.exceptions import AuthenticationError, PermissionDeniedError
 
 
 async def get_current_user(
+    request: Request,
     authorization: Optional[str] = Header(None)
 ) -> AuthenticatedUser:
     """
@@ -49,6 +50,10 @@ async def get_current_user(
             staff_id=payload.get("staff_id"),
             department=payload.get("department"),
         )
+
+        # Store user in request state for Sentry middleware
+        request.state.user = user
+
         return user
     except (KeyError, ValueError, TypeError) as e:
         raise AuthenticationError(detail=f"Invalid token claims: {str(e)}")
