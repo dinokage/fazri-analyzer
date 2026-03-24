@@ -83,11 +83,7 @@ export default function SigninPage() {
         setStep("password"); // Go back to password step on error
       } else {
         // Authentication successful
-        setStep("success"); // Show success animation
-        setTimeout(() => {
-          // You might want to get `res.url` or `router.push('/')` for more robust redirection
-          window.location.href = "/dashboard"; // Redirect to home page
-        }, 2000);
+        window.location.href = "/dashboard"; // Redirect to home page
       }
     } catch (error) {
       console.error("Sign-in error:", error); // Log the actual error for debugging
