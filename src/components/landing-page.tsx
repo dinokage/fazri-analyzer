@@ -39,18 +39,22 @@ import {
   Github,
   Linkedin,
   Twitter,
+  Wifi,
+  CreditCard,
+  Video,
+  Eye,
+  Megaphone,
+  ThumbsUp,
+  ArrowRight,
+  Scale,
 } from "lucide-react";
+import { useLanyard } from "react-use-phplanyard";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Card, CardContent, CardHeader } from "@/components/ui/card";
-// import Link from "next/link";
 import { useSession } from "next-auth/react";
-// import { redirect } from "next/navigation";
 import { useRouter } from "next/navigation";
-
-function cn(...classes: (string | undefined | null | boolean)[]): string {
-  return classes.filter(Boolean).join(" ");
-}
+import { cn } from "@/lib/utils";
 
 interface RotatingTextRef {
   next: () => void;
@@ -322,15 +326,186 @@ const RotatingText = forwardRef<RotatingTextRef, RotatingTextProps>(
 );
 RotatingText.displayName = "RotatingText";
 
+const itemFadeIn: Variants = {
+  hidden: { opacity: 0, y: 20 },
+  visible: { opacity: 1, y: 0 },
+};
+
 interface Dot {
   x: number;
   y: number;
-  baseColor: string;
   targetOpacity: number;
   currentOpacity: number;
   opacitySpeed: number;
   baseRadius: number;
   currentRadius: number;
+}
+
+interface TeamMember {
+  name: string;
+  initials: string;
+  imageUrl?: string;
+  discordId?: string;
+  role: string;
+  description: string;
+  icon: React.ReactNode;
+  specialty: string;
+  tech: string;
+  isAccent: boolean;
+}
+
+const statusColors: Record<string, string> = {
+  online: "bg-emerald-500",
+  idle: "bg-amber-400",
+  dnd: "bg-rose-400",
+  offline: "bg-gray-400",
+};
+
+const statusMapping: Record<string, string> = {
+  online: "Online",
+  idle: "Idle",
+  dnd: "DND",
+};
+
+const DiscordStatusIndicator: React.FC<{ discordId: string }> = ({ discordId }) => {
+  const { loading, status } = useLanyard({
+    userId: discordId,
+    socket: true,
+  });
+
+  if (loading || !status) {
+    return null;
+  }
+
+  const discordStatus = status.discord_status || "offline";
+  const isMobile = status.active_on_discord_mobile;
+  const isDesktop = status.active_on_discord_desktop || status.active_on_discord_web;
+
+  const validStatus = statusMapping[discordStatus] || "Offline";
+  const statusText = isMobile
+    ? `${validStatus} on Phone`
+    : isDesktop
+      ? `${validStatus} on Desktop`
+      : "Zzz...";
+
+  return (
+    <div className="absolute bottom-1 right-1 w-4 h-4 rounded-full ring-[3px] ring-[var(--color-bg-surface)] group/status flex justify-center">
+      <span
+        className={cn("w-full h-full rounded-full", statusColors[discordStatus])}
+        role="status"
+        aria-label={statusText}
+      >
+        <span className="sr-only">{statusText}</span>
+      </span>
+
+      {/* Hover Tooltip */}
+      <div
+        className="absolute z-10 mb-1 px-2 py-1 bg-[var(--color-bg-surface)] border border-[var(--color-border-default)] text-[var(--color-text-primary)] text-xs opacity-0 group-hover/status:opacity-100 transition-opacity pointer-events-none bottom-full rounded-md whitespace-nowrap"
+        aria-hidden="true"
+      >
+        {statusText}
+      </div>
+    </div>
+  );
+};
+
+const TeamMemberCard: React.FC<{ member: TeamMember }> = ({ member }) => {
+  const [imageError, setImageError] = useState(false);
+
+  return (
+    <motion.div
+      variants={itemFadeIn}
+      className={cn(
+        "group relative overflow-hidden rounded-xl p-8 flex flex-col justify-between min-h-[400px]",
+        member.isAccent ? "card-accent" : "card-surface"
+      )}
+    >
+      <div className="space-y-4">
+        <div className="flex items-start gap-4">
+          <div
+            className={cn(
+              "flex-shrink-0 w-20 h-20 rounded-full flex items-center justify-center font-bold text-xl transition-transform group-hover:scale-105 relative",
+              member.isAccent
+                ? "bg-[var(--color-accent)] text-[var(--color-bg-primary)]"
+                : "bg-[var(--color-bg-elevated)] border-2 border-[var(--color-border-default)] text-[var(--color-text-primary)]"
+            )}
+          >
+            {member.imageUrl && !imageError ? (
+              <img
+                src={member.imageUrl}
+                alt={member.name}
+                className="w-full h-full object-cover rounded-full"
+                onError={() => setImageError(true)}
+              />
+            ) : (
+              member.initials
+            )}
+            {member.discordId && <DiscordStatusIndicator discordId={member.discordId} />}
+          </div>
+          <div className="flex-1">
+            <h3 className="text-2xl font-bold mb-2 text-[var(--color-text-primary)]">
+              {member.name}
+            </h3>
+            <p className="text-sm font-medium text-[var(--color-accent)] uppercase tracking-wider">
+              {member.role}
+            </p>
+          </div>
+        </div>
+        <p className="text-[var(--color-text-secondary)] leading-relaxed">
+          {member.description}
+        </p>
+      </div>
+
+      <div className="mt-8 pt-6 border-t border-[var(--color-border-default)]">
+        <div className="flex items-center gap-2 mb-2">
+          {member.icon}
+          <span className="text-sm font-medium text-[var(--color-accent)] uppercase tracking-wide">
+            {member.specialty}
+          </span>
+        </div>
+        <p className="text-xs text-[var(--color-text-muted)] uppercase tracking-wider">
+          {member.tech}
+        </p>
+      </div>
+    </motion.div>
+  );
+};
+
+// Helper to parse CSS color values into RGB
+function parseCssColor(color: string): { r: number; g: number; b: number } | null {
+  const trimmed = color.trim();
+
+  // Handle hex format (#RGB or #RRGGBB)
+  if (trimmed.startsWith('#')) {
+    const hex = trimmed.substring(1);
+    if (hex.length === 3) {
+      // 3-digit hex (#RGB)
+      return {
+        r: parseInt(hex[0] + hex[0], 16),
+        g: parseInt(hex[1] + hex[1], 16),
+        b: parseInt(hex[2] + hex[2], 16),
+      };
+    } else if (hex.length === 6) {
+      // 6-digit hex (#RRGGBB)
+      return {
+        r: parseInt(hex.substring(0, 2), 16),
+        g: parseInt(hex.substring(2, 4), 16),
+        b: parseInt(hex.substring(4, 6), 16),
+      };
+    }
+  }
+
+  // Handle rgb() or rgba() format — comma-separated or modern space-separated
+  const rgbMatch = trimmed.match(/rgba?\s*\(\s*(\d+)(?:\s*,\s*|\s+)(\d+)(?:\s*,\s*|\s+)(\d+)(?:[^)]*)?/i);
+  if (rgbMatch) {
+    return {
+      r: parseInt(rgbMatch[1], 10),
+      g: parseInt(rgbMatch[2], 10),
+      b: parseInt(rgbMatch[3], 10),
+    };
+  }
+
+  return null;
 }
 
 const FazriAnalyzerLanding: React.FC = () => {
@@ -340,11 +515,35 @@ const FazriAnalyzerLanding: React.FC = () => {
   const animationFrameId = useRef<number | null>(null);
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState<boolean>(false);
   const [isScrolled, setIsScrolled] = useState<boolean>(false);
+  const accentColorRGB = useRef<{r: number, g: number, b: number}>({ r: 200, g: 241, b: 53 });
 
   const { scrollY } = useScroll();
   useMotionValueEvent(scrollY, "change", (latest) => {
     setIsScrolled(latest > 10);
   });
+
+  // Compute accent color from CSS variable and update on theme change
+  useEffect(() => {
+    const readAccentColor = () => {
+      const accentColor = getComputedStyle(document.documentElement)
+        .getPropertyValue('--color-accent')
+        .trim();
+      const parsed = parseCssColor(accentColor);
+      if (parsed) {
+        accentColorRGB.current = parsed;
+      }
+    };
+
+    readAccentColor();
+
+    const observer = new MutationObserver(readAccentColor);
+    observer.observe(document.documentElement, {
+      attributes: true,
+      attributeFilter: ['class', 'style', 'data-theme'],
+    });
+
+    return () => observer.disconnect();
+  }, []);
 
   const dotsRef = useRef<Dot[]>([]);
   const gridRef = useRef<Record<string, number[]>>({});
@@ -409,7 +608,6 @@ const FazriAnalyzerLanding: React.FC = () => {
         newDots.push({
           x,
           y,
-          baseColor: `rgba(16, 185, 129, ${BASE_OPACITY_MAX})`,
           targetOpacity: baseOpacity,
           currentOpacity: baseOpacity,
           opacitySpeed: Math.random() * 0.005 + 0.002,
@@ -517,13 +715,7 @@ const FazriAnalyzerLanding: React.FC = () => {
       );
       dot.currentRadius = dot.baseRadius + interactionFactor * RADIUS_BOOST;
 
-      const colorMatch = dot.baseColor.match(
-        /rgba?\((\d+),\s*(\d+),\s*(\d+)(?:,\s*([\d.]+))?\)/
-      );
-      const r = colorMatch ? colorMatch[1] : "16";
-      const g = colorMatch ? colorMatch[2] : "185";
-      const b = colorMatch ? colorMatch[3] : "129";
-
+      const { r, g, b } = accentColorRGB.current;
       ctx.beginPath();
       ctx.fillStyle = `rgba(${r}, ${g}, ${b}, ${finalOpacity.toFixed(3)})`;
       ctx.arc(dot.x, dot.y, dot.currentRadius, 0, Math.PI * 2);
@@ -579,16 +771,9 @@ const FazriAnalyzerLanding: React.FC = () => {
 
   const headerVariants: Variants = {
     top: {
-      backgroundColor: "rgba(17, 17, 17, 0.8)",
-      borderBottomColor: "rgba(55, 65, 81, 0.5)",
       position: "fixed",
-      boxShadow: "none",
     },
     scrolled: {
-      backgroundColor: "rgba(17, 17, 17, 0.95)",
-      borderBottomColor: "rgba(75, 85, 99, 0.7)",
-      boxShadow:
-        "0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06)",
       position: "fixed",
     },
   };
@@ -667,7 +852,7 @@ const FazriAnalyzerLanding: React.FC = () => {
     },
   };
 
-  const itemFadeIn = {
+  const sectionItemFadeIn = {
     hidden: { opacity: 0, y: 20 },
     visible: {
       opacity: 1,
@@ -677,30 +862,26 @@ const FazriAnalyzerLanding: React.FC = () => {
   };
 
   return (
-    <div className="pt-[100px] relative bg-[#111111] text-gray-300 min-h-screen flex flex-col">
+    <div className="pt-[100px] relative min-h-screen flex flex-col bg-[var(--color-bg-primary)] text-[var(--color-text-primary)]">
       <canvas
         ref={canvasRef}
         className="absolute inset-0 z-0 pointer-events-none opacity-80"
       />
-      <div
-        className="absolute inset-0 z-1 pointer-events-none"
-        style={{
-          background:
-            "linear-gradient(to bottom, transparent 0%, #111111 90%), radial-gradient(ellipse at center, transparent 40%, #111111 95%)",
-        }}
-      ></div>
 
       <motion.header
         variants={headerVariants}
         initial="top"
         animate={isScrolled ? "scrolled" : "top"}
         transition={{ duration: 0.3, ease: "easeInOut" }}
-        className="px-6 w-full md:px-10 lg:px-16 sticky top-0 z-30 backdrop-blur-md border-b"
+        className={cn(
+          "px-6 w-full md:px-10 lg:px-16 sticky top-0 z-30 backdrop-blur-md border-b",
+          isScrolled ? "header-scrolled" : "header-top"
+        )}
       >
         <nav className="flex justify-between items-center max-w-screen-xl mx-auto h-[70px]">
           <div className="flex items-center flex-shrink-0">
-            <Database className="h-6 w-6 text-emerald-500" />
-            <span className="text-xl font-bold text-white ml-2">
+            <Database className="h-6 w-6 text-[var(--color-accent)]" />
+            <span className="text-xl font-bold ml-2 text-[var(--color-text-primary)]">
               Fazri Analyzer
             </span>
           </div>
@@ -708,42 +889,37 @@ const FazriAnalyzerLanding: React.FC = () => {
           <div className="hidden md:flex items-center justify-center flex-grow space-x-6 lg:space-x-8 px-4">
             <a
               href="#features"
-              className="text-sm font-medium text-gray-300 hover:text-white transition-colors duration-200"
+              className="nav-link text-sm font-medium"
             >
               Features
             </a>
             <a
               href="#architecture"
-              className="text-sm font-medium text-gray-300 hover:text-white transition-colors duration-200"
+              className="nav-link text-sm font-medium"
             >
               Architecture
             </a>
             <a
-              href="#security"
-              className="text-sm font-medium text-gray-300 hover:text-white transition-colors duration-200"
+              href="#team"
+              className="nav-link text-sm font-medium"
             >
-              Security
+              Team
             </a>
             <a
               href="#contact"
-              className="text-sm font-medium text-gray-300 hover:text-white transition-colors duration-200"
+              className="nav-link text-sm font-medium"
             >
               Contact
             </a>
           </div>
 
           <div className="flex items-center flex-shrink-0 space-x-4 lg:space-x-6">
-            <Button className="group relative overflow-hidden" size="lg" onClick={() => router.push('/dashboard')}>
-              <span className="mr-8 transition-opacity duration-500 group-hover:opacity-0">
-                {session ? "Dashboard" : "Sign in"}
-              </span>
-              <i className="absolute right-1 top-1 bottom-1 rounded-sm z-10 grid w-1/4 place-items-center transition-all duration-500 bg-primary-foreground/15 group-hover:w-[calc(100%-0.5rem)] group-active:scale-95">
-                <ChevronRight size={16} strokeWidth={2} aria-hidden="true" />
-              </i>
+            <Button className="btn-primary" size="lg" onClick={() => router.push('/dashboard')}>
+              {session ? "Dashboard" : "Sign in"}
             </Button>
 
             <motion.button
-              className="md:hidden text-gray-300 hover:text-white z-50"
+              className="md:hidden z-50 text-[var(--color-text-secondary)]"
               onClick={() => setIsMobileMenuOpen(!isMobileMenuOpen)}
               aria-label="Toggle menu"
               whileHover={{ scale: 1.1 }}
@@ -766,42 +942,42 @@ const FazriAnalyzerLanding: React.FC = () => {
               initial="hidden"
               animate="visible"
               exit="exit"
-              className="md:hidden absolute top-full left-0 right-0 bg-[#111111]/95 backdrop-blur-sm shadow-lg py-4 border-t border-gray-800/50"
+              className="md:hidden absolute top-full left-0 right-0 backdrop-blur-sm py-4 mobile-menu-bg"
             >
               <div className="flex flex-col items-center space-y-4 px-6">
                 <a
                   href="#features"
                   onClick={() => setIsMobileMenuOpen(false)}
-                  className="text-sm font-medium text-gray-300 hover:text-white transition-colors duration-200"
+                  className="nav-link text-sm font-medium"
                 >
                   Features
                 </a>
                 <a
                   href="#architecture"
                   onClick={() => setIsMobileMenuOpen(false)}
-                  className="text-sm font-medium text-gray-300 hover:text-white transition-colors duration-200"
+                  className="nav-link text-sm font-medium"
                 >
                   Architecture
                 </a>
                 <a
-                  href="#security"
+                  href="#team"
                   onClick={() => setIsMobileMenuOpen(false)}
-                  className="text-sm font-medium text-gray-300 hover:text-white transition-colors duration-200"
+                  className="nav-link text-sm font-medium"
                 >
-                  Security
+                  Team
                 </a>
                 <a
                   href="#contact"
                   onClick={() => setIsMobileMenuOpen(false)}
-                  className="text-sm font-medium text-gray-300 hover:text-white transition-colors duration-200"
+                  className="nav-link text-sm font-medium"
                 >
                   Contact
                 </a>
-                <hr className="w-full border-t border-gray-700/50 my-2" />
+                <hr className="w-full border-[var(--color-border-default)]" />
                 <a
-                  href="#signin"
+                  href="/auth"
                   onClick={() => setIsMobileMenuOpen(false)}
-                  className="text-sm font-medium text-gray-300 hover:text-white transition-colors duration-200"
+                  className="nav-link text-sm font-medium"
                 >
                   Sign in
                 </a>
@@ -818,7 +994,9 @@ const FazriAnalyzerLanding: React.FC = () => {
           animate="visible"
           className="mb-6"
         >
-          <span className="bg-[#1a1a1a] border border-gray-700 text-emerald-500 px-4 py-1 rounded-full text-xs sm:text-sm font-medium cursor-pointer hover:border-emerald-500/50 transition-colors inline-flex items-center gap-2">
+          <span
+            className="px-4 py-1 rounded-full text-xs sm:text-sm font-medium cursor-pointer transition-colors inline-flex items-center gap-2 badge-accent"
+          >
             <Shield className="h-3 w-3" />
             Advanced Entity Resolution & Security Monitoring
           </span>
@@ -828,7 +1006,7 @@ const FazriAnalyzerLanding: React.FC = () => {
           variants={headlineVariants}
           initial="hidden"
           animate="visible"
-          className="text-4xl sm:text-5xl lg:text-[64px] font-semibold text-white leading-tight max-w-4xl mb-4"
+          className="hero-headline mb-4 mx-auto"
         >
           Campus Security Through
           <br />{" "}
@@ -841,7 +1019,7 @@ const FazriAnalyzerLanding: React.FC = () => {
                 "Predictive Monitoring",
                 "Real-time Insights",
               ]}
-              mainClassName="text-emerald-500 mx-1"
+              mainClassName="mx-1 text-[var(--color-accent)]"
               staggerFrom={"last"}
               initial={{ y: "-100%", opacity: 0 }}
               animate={{ y: 0, opacity: 1 }}
@@ -860,7 +1038,7 @@ const FazriAnalyzerLanding: React.FC = () => {
           variants={subHeadlineVariants}
           initial="hidden"
           animate="visible"
-          className="text-base sm:text-lg lg:text-xl text-gray-400 max-w-2xl mx-auto mb-8"
+          className="text-base sm:text-lg lg:text-xl max-w-2xl mx-auto mb-8 text-[var(--color-text-secondary)]"
         >
           A modular, service-oriented system combining Next.js frontend, FastAPI
           backend, and Neo4j graph analytics for comprehensive campus entity
@@ -879,11 +1057,11 @@ const FazriAnalyzerLanding: React.FC = () => {
             placeholder="Your institutional email"
             required
             aria-label="Institutional Email"
-            className="flex-grow w-full sm:w-auto px-4 py-2 rounded-md bg-[#2a2a2a] border border-gray-700 text-white placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-emerald-500 focus:border-transparent transition-all"
+            className="input-field flex-grow w-full sm:w-auto px-4 py-2 rounded-md focus:outline-none focus:ring-2 transition-all"
           />
           <motion.button
             type="submit"
-            className="w-full sm:w-auto bg-emerald-500 text-[#111111] px-5 py-2 rounded-md text-sm font-semibold hover:bg-emerald-400 transition-colors duration-200 whitespace-nowrap shadow-sm hover:shadow-md flex-shrink-0"
+            className="btn-primary w-full sm:w-auto flex-shrink-0"
             whileHover={{ scale: 1.03, y: -1 }}
             whileTap={{ scale: 0.97 }}
             transition={{ type: "spring", stiffness: 400, damping: 15 }}
@@ -895,7 +1073,7 @@ const FazriAnalyzerLanding: React.FC = () => {
 
       <section
         id="features"
-        className="w-full py-12 md:py-24 lg:py-32 relative z-10"
+        className="section-gap w-full relative z-10"
       >
         <motion.div
           initial="hidden"
@@ -905,11 +1083,12 @@ const FazriAnalyzerLanding: React.FC = () => {
           className="container px-4 md:px-6 mx-auto"
         >
           <div className="flex flex-col items-center justify-center space-y-4 text-center mb-12">
+            <span className="section-label">Platform Capabilities</span>
             <motion.h2
               initial={{ opacity: 0, y: 20 }}
               whileInView={{ opacity: 1, y: 0 }}
               transition={{ duration: 0.5 }}
-              className="text-3xl font-bold tracking-tighter sm:text-4xl md:text-5xl text-white"
+              className="text-3xl font-bold tracking-tighter sm:text-4xl md:text-5xl text-[var(--color-text-primary)]"
             >
               Core Features
             </motion.h2>
@@ -917,7 +1096,7 @@ const FazriAnalyzerLanding: React.FC = () => {
               initial={{ opacity: 0, y: 20 }}
               whileInView={{ opacity: 1, y: 0 }}
               transition={{ duration: 0.5, delay: 0.2 }}
-              className="mx-auto max-w-[900px] text-gray-400 md:text-xl"
+              className="mx-auto max-w-[900px] md:text-xl text-[var(--color-text-secondary)]"
             >
               Comprehensive entity resolution and security monitoring powered by
               advanced AI and graph analytics
@@ -933,37 +1112,37 @@ const FazriAnalyzerLanding: React.FC = () => {
           >
             {[
               {
-                icon: <Database className="h-10 w-10 text-emerald-500" />,
+                icon: <Database className="h-10 w-10 text-[var(--color-accent)]" />,
                 title: "Entity Resolution",
                 description:
                   "Multi-modal fusion with confidence scoring for accurate entity identification and linking across campus systems.",
               },
               {
-                icon: <Network className="h-10 w-10 text-emerald-500" />,
+                icon: <Network className="h-10 w-10 text-[var(--color-accent)]" />,
                 title: "Graph Analytics",
                 description:
                   "Neo4j-powered relationship mapping for entity linking, gap detection, and pattern recognition.",
               },
               {
-                icon: <Brain className="h-10 w-10 text-emerald-500" />,
+                icon: <Brain className="h-10 w-10 text-[var(--color-accent)]" />,
                 title: "Predictive AI",
                 description:
                   "ML-powered anomaly detection and behavioral pattern analysis with a configurable rule engine for explainable results.",
               },
               {
-                icon: <Shield className="h-10 w-10 text-emerald-500" />,
+                icon: <Shield className="h-10 w-10 text-[var(--color-accent)]" />,
                 title: "Security Monitoring",
                 description:
                   "Real-time anomaly detection and behavioral monitoring using a configurable rule engine and pattern analysis.",
               },
               {
-                icon: <Activity className="h-10 w-10 text-emerald-500" />,
+                icon: <Activity className="h-10 w-10 text-[var(--color-accent)]" />,
                 title: "Timeline Generation",
                 description:
                   "Graph-based timeline visualization for tracking entity movements and interactions over time.",
               },
               {
-                icon: <Lock className="h-10 w-10 text-emerald-500" />,
+                icon: <Lock className="h-10 w-10 text-[var(--color-accent)]" />,
                 title: "OAuth & JWT Auth",
                 description:
                   "Secure authentication and authorization with Prisma ORM for user data management.",
@@ -971,16 +1150,16 @@ const FazriAnalyzerLanding: React.FC = () => {
             ].map((feature, index) => (
               <motion.div
                 key={index}
-                variants={itemFadeIn}
+                variants={sectionItemFadeIn}
                 whileHover={{ y: -10, transition: { duration: 0.3 } }}
-                className="group relative overflow-hidden rounded-xl border border-gray-700 p-6 shadow-sm transition-all hover:shadow-md bg-[#1a1a1a]/80 hover:border-emerald-500/50"
+                className="card-surface feature-card group relative overflow-hidden rounded-xl transition-all"
               >
                 <div className="space-y-3">
                   <div className="mb-4">{feature.icon}</div>
-                  <h3 className="text-xl font-bold text-white">
+                  <h3 className="text-xl font-bold text-[var(--color-text-primary)]">
                     {feature.title}
                   </h3>
-                  <p className="text-gray-400">{feature.description}</p>
+                  <p className="text-[var(--color-text-secondary)]">{feature.description}</p>
                 </div>
               </motion.div>
             ))}
@@ -990,7 +1169,157 @@ const FazriAnalyzerLanding: React.FC = () => {
 
       <section
         id="architecture"
-        className="w-full py-12 md:py-24 lg:py-32 relative z-10"
+        className="section-gap w-full relative z-10"
+      >
+        <motion.div
+          initial="hidden"
+          whileInView="visible"
+          viewport={{ once: true }}
+          variants={fadeIn}
+          className="container px-4 md:px-6 mx-auto max-w-7xl"
+        >
+          <div className="mb-12">
+            <span className="section-label">THE SOLUTION</span>
+            <h2 className="text-4xl sm:text-5xl lg:text-6xl font-bold mt-4 text-[var(--color-text-primary)]">
+              One data layer.
+              <br />
+              Five welfare outcomes.
+            </h2>
+          </div>
+
+          <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 items-center">
+            {/* Left Column - Data Sources */}
+            <div className="lg:col-span-3 space-y-4">
+              <div className="card-surface p-6 rounded-lg">
+                <div className="flex items-start gap-3">
+                  <Wifi className="h-5 w-5 text-[var(--color-accent)] flex-shrink-0 mt-1" />
+                  <div>
+                    <h3 className="font-semibold text-[var(--color-text-primary)] mb-1">WiFi Logs</h3>
+                    <p className="text-sm text-[var(--color-text-secondary)]">Association events</p>
+                  </div>
+                </div>
+              </div>
+
+              <div className="card-surface p-6 rounded-lg">
+                <div className="flex items-start gap-3">
+                  <CreditCard className="h-5 w-5 text-[var(--color-accent)] flex-shrink-0 mt-1" />
+                  <div>
+                    <h3 className="font-semibold text-[var(--color-text-primary)] mb-1">RFID / Access</h3>
+                    <p className="text-sm text-[var(--color-text-secondary)]">Entry/exit records</p>
+                  </div>
+                </div>
+              </div>
+
+              <div className="card-surface p-6 rounded-lg">
+                <div className="flex items-start gap-3">
+                  <Video className="h-5 w-5 text-[var(--color-accent)] flex-shrink-0 mt-1" />
+                  <div>
+                    <h3 className="font-semibold text-[var(--color-text-primary)] mb-1">CCTV</h3>
+                    <p className="text-sm text-[var(--color-text-secondary)]">Facial recognition events</p>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            {/* Arrow 1 */}
+            <div className="hidden lg:flex lg:col-span-1 justify-center">
+              <ArrowRight className="h-8 w-8 text-[var(--color-accent)]" />
+            </div>
+
+            {/* Center Column - Intelligence Layer */}
+            <div className="lg:col-span-4">
+              <div className="card-accent p-8 rounded-lg text-center">
+                <div className="flex justify-center mb-4">
+                  <Brain className="h-16 w-16 text-[var(--color-accent)]" />
+                </div>
+                <h3 className="text-2xl font-bold mb-6 text-[var(--color-text-primary)]">
+                  Fazri Intelligence Layer
+                </h3>
+                <div className="space-y-2 text-left">
+                  <p className="text-[var(--color-text-secondary)]">Entity resolution →</p>
+                  <p className="text-[var(--color-text-secondary)]">Behavioral fingerprint →</p>
+                  <p className="text-[var(--color-text-secondary)]">Anomaly scoring</p>
+                </div>
+              </div>
+            </div>
+
+            {/* Arrow 2 */}
+            <div className="hidden lg:flex lg:col-span-1 justify-center">
+              <ArrowRight className="h-8 w-8 text-[var(--color-accent)]" />
+            </div>
+
+            {/* Right Column - Welfare Outcomes */}
+            <div className="lg:col-span-3 space-y-3">
+              <div className="card-surface p-4 rounded-lg">
+                <div className="flex items-center justify-between">
+                  <div>
+                    <h4 className="font-semibold text-[var(--color-text-primary)]">Mann Mitra</h4>
+                    <p className="text-xs text-[var(--color-text-muted)]">Mental health signals</p>
+                  </div>
+                  <Brain className="h-5 w-5 text-[var(--color-text-muted)]" />
+                </div>
+              </div>
+
+              <div className="card-surface p-4 rounded-lg">
+                <div className="flex items-center justify-between">
+                  <div>
+                    <h4 className="font-semibold text-[var(--color-text-primary)]">Raksha Chakra</h4>
+                    <p className="text-xs text-[var(--color-text-muted)]">Ragging detection</p>
+                  </div>
+                  <Shield className="h-5 w-5 text-[var(--color-text-muted)]" />
+                </div>
+              </div>
+
+              <div className="card-surface p-4 rounded-lg">
+                <div className="flex items-center justify-between">
+                  <div>
+                    <h4 className="font-semibold text-[var(--color-text-primary)]">Samata Shield</h4>
+                    <p className="text-xs text-[var(--color-text-muted)]">Caste discrimination</p>
+                  </div>
+                  <Scale className="h-5 w-5 text-[var(--color-text-muted)]" />
+                </div>
+              </div>
+
+              <div className="card-surface p-4 rounded-lg">
+                <div className="flex items-center justify-between">
+                  <div>
+                    <h4 className="font-semibold text-[var(--color-text-primary)]">Pratiraksha</h4>
+                    <p className="text-xs text-[var(--color-text-muted)]">POSH intelligence</p>
+                  </div>
+                  <Eye className="h-5 w-5 text-[var(--color-text-muted)]" />
+                </div>
+              </div>
+
+              <div className="card-surface p-4 rounded-lg">
+                <div className="flex items-center justify-between">
+                  <div>
+                    <h4 className="font-semibold text-[var(--color-text-primary)]">Sanvaad Setu</h4>
+                    <p className="text-xs text-[var(--color-text-muted)]">Protest early warning</p>
+                  </div>
+                  <Megaphone className="h-5 w-5 text-[var(--color-text-muted)]" />
+                </div>
+              </div>
+            </div>
+          </div>
+
+          {/* Bottom Callout */}
+          <div className="mt-12">
+            <div className="card-surface p-6 rounded-lg">
+              <div className="flex items-center gap-3">
+                <ThumbsUp className="h-6 w-6 text-[var(--color-accent)] flex-shrink-0" />
+                <div>
+                  <span className="font-semibold text-[var(--color-text-primary)]">Hardware-agnostic.</span>
+                  <span className="text-[var(--color-text-secondary)]"> Works with infrastructure campuses already own. No new procurement required.</span>
+                </div>
+              </div>
+            </div>
+          </div>
+        </motion.div>
+      </section>
+
+      <section
+        id="team"
+        className="section-gap w-full relative z-10"
       >
         <motion.div
           initial="hidden"
@@ -999,91 +1328,64 @@ const FazriAnalyzerLanding: React.FC = () => {
           variants={fadeIn}
           className="container px-4 md:px-6 mx-auto"
         >
-          <div className="flex flex-col items-center justify-center space-y-4 text-center mb-12">
-            <motion.h2
-              initial={{ opacity: 0, y: 20 }}
-              whileInView={{ opacity: 1, y: 0 }}
-              transition={{ duration: 0.5 }}
-              className="text-3xl font-bold tracking-tighter sm:text-4xl md:text-5xl text-white"
-            >
-              System Architecture
-            </motion.h2>
+          <div className="mb-12">
+            <span className="section-label">THE TEAM</span>
           </div>
 
-          <div className="mx-auto max-w-5xl grid gap-6 sm:grid-cols-5">
-            <Card className="group overflow-hidden shadow-black/5 sm:col-span-3 bg-[#1a1a1a] border-gray-700">
-              <CardHeader>
-                <div className="md:p-6">
-                  <p className="font-medium text-white">
-                    Next.js Frontend on Vercel
-                  </p>
-                  <p className="text-gray-400 mt-3 max-w-sm text-sm">
-                    Interactive dashboard for entity queries, timeline
-                    visualization, and anomaly monitoring with SSR and edge
-                    caching.
-                  </p>
-                </div>
-              </CardHeader>
-              <CardContent className="relative h-fit pl-6 md:pl-12">
-                <div className="bg-[#111111] overflow-hidden rounded-tl-lg border-l border-t border-gray-700 pl-2 pt-2">
-                  <div className="aspect-video bg-gradient-to-br from-emerald-500/20 to-transparent rounded flex items-center justify-center">
-                    <Users className="h-16 w-16 text-emerald-500" />
-                  </div>
-                </div>
-              </CardContent>
-            </Card>
-
-            <Card className="group overflow-hidden shadow-zinc-950/5 sm:col-span-2 bg-[#1a1a1a] border-gray-700">
-              <p className="mx-auto my-6 max-w-md text-balance px-6 text-center text-lg font-semibold sm:text-2xl text-white">
-                FastAPI Backend
-              </p>
-              <CardContent className="mt-auto h-fit">
-                <div className="relative mb-6 sm:mb-0">
-                  <div className="aspect-square overflow-hidden rounded-r-lg border border-gray-700 bg-gradient-to-br from-emerald-500/20 to-transparent flex items-center justify-center">
-                    <Zap className="h-12 w-12 text-emerald-500" />
-                  </div>
-                </div>
-              </CardContent>
-            </Card>
-
-            <Card className="group p-6 shadow-black/5 sm:col-span-2 md:p-12 bg-[#1a1a1a] border-gray-700">
-              <p className="mx-auto mb-12 max-w-md text-balance text-center text-lg font-semibold sm:text-2xl text-white">
-                Neo4j Graph Database
-              </p>
-              <div className="flex justify-center">
-                <div className="bg-gradient-to-br from-emerald-500/20 to-transparent flex aspect-square size-24 items-center justify-center rounded-lg border border-gray-700 p-3 shadow-lg">
-                  <Network className="size-12 text-emerald-500" />
-                </div>
-              </div>
-            </Card>
-
-            <Card className="group relative shadow-black/5 sm:col-span-3 bg-[#1a1a1a] border-gray-700">
-              <CardHeader className="p-6 md:p-12">
-                <p className="font-medium text-white">ML Anomaly Detection</p>
-                <p className="text-gray-400 mt-2 max-w-sm text-sm">
-                  Behavioral pattern analysis and anomaly detection powered by a
-                  configurable rule engine with explainable results.
-                </p>
-              </CardHeader>
-              <CardContent className="relative h-fit px-6 pb-6 md:px-12 md:pb-12">
-                <div className="grid grid-cols-3 gap-2">
-                  <div className="bg-gradient-to-br from-emerald-500/20 to-transparent flex aspect-square items-center justify-center border border-gray-700 rounded p-4">
-                    <Brain className="size-8 text-emerald-500" />
-                  </div>
-                  <div className="aspect-square border border-dashed border-gray-700 rounded"></div>
-                  <div className="bg-gradient-to-br from-emerald-500/20 to-transparent flex aspect-square items-center justify-center border border-gray-700 rounded p-4">
-                    <Activity className="size-8 text-emerald-500" />
-                  </div>
-                </div>
-              </CardContent>
-            </Card>
-          </div>
+          <motion.div
+            variants={staggerContainer}
+            initial="hidden"
+            whileInView="visible"
+            viewport={{ once: true }}
+            className="mx-auto grid max-w-6xl gap-6 md:grid-cols-2 lg:grid-cols-3"
+          >
+            {[
+              {
+                name: "Sakib Alam",
+                initials: "SA",
+                imageUrl: undefined, // Use initials as fallback, show image when available
+                discordId: "644911200391659539",
+                role: "FOUNDER & CEO",
+                description: "Architect of the behavioral intelligence layer. Built the entity resolution and anomaly detection core.",
+                icon: <Brain className="h-5 w-5 text-[var(--color-accent)]" />,
+                specialty: "Baat karne wala",
+                tech: "MERN · Pytorch · FastAPI · Communication",
+                isAccent: true,
+              },
+              {
+                name: "Subhadeep Pramanik",
+                initials: "SP",
+                imageUrl: "https://res.cloudinary.com/ddvheihbd/image/upload/f_auto,q_auto/v1/team/phpxcoder",
+                discordId: "697757845063729194",
+                role: "CO-FOUNDER & CTO",
+                description: "Owns production infrastructure, system reliability, and real-time data pipeline architecture.",
+                icon: <Database className="h-5 w-5 text-[var(--color-text-secondary)]" />,
+                specialty: "deploy karne wala",
+                tech: "AWS · Docker · Kubernetes · Jenkins",
+                isAccent: false,
+              },
+              {
+                name: "Dinesh Yerra",
+                initials: "DY",
+                imageUrl: "https://res.cloudinary.com/ddvheihbd/image/upload/t_dino_1_1/team/dinokage",
+                discordId: "446946428158214164",
+                role: "CO-FOUNDER & VP PRODUCT",
+                description: "Owns the campus-facing product surface, Registrar dashboards, and welfare module UX.",
+                icon: <Users className="h-5 w-5 text-[var(--color-text-secondary)]" />,
+                specialty: "code karne wala",
+                tech: "FastAPI · NextJS · Redis",
+                isAccent: false,
+              },
+            ].map((member, index) => (
+              <TeamMemberCard key={index} member={member} />
+            ))}
+          </motion.div>
         </motion.div>
       </section>
 
       <section
         id="contact"
-        className="w-full py-12 md:py-24 lg:py-32 relative z-10"
+        className="section-gap w-full relative z-10"
       >
         <motion.div
           initial="hidden"
@@ -1092,45 +1394,46 @@ const FazriAnalyzerLanding: React.FC = () => {
           variants={fadeIn}
           className="container px-4 md:px-6 mx-auto max-w-2xl"
         >
-          <div className="rounded-xl border border-gray-700 bg-[#1a1a1a]/80 p-8 shadow-sm">
-            <h3 className="text-2xl font-bold text-white mb-2">Get in Touch</h3>
-            <p className="text-sm text-gray-400 mb-6">
+          <div className="card-surface rounded-xl p-8">
+            <span className="section-label text-left block">Get Started</span>
+            <h3 className="text-2xl font-bold mb-2 text-[var(--color-text-primary)]">Get in Touch</h3>
+            <p className="text-sm mb-6 text-[var(--color-text-secondary)]">
               Interested in implementing Fazri Analyzer for your campus? Contact
               us for a demo.
             </p>
-            <form className="space-y-4">
+            <form className="space-y-4" onSubmit={(e: FormEvent<HTMLFormElement>) => e.preventDefault()}>
               <div className="grid gap-4 sm:grid-cols-2">
                 <div className="space-y-2">
                   <label
                     htmlFor="first-name"
-                    className="text-sm font-medium text-gray-300"
+                    className="text-sm font-medium text-[var(--color-text-secondary)]"
                   >
                     First name
                   </label>
                   <Input
                     id="first-name"
                     placeholder="Enter your first name"
-                    className="bg-[#2a2a2a] border-gray-700 text-white"
+                    className="input-field"
                   />
                 </div>
                 <div className="space-y-2">
                   <label
                     htmlFor="last-name"
-                    className="text-sm font-medium text-gray-300"
+                    className="text-sm font-medium text-[var(--color-text-secondary)]"
                   >
                     Last name
                   </label>
                   <Input
                     id="last-name"
                     placeholder="Enter your last name"
-                    className="bg-[#2a2a2a] border-gray-700 text-white"
+                    className="input-field"
                   />
                 </div>
               </div>
               <div className="space-y-2">
                 <label
                   htmlFor="email"
-                  className="text-sm font-medium text-gray-300"
+                  className="text-sm font-medium text-[var(--color-text-secondary)]"
                 >
                   Email
                 </label>
@@ -1138,20 +1441,20 @@ const FazriAnalyzerLanding: React.FC = () => {
                   id="email"
                   type="email"
                   placeholder="Enter your email"
-                  className="bg-[#2a2a2a] border-gray-700 text-white"
+                  className="input-field"
                 />
               </div>
               <div className="space-y-2">
                 <label
                   htmlFor="institution"
-                  className="text-sm font-medium text-gray-300"
+                  className="text-sm font-medium text-[var(--color-text-secondary)]"
                 >
                   Institution
                 </label>
                 <Input
                   id="institution"
                   placeholder="Your institution name"
-                  className="bg-[#2a2a2a] border-gray-700 text-white"
+                  className="input-field"
                 />
               </div>
               <motion.div
@@ -1160,7 +1463,7 @@ const FazriAnalyzerLanding: React.FC = () => {
               >
                 <Button
                   type="submit"
-                  className="w-full bg-emerald-500 hover:bg-emerald-400 text-[#111111]"
+                  className="btn-primary w-full"
                 >
                   Request Demo
                 </Button>
@@ -1170,7 +1473,7 @@ const FazriAnalyzerLanding: React.FC = () => {
         </motion.div>
       </section>
 
-      <footer className="w-full border-t border-gray-700 relative z-10">
+      <footer className="w-full relative z-10 border-t border-[var(--color-border-default)]">
         <motion.div
           initial="hidden"
           whileInView="visible"
@@ -1181,62 +1484,64 @@ const FazriAnalyzerLanding: React.FC = () => {
           <div className="grid gap-8 lg:grid-cols-4">
             <div className="space-y-3">
               <div className="flex items-center space-x-2">
-                <Database className="h-6 w-6 text-emerald-500" />
-                <span className="font-bold text-xl text-white">
+                <Database className="h-6 w-6 text-[var(--color-accent)]" />
+                <span className="font-bold text-xl text-[var(--color-text-primary)]">
                   Fazri Analyzer
                 </span>
               </div>
-              <p className="text-sm text-gray-400">
+              <p className="text-sm text-[var(--color-text-secondary)]">
                 Advanced campus entity resolution and security monitoring
                 through AI-powered graph analytics.
               </p>
               <div className="flex space-x-3">
                 {[
-                  { icon: <Github className="h-5 w-5" />, label: "GitHub" },
-                  { icon: <Linkedin className="h-5 w-5" />, label: "LinkedIn" },
-                  { icon: <Twitter className="h-5 w-5" />, label: "Twitter" },
-                ].map((social, index) => (
+                  { icon: <Github className="h-5 w-5" />, label: "GitHub", url: undefined },
+                  { icon: <Linkedin className="h-5 w-5" />, label: "LinkedIn", url: undefined },
+                  { icon: <Twitter className="h-5 w-5" />, label: "Twitter", url: undefined },
+                ].map((social, index) => social.url ? (
                   <motion.div
                     key={index}
                     whileHover={{ y: -5, scale: 1.1 }}
                     whileTap={{ scale: 0.9 }}
                   >
                     <a
-                      href="#"
-                      className="text-gray-400 hover:text-emerald-500 transition-colors"
+                      href={social.url}
+                      className="social-icon transition-colors"
+                      target="_blank"
+                      rel="noopener noreferrer"
                     >
                       {social.icon}
                       <span className="sr-only">{social.label}</span>
                     </a>
                   </motion.div>
-                ))}
+                ) : null)}
               </div>
             </div>
 
             <div>
-              <h3 className="text-lg font-medium text-white mb-4">Product</h3>
+              <h3 className="text-lg font-medium mb-4 text-[var(--color-text-primary)]">Product</h3>
               <nav className="flex flex-col space-y-2 text-sm">
                 <a
                   href="#features"
-                  className="text-gray-400 hover:text-emerald-500 transition-colors"
+                  className="footer-link transition-colors"
                 >
                   Features
                 </a>
                 <a
                   href="#architecture"
-                  className="text-gray-400 hover:text-emerald-500 transition-colors"
+                  className="footer-link transition-colors"
                 >
                   Architecture
                 </a>
                 <a
                   href="#"
-                  className="text-gray-400 hover:text-emerald-500 transition-colors"
+                  className="footer-link transition-colors"
                 >
                   Documentation
                 </a>
                 <a
                   href="#"
-                  className="text-gray-400 hover:text-emerald-500 transition-colors"
+                  className="footer-link transition-colors"
                 >
                   API Reference
                 </a>
@@ -1244,29 +1549,35 @@ const FazriAnalyzerLanding: React.FC = () => {
             </div>
 
             <div>
-              <h3 className="text-lg font-medium text-white mb-4">Company</h3>
+              <h3 className="text-lg font-medium mb-4 text-[var(--color-text-primary)]">Company</h3>
               <nav className="flex flex-col space-y-2 text-sm">
                 <a
                   href="#"
-                  className="text-gray-400 hover:text-emerald-500 transition-colors"
+                  className="footer-link transition-colors"
                 >
                   About
                 </a>
                 <a
+                  href="#team"
+                  className="footer-link transition-colors"
+                >
+                  Team
+                </a>
+                <a
                   href="#contact"
-                  className="text-gray-400 hover:text-emerald-500 transition-colors"
+                  className="footer-link transition-colors"
                 >
                   Contact
                 </a>
                 <a
                   href="#"
-                  className="text-gray-400 hover:text-emerald-500 transition-colors"
+                  className="footer-link transition-colors"
                 >
                   Privacy
                 </a>
                 <a
                   href="#"
-                  className="text-gray-400 hover:text-emerald-500 transition-colors"
+                  className="footer-link transition-colors"
                 >
                   Terms
                 </a>
@@ -1274,8 +1585,8 @@ const FazriAnalyzerLanding: React.FC = () => {
             </div>
 
             <div>
-              <h3 className="text-lg font-medium text-white mb-4">Contact</h3>
-              <div className="space-y-2 text-sm text-gray-400">
+              <h3 className="text-lg font-medium mb-4 text-[var(--color-text-primary)]">Contact</h3>
+              <div className="space-y-2 text-sm text-[var(--color-text-secondary)]">
                 <div className="flex items-center gap-2">
                   <Mail className="h-4 w-4" />
                   <span>noc@rdpdatacenter.in</span>
@@ -1288,8 +1599,8 @@ const FazriAnalyzerLanding: React.FC = () => {
             </div>
           </div>
 
-          <div className="border-t border-gray-700 mt-8 pt-6">
-            <p className="text-xs text-gray-500 text-center">
+          <div className="mt-8 pt-6 border-t border-[var(--color-border-default)]">
+            <p className="text-xs text-center text-[var(--color-text-muted)]">
               &copy; {new Date().getFullYear()} Fazri Analyzer. All rights
               reserved.
             </p>

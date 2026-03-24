@@ -1,498 +1,339 @@
-"use client";
+'use client';
 
-import { signIn } from "next-auth/react";
-import { useState } from "react";
-import { motion, AnimatePresence } from "framer-motion";
-import {
-  Card,
-  CardContent,
-  CardHeader,
-} from "@/components/ui/card";
-import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
-import { Button } from "@/components/ui/button";
-import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
-import { Loader2, Shield, Eye, EyeOff, Lock, User, ArrowRight } from "lucide-react";
+import { AnimatePresence, motion } from 'framer-motion';
+import { ArrowLeft, Eye, EyeOff, Lock, Shield, User } from 'lucide-react';
+import { signIn } from 'next-auth/react';
+import { useRouter } from 'next/navigation';
+import { useRef, useState, useEffect } from 'react';
+import { toast } from 'sonner';
+
+const slideVariants = {
+  enter: (d: number) => ({ x: d > 0 ? '6%' : '-6%', opacity: 0 }),
+  center: { x: 0, opacity: 1 },
+  exit: (d: number) => ({ x: d > 0 ? '-6%' : '6%', opacity: 0 }),
+};
+
+const features = [
+  { title: 'Behavioral intelligence', desc: 'Detect anomalies before they become incidents' },
+  { title: 'Graph-based entity resolution', desc: 'Connect the dots across your entire campus' },
+  { title: 'Real-time alerting', desc: 'Sub-second anomaly detection and notification' },
+];
+
+function Spinner() {
+  return (
+    <svg className="h-4 w-4 animate-spin" fill="none" viewBox="0 0 24 24">
+      <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+      <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z" />
+    </svg>
+  );
+}
 
 export default function SigninPage() {
-  const [username, setUsername] = useState("");
-  const [password, setPassword] = useState("");
-  const [error, setError] = useState("");
-  const [loading, setLoading] = useState(false);
-  const [showPassword, setShowPassword] = useState(false);
-  const [step, setStep] = useState<"username" | "password" | "loading" | "success">("username");
-  // userExists state is no longer strictly needed if we just transition steps,
-  // but we'll keep it for clarity if the UI relies on it.
-  const [userExists, setUserExists] = useState(false);
+  const router = useRouter();
 
-  const handleUsernameSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!username.trim()) {
-      setError("Please enter your username");
-      return;
+  const [username, setUsername] = useState('');
+  const [password, setPassword] = useState('');
+  const [hidePassword, setHidePassword] = useState(true);
+  const [usernameChecked, setUsernameChecked] = useState(false);
+  const [checkingUsername, setCheckingUsername] = useState(false);
+  const [submitted, setSubmitted] = useState(false);
+  const [direction, setDirection] = useState<1 | -1>(1);
+  const [activeFeature, setActiveFeature] = useState(0);
+  const passwordRef = useRef<HTMLInputElement>(null);
+
+  useEffect(() => {
+    const interval = setInterval(() => setActiveFeature(p => (p + 1) % features.length), 3000);
+    return () => clearInterval(interval);
+  }, []);
+
+  useEffect(() => {
+    if (usernameChecked) {
+      setTimeout(() => passwordRef.current?.focus(), 50);
     }
+  }, [usernameChecked]);
 
-    setError("");
-    setLoading(true);
-
+  const handleUsernameContinue = async () => {
+    if (!username.trim()) return;
+    setCheckingUsername(true);
     try {
-      // --- CHANGED LOGIC HERE ---
-      // Check if user exists in your database via a custom API endpoint
-      const response = await fetch("/api/check", { // <<< Changed endpoint
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
+      const res = await fetch('/api/check', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ username: username.trim() }),
       });
-
-      const data = await response.json();
-
-      if (data.exists) {
-        setUserExists(true); // User exists, proceed to password step
-        console.log(userExists)
-        setStep("password");
-      } else {
-        setError("Username not found. Please check your username and try again.");
+      const data = await res.json();
+      if (!data.exists) {
+        toast.error('No account found with this username.');
+        setCheckingUsername(false);
+        return;
       }
-    } catch (error) {
-      console.error("Username check error:", error); // Log the actual error for debugging
-      setError(error instanceof Error ? error.message : "An unexpected error occurred during username check.");
-    } finally {
-      setLoading(false);
+      setDirection(1);
+      setUsernameChecked(true);
+    } catch {
+      toast.error('Something went wrong. Please try again.');
     }
+    setCheckingUsername(false);
   };
 
-  const handlePasswordSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
-    setError("");
-    setLoading(true);
-    setStep("loading"); // Show loading animation before signIn
+  const goBack = () => {
+    setDirection(-1);
+    setUsernameChecked(false);
+    setPassword('');
+  };
 
-    try {
-      const res = await signIn("credentials", {
-        // NextAuth.js Credentials provider expects 'entity_id' for your setup
-        // 'username' here maps to the 'entity_id' in your auth.ts
-        entity_id: username, // <<< Use 'entity_id' as defined in your auth.ts CredentialsProvider
-        password: password,
-        redirect: false, // Prevents automatic redirect on success/failure
-      });
-
-      if (res?.error) {
-        // NextAuth.js error messages can be generic, customize as needed
-        // For security, avoid giving too much detail if password or username failed
-        setError("Invalid password. Please try again.");
-        setStep("password"); // Go back to password step on error
-      } else {
-        // Authentication successful
-        setStep("success"); // Show success animation
-        setTimeout(() => {
-          // You might want to get `res.url` or `router.push('/')` for more robust redirection
-          window.location.href = "/dashboard"; // Redirect to home page
-        }, 2000);
-      }
-    } catch (error) {
-      console.error("Sign-in error:", error); // Log the actual error for debugging
-      setError(error instanceof Error ? error.message : "An unexpected error occurred during sign-in.");
-      setStep("password"); // Go back to password step on unexpected error
-    } finally {
-      setLoading(false); // Ensure loading state is reset
+  const login = async () => {
+    setSubmitted(true);
+    const res = await signIn('credentials', {
+      entity_id: username,
+      password,
+      redirect: false,
+    });
+    if (res?.error) {
+      toast.error('Invalid password. Please try again.');
+      setSubmitted(false);
+      return;
     }
+    router.push('/dashboard');
   };
 
-  const handleBackToUsername = () => {
-    setStep("username");
-    setPassword("");
-    setError("");
-    setUserExists(false); // Reset userExists state
-  };
+  const inputClass =
+    'block w-full rounded-lg border border-neutral-200 dark:border-neutral-700 bg-white dark:bg-neutral-800/60 px-3.5 py-2.5 text-sm text-neutral-900 dark:text-neutral-50 placeholder-neutral-400 dark:placeholder-neutral-500 transition-all duration-150 focus:border-neutral-700 dark:focus:border-neutral-400 focus:outline-none focus:ring-2 focus:ring-neutral-200 dark:focus:ring-neutral-700';
 
   return (
-    <main className="min-h-screen flex items-center justify-center p-4 transition-all duration-500 relative overflow-hidden">
+    <div className="flex min-h-screen bg-white dark:bg-neutral-950">
+      {/* ── Left: form panel ── */}
+      <div className="flex w-full flex-col justify-center px-6 py-12 lg:w-[52%] xl:px-20">
+        <div className="mx-auto w-full max-w-sm">
 
-
-      <div className="w-full max-w-sm relative z-10">
-        <Card className="backdrop-blur-sm bg-white/90 dark:bg-black/90 shadow-2xl border-0 ring-1 ring-slate-200/50 dark:ring-gray-800/50 transition-all duration-300">
-          <CardHeader className="text-center space-y-6 pb-8">
-            {/* Logo/Icon */}
-            <motion.div
-              className="mx-auto w-20 h-20 bg-gradient-to-br from-blue-600 to-indigo-600 dark:from-blue-500 dark:to-indigo-500 rounded-2xl flex items-center justify-center shadow-lg"
-              whileHover={{ scale: 1.05 }}
-              transition={{ duration: 0.3 }}
-            >
-              <Shield className="w-10 h-10 text-white" />
-            </motion.div>
-
-            {/* Title */}
-            <div className="space-y-2">
-              <h1 className="text-[2.5rem] font-bold leading-[1.1] tracking-tight bg-gradient-to-r from-slate-900 to-slate-600 dark:from-white dark:to-slate-300 bg-clip-text text-transparent">
-                Welcome Back
-              </h1>
-              <p className="text-[1.25rem] text-muted-foreground font-light">
-                Sign in to access <span className="font-semibold text-blue-600 dark:text-blue-400">Fazri Analyzer</span>
-              </p>
+          {/* Logo */}
+          <div className="mb-8 flex items-center gap-2">
+            <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-neutral-900 dark:bg-neutral-50">
+              <Shield className="h-4 w-4 text-white dark:text-neutral-900" />
             </div>
-          </CardHeader>
+            <span className="text-lg font-semibold tracking-tight text-neutral-900 dark:text-neutral-50">
+              Fazri Analyzer
+            </span>
+          </div>
 
-          <CardContent className="space-y-6">
-            <AnimatePresence mode="wait">
-              {step === "username" && (
+          {/* Sliding content */}
+          <div className="overflow-hidden">
+            <AnimatePresence mode="wait" initial={false} custom={direction}>
+              {!usernameChecked ? (
                 <motion.div
-                  key="username-step"
-                  initial={{ opacity: 0, x: -100 }}
-                  animate={{ opacity: 1, x: 0 }}
-                  exit={{ opacity: 0, x: 100 }}
-                  transition={{ duration: 0.4, ease: "easeOut" }}
-                  className="space-y-6"
+                  key="username"
+                  custom={-direction}
+                  variants={slideVariants}
+                  initial="enter"
+                  animate="center"
+                  exit="exit"
+                  transition={{ duration: 0.3, ease: [0.32, 0.72, 0, 1] }}
                 >
-                  <form className="space-y-5" onSubmit={handleUsernameSubmit}>
-                    {error && (
-                      <motion.div
-                        initial={{ opacity: 0, y: -10 }}
-                        animate={{ opacity: 1, y: 0 }}
-                        transition={{ duration: 0.3 }}
-                      >
-                        <Alert variant="destructive">
-                          <User className="w-4 h-4" />
-                          <AlertTitle>Username Error</AlertTitle>
-                          <AlertDescription>{error}</AlertDescription>
-                        </Alert>
-                      </motion.div>
-                    )}
+                  <h1 className="text-2xl font-semibold tracking-tight text-neutral-900 dark:text-neutral-50">
+                    Welcome back
+                  </h1>
+                  <p className="mt-1 text-sm text-neutral-500 dark:text-neutral-400">
+                    Sign in to your Fazri Analyzer account
+                  </p>
 
-                    {/* Username Field */}
-                    <div className="space-y-2">
-                      <Label htmlFor="username" className="text-slate-700 dark:text-slate-300 font-medium">
-                        Username
-                      </Label>
-                      <div className="relative rounded-full py-4 px-5 border border-border bg-transparent">
-                        <div className="flex items-center">
-                          <div className="flex-shrink-0 mr-3">
-                            <User className="h-5 w-5 text-muted-foreground" />
-                          </div>
-                          <Input
-                            id="username"
-                            type="text"
-                            placeholder="Enter your username"
-                            value={username}
-                            onChange={(e) => setUsername(e.target.value)}
-                            className="border-none bg-transparent focus:ring-0 focus-visible:ring-0 focus-visible:border-none px-0  placeholder:text-muted-foreground"
-                            required
-                            autoFocus
-                            disabled={loading}
-                          />
-                          {username.trim() && (
-                            <button
-                              type="submit"
-                              disabled={loading || !username.trim()}
-                              className={`flex-shrink-0 ml-3 w-9 h-9 flex items-center justify-center rounded-full transition-all duration-300 group overflow-hidden ${
-                                username.trim() && !loading
-                                  ? "bg-foreground/10 hover:bg-foreground/20 cursor-pointer"
-                                  : "bg-transparent cursor-not-allowed opacity-50"
-                              }`}
-                            >
-                              {loading ? (
-                                <Loader2 className="w-4 h-4 animate-spin" />
-                              ) : (
-                                <span className="relative w-full h-full block overflow-hidden">
-                                  <span className={`absolute inset-0 flex items-center justify-center transition-transform duration-300 ${
-                                    username.trim() && !loading ? "group-hover:translate-x-full" : ""
-                                  }`}>
-                                    →
-                                  </span>
-                                  <span className={`absolute inset-0 flex items-center justify-center transition-transform duration-300 ${
-                                    username.trim() && !loading ? "-translate-x-full group-hover:translate-x-0" : "-translate-x-full"
-                                  }`}>
-                                    →
-                                  </span>
-                                </span>
-                              )}
-                            </button>
-                          )}
-                        </div>
-                      </div>
-                    </div>
-
-                    {/* Continue Button */}
-                    <motion.div
-                      whileHover={{ scale: 1.02 }}
-                      whileTap={{ scale: 0.98 }}
-                      transition={{ duration: 0.2 }}
-                    >
-                      <Button
-                        type="submit"
-                        disabled={loading || !username.trim()}
-                        className="w-full h-12 bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700 dark:from-blue-500 dark:to-indigo-500 dark:hover:from-blue-600 dark:hover:to-indigo-600 text-white font-semibold rounded-full shadow-lg transition-all duration-300 disabled:opacity-50 disabled:cursor-not-allowed group"
-                      >
-                        <div className="flex items-center justify-center">
-                          {loading ? (
-                            <>
-                              <Loader2 className="w-5 h-5 mr-2 animate-spin" />
-                              <span>Checking username...</span>
-                            </>
-                          ) : (
-                            <>
-                              <User className="w-5 h-5 mr-2" />
-                              <span>Continue</span>
-                              <ArrowRight className="w-4 h-4 ml-2 transition-transform group-hover:translate-x-1" />
-                            </>
-                          )}
-                        </div>
-                      </Button>
-                    </motion.div>
-                  </form>
-
-                  {/* Info Section */}
-                  <div className="bg-blue-50 dark:bg-blue-950/30 border border-blue-200 dark:border-blue-800 rounded-lg p-4">
-                    <div className="flex items-start gap-3">
-                      <div className="flex-shrink-0">
-                        <svg
-                          className="w-5 h-5 text-blue-500 mt-0.5"
-                          fill="currentColor"
-                          viewBox="0 0 20 20"
-                        >
-                          <path
-                            fillRule="evenodd"
-                            d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7-4a1 1 0 11-2 0 1 1 0 012 0zM9 9a1 1 0 000 2v3a1 1 0 001 1h1a1 1 0 100-2v-3a1 1 0 00-1-1H9z"
-                            clipRule="evenodd"
-                          />
-                        </svg>
-                      </div>
-                      <div className="text-left">
-                        <p className="text-sm text-blue-800 dark:text-blue-200 font-medium">
-                          Secure Authentication
-                        </p>
-                        <p className="text-xs text-blue-600 dark:text-blue-300 mt-1">
-                          Enter your username to continue to password verification
-                        </p>
-                      </div>
-                    </div>
-                  </div>
-                </motion.div>
-              )}
-
-              {step === "password" && (
-                <motion.div
-                  key="password-step"
-                  initial={{ opacity: 0, x: -100 }}
-                  animate={{ opacity: 1, x: 0 }}
-                  exit={{ opacity: 0, x: 100 }}
-                  transition={{ duration: 0.4, ease: "easeOut" }}
-                  className="space-y-6"
-                >
-                  <form className="space-y-5" onSubmit={handlePasswordSubmit}>
-                    {error && (
-                      <motion.div
-                        initial={{ opacity: 0, y: -10 }}
-                        animate={{ opacity: 1, y: 0 }}
-                        transition={{ duration: 0.3 }}
-                      >
-                        <Alert variant="destructive">
-                          <Lock className="w-4 h-4" />
-                          <AlertTitle>Authentication Failed</AlertTitle>
-                          <AlertDescription>{error}</AlertDescription>
-                        </Alert>
-                      </motion.div>
-                    )}
-
-                    {/* Username Display */}
-                    <div className="space-y-2">
-                      <Label className="text-slate-700 dark:text-slate-300 font-medium">
-                        Username
-                      </Label>
-                      <div className="relative rounded-full py-4 px-5 border border-border bg-muted/50">
-                        <div className="flex items-center">
-                          <div className="flex-shrink-0 mr-3">
-                            <User className="h-5 w-5 text-muted-foreground" />
-                          </div>
-                          <span className="text-foreground font-medium">{username}</span>
-                          <button
-                            type="button"
-                            onClick={handleBackToUsername}
-                            className="flex-shrink-0 ml-auto text-muted-foreground hover:text-foreground transition-colors text-sm"
-                          >
-                            Change
-                          </button>
-                        </div>
-                      </div>
-                    </div>
-
-                    {/* Password Field */}
-                    <div className="space-y-2">
-                      <Label htmlFor="password" className="text-slate-700 dark:text-slate-300 font-medium">
-                        Password
-                      </Label>
-                      <div className="relative rounded-full py-4 px-5 border border-border bg-background">
-                        <div className="flex items-center">
-                          <div className="flex-shrink-0 mr-3">
-                            <Lock className="h-5 w-5 text-muted-foreground" />
-                          </div>
-                          <Input
-                            id="password"
-                            type={showPassword ? "text" : "password"}
-                            placeholder="Enter your password"
-                            value={password}
-                            onChange={(e) => setPassword(e.target.value)}
-                            className="border-none bg-background focus:ring-0 focus-visible:ring-0 focus-visible:border-none px-0 pr-10 text-foreground placeholder:text-muted-foreground"
-                            required
-                            autoFocus
-                            autoComplete="off"
-                            disabled={loading}
-                          />
-                          <button
-                            type="button"
-                            className="flex-shrink-0 ml-3 text-muted-foreground hover:text-foreground transition-colors duration-200"
-                            onClick={() => setShowPassword(!showPassword)}
-                          >
-                            {showPassword ? (
-                              <EyeOff className="h-5 w-5" />
-                            ) : (
-                              <Eye className="h-5 w-5" />
-                            )}
-                          </button>
-                        </div>
-                      </div>
-                    </div>
-
-                    {/* Submit Button */}
-                    <div className="flex gap-3">
-                      <motion.div
-                        whileHover={{ scale: 1.02 }}
-                        whileTap={{ scale: 0.98 }}
-                        transition={{ duration: 0.2 }}
-                        className="w-[30%]"
-                      >
-                        <Button
-                          type="button"
-                          onClick={handleBackToUsername}
-                          variant="outline"
-                          className="w-full h-12 rounded-full border-border hover:bg-muted"
-                        >
-                          Back
-                        </Button>
-                      </motion.div>
-
-                      <motion.div
-                        whileHover={{ scale: 1.02 }}
-                        whileTap={{ scale: 0.98 }}
-                        transition={{ duration: 0.2 }}
-                        className="flex-1"
-                      >
-                        <Button
-                          type="submit"
-                          disabled={loading || !password.trim()}
-                          className="w-full h-12 bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700 dark:from-blue-500 dark:to-indigo-500 dark:hover:from-blue-600 dark:hover:to-indigo-600 text-white font-semibold rounded-full shadow-lg transition-all duration-300 disabled:opacity-50 disabled:cursor-not-allowed group"
-                        >
-                          <div className="flex items-center justify-center">
-                            {loading ? (
-                              <>
-                                <Loader2 className="w-5 h-5 mr-2 animate-spin" />
-                                <span>Signing in...</span>
-                              </>
-                            ) : (
-                              <>
-                                <Shield className="w-5 h-5 mr-2" />
-                                <span>Sign In</span>
-                                <ArrowRight className="w-4 h-4 ml-2 transition-transform group-hover:translate-x-1" />
-                              </>
-                            )}
-                          </div>
-                        </Button>
-                      </motion.div>
-                    </div>
-                  </form>
-
-                  {/* Info Section */}
-                  <div className="bg-green-50 dark:bg-green-950/30 border border-green-200 dark:border-green-800 rounded-lg p-4">
-                    <div className="flex items-start gap-3">
-                      <div className="flex-shrink-0">
-                        <svg
-                          className="w-5 h-5 text-green-500 mt-0.5"
-                          fill="currentColor"
-                          viewBox="0 0 20 20"
-                        >
-                          <path
-                            fillRule="evenodd"
-                            d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z"
-                            clipRule="evenodd"
-                          />
-                        </svg>
-                      </div>
-                      <div className="text-left">
-                        <p className="text-sm text-green-800 dark:text-green-200 font-medium">
-                          Username Verified
-                        </p>
-                        <p className="text-xs text-green-600 dark:text-green-300 mt-1">
-                          Please enter your password to complete authentication
-                        </p>
-                      </div>
-                    </div>
-                  </div>
-                </motion.div>
-              )}
-
-              {step === "loading" && (
-                <motion.div
-                  key="loading-step"
-                  initial={{ opacity: 0, x: -100 }}
-                  animate={{ opacity: 1, x: 0 }}
-                  exit={{ opacity: 0, x: 100 }}
-                  transition={{ duration: 0.4, ease: "easeOut" }}
-                  className="space-y-6 text-center py-8"
-                >
-                  <div className="space-y-4">
-                    <motion.div
-                      animate={{ rotate: 360 }}
-                      transition={{ duration: 2, repeat: Infinity, ease: "linear" }}
-                      className="mx-auto w-16 h-16 rounded-full bg-gradient-to-br from-blue-600 to-indigo-600 flex items-center justify-center"
-                    >
-                      <Loader2 className="w-8 h-8 text-white animate-spin" />
-                    </motion.div>
+                  <div className="mt-7 space-y-4">
                     <div>
-                      <h2 className="text-2xl font-bold text-foreground">Signing you in...</h2>
-                      <p className="text-muted-foreground">Please wait while we verify your credentials</p>
+                      <label className="mb-1.5 block text-sm font-medium text-neutral-700 dark:text-neutral-300">
+                        Username
+                      </label>
+                      <div className="relative">
+                        <div className="pointer-events-none absolute inset-y-0 left-3.5 flex items-center">
+                          <User size={14} className="text-neutral-400 dark:text-neutral-500" />
+                        </div>
+                        <input
+                          type="text"
+                          value={username}
+                          onChange={e => setUsername(e.target.value)}
+                          onKeyDown={e => {
+                            if (e.key === 'Enter' && username.trim()) {
+                              e.preventDefault();
+                              handleUsernameContinue();
+                            }
+                          }}
+                          placeholder="your-username"
+                          className={`${inputClass} pl-9`}
+                          autoComplete="username"
+                          autoFocus
+                        />
+                      </div>
                     </div>
+
+                    <button
+                      type="button"
+                      onClick={handleUsernameContinue}
+                      disabled={checkingUsername || !username.trim()}
+                      className="flex w-full cursor-pointer items-center justify-center gap-2 rounded-lg bg-neutral-900 dark:bg-neutral-50 px-4 py-2.5 text-sm font-semibold text-white dark:text-neutral-900 transition-all duration-200 hover:bg-neutral-800 dark:hover:bg-neutral-200 disabled:cursor-not-allowed disabled:opacity-50"
+                    >
+                      {checkingUsername ? <><Spinner /><span>Checking…</span></> : 'Continue'}
+                    </button>
+                  </div>
+                </motion.div>
+              ) : (
+                <motion.div
+                  key="password"
+                  custom={direction}
+                  variants={slideVariants}
+                  initial="enter"
+                  animate="center"
+                  exit="exit"
+                  transition={{ duration: 0.3, ease: [0.32, 0.72, 0, 1] }}
+                >
+                  <h1 className="text-2xl font-semibold tracking-tight text-neutral-900 dark:text-neutral-50">
+                    Enter password
+                  </h1>
+                  <p className="mt-1 text-sm text-neutral-500 dark:text-neutral-400">
+                    Signing in as <span className="font-medium text-neutral-700 dark:text-neutral-300">{username}</span>
+                  </p>
+                  <button
+                    type="button"
+                    onClick={goBack}
+                    className="mt-2 inline-flex cursor-pointer items-center gap-1.5 text-sm text-neutral-400 transition-colors hover:text-neutral-700 dark:text-neutral-500 dark:hover:text-neutral-300"
+                  >
+                    <ArrowLeft size={13} />
+                    Change username
+                  </button>
+
+                  <div className="mt-6 space-y-4">
+                    <div>
+                      <label className="mb-1.5 block text-sm font-medium text-neutral-700 dark:text-neutral-300">
+                        Password
+                      </label>
+                      <div className="relative">
+                        <div className="pointer-events-none absolute inset-y-0 left-3.5 flex items-center">
+                          <Lock size={14} className="text-neutral-400 dark:text-neutral-500" />
+                        </div>
+                        <input
+                          type={hidePassword ? 'password' : 'text'}
+                          placeholder={hidePassword ? '••••••••••••' : 'Password'}
+                          value={password}
+                          onChange={e => setPassword(e.target.value)}
+                          onKeyDown={e => {
+                            if (e.key === 'Enter' && password.trim()) {
+                              e.preventDefault();
+                              login();
+                            }
+                          }}
+                          autoComplete="current-password"
+                          className={`${inputClass} pl-9 pr-10`}
+                          ref={passwordRef}
+                        />
+                        <button
+                          type="button"
+                          onClick={() => setHidePassword(!hidePassword)}
+                          className="absolute inset-y-0 right-3 flex cursor-pointer items-center text-neutral-400 hover:text-neutral-600 dark:hover:text-neutral-300 transition-colors"
+                          aria-label={hidePassword ? 'Show password' : 'Hide password'}
+                        >
+                          {hidePassword ? <EyeOff size={15} /> : <Eye size={15} />}
+                        </button>
+                      </div>
+                    </div>
+
+                    <button
+                      type="button"
+                      onClick={login}
+                      disabled={submitted || !password.trim()}
+                      className="flex w-full cursor-pointer items-center justify-center gap-2 rounded-lg bg-neutral-900 dark:bg-neutral-50 px-4 py-2.5 text-sm font-semibold text-white dark:text-neutral-900 transition-all duration-200 hover:bg-neutral-800 dark:hover:bg-neutral-200 disabled:cursor-not-allowed disabled:opacity-50"
+                    >
+                      {submitted ? <><Spinner /><span>Signing in…</span></> : 'Sign in'}
+                    </button>
                   </div>
                 </motion.div>
               )}
+            </AnimatePresence>
+          </div>
 
-              {step === "success" && (
-                <motion.div
-                  key="success-step"
-                  initial={{ opacity: 0, x: -100 }}
-                  animate={{ opacity: 1, x: 0 }}
-                  transition={{ duration: 0.4, ease: "easeOut" }}
-                  className="space-y-6 text-center py-8"
-                >
-                  <div className="space-y-4">
-                    <motion.div
-                      initial={{ scale: 0.8, opacity: 0 }}
-                      animate={{ scale: 1, opacity: 1 }}
-                      transition={{ duration: 0.5, delay: 0.2 }}
-                      className="mx-auto w-16 h-16 rounded-full bg-gradient-to-br from-green-500 to-emerald-600 flex items-center justify-center"
-                    >
-                      <svg
-                        xmlns="http://www.w3.org/2000/svg"
-                        className="h-8 w-8 text-white"
-                        viewBox="0 0 20 20"
-                        fill="currentColor"
-                      >
-                        <path
-                          fillRule="evenodd"
-                          d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z"
-                            clipRule="evenodd"
-                          />
-                        </svg>
-                      </motion.div>
-                      <div>
-                        <h2 className="text-2xl font-bold text-foreground">Welcome back!</h2>
-                        <p className="text-muted-foreground">Redirecting to your dashboard...</p>
-                      </div>
-                    </div>
-                  </motion.div>
-                )}
-              </AnimatePresence>
-            </CardContent>
-          </Card>
         </div>
-      </main>
-    );
-  }
+      </div>
+
+      {/* ── Right: decorative panel ── */}
+      <div className="relative hidden overflow-hidden bg-neutral-900 lg:flex lg:w-[48%] flex-col items-center justify-center">
+        <div
+          className="absolute inset-0"
+          style={{
+            backgroundImage: 'radial-gradient(circle, rgba(255,255,255,0.07) 1px, transparent 1px)',
+            backgroundSize: '28px 28px',
+          }}
+        />
+        <div className="absolute inset-0 bg-gradient-to-br from-neutral-900 via-transparent to-neutral-900/80" />
+
+        <div className="relative z-10 px-14 text-center max-w-md">
+          <div className="mb-6 inline-flex rounded-xl bg-white/10 p-3.5">
+            <Shield className="h-7 w-7 text-white" strokeWidth={2} />
+          </div>
+          <h2 className="text-3xl font-semibold tracking-tight text-white">
+            Campus security intelligence, unified
+          </h2>
+          <p className="mt-4 text-sm leading-relaxed text-neutral-400">
+            Detect anomalies, resolve entities, and monitor your campus in real-time — from one platform.
+          </p>
+
+          <div className="mt-10 text-left">
+            <div className="h-16 overflow-hidden">
+              <AnimatePresence mode="wait">
+                <motion.div
+                  key={activeFeature}
+                  initial={{ opacity: 0, y: 16 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  exit={{ opacity: 0, y: -16 }}
+                  transition={{ duration: 0.35, ease: [0.32, 0.72, 0, 1] }}
+                  className="flex items-start gap-3.5"
+                >
+                  <div className="mt-0.5 flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-white/15">
+                    <svg className="h-3 w-3 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={3}>
+                      <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
+                    </svg>
+                  </div>
+                  <div>
+                    <p className="text-sm font-semibold text-white">{features[activeFeature].title}</p>
+                    <p className="mt-0.5 text-xs text-neutral-400">{features[activeFeature].desc}</p>
+                  </div>
+                </motion.div>
+              </AnimatePresence>
+            </div>
+            <div className="mt-4 flex gap-1.5">
+              {features.map((_, i) => (
+                <div key={i} className="relative h-px flex-1 overflow-hidden rounded-full bg-white/10">
+                  {i === activeFeature && (
+                    <motion.div
+                      key={activeFeature}
+                      className="absolute inset-y-0 left-0 rounded-full bg-white/50"
+                      initial={{ width: '0%' }}
+                      animate={{ width: '100%' }}
+                      transition={{ duration: 3, ease: 'linear' }}
+                    />
+                  )}
+                  {i < activeFeature && (
+                    <div className="absolute inset-0 rounded-full bg-white/30" />
+                  )}
+                </div>
+              ))}
+            </div>
+
+            <div className="mt-8 grid grid-cols-3 gap-3">
+              {[
+                { value: '99.9%', label: 'Uptime' },
+                { value: '< 2s', label: 'Alert latency' },
+                { value: '24/7', label: 'Monitoring' },
+              ].map((stat, i) => (
+                <motion.div
+                  key={stat.value}
+                  initial={{ opacity: 0, y: 10 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  transition={{ duration: 0.4, delay: 0.3 + i * 0.08 }}
+                  className="rounded-xl bg-white/5 px-3 py-3 text-center"
+                >
+                  <p className="text-base font-semibold text-white">{stat.value}</p>
+                  <p className="mt-0.5 text-[11px] text-neutral-500">{stat.label}</p>
+                </motion.div>
+              ))}
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
