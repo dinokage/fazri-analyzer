@@ -48,7 +48,7 @@ import {
   ArrowRight,
   Scale,
 } from "lucide-react";
-import { useLanyard } from "react-use-lanyard";
+import { useLanyard } from "react-use-phplanyard";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Card, CardContent, CardHeader } from "@/components/ui/card";
@@ -326,10 +326,14 @@ const RotatingText = forwardRef<RotatingTextRef, RotatingTextProps>(
 );
 RotatingText.displayName = "RotatingText";
 
+const itemFadeIn: Variants = {
+  hidden: { opacity: 0, y: 20 },
+  visible: { opacity: 1, y: 0 },
+};
+
 interface Dot {
   x: number;
   y: number;
-  baseColor: string;
   targetOpacity: number;
   currentOpacity: number;
   opacitySpeed: number;
@@ -350,6 +354,19 @@ interface TeamMember {
   isAccent: boolean;
 }
 
+const statusColors: Record<string, string> = {
+  online: "bg-emerald-500",
+  idle: "bg-amber-400",
+  dnd: "bg-rose-400",
+  offline: "bg-gray-400",
+};
+
+const statusMapping: Record<string, string> = {
+  online: "Online",
+  idle: "Idle",
+  dnd: "DND",
+};
+
 const DiscordStatusIndicator: React.FC<{ discordId: string }> = ({ discordId }) => {
   const { loading, status } = useLanyard({
     userId: discordId,
@@ -359,19 +376,6 @@ const DiscordStatusIndicator: React.FC<{ discordId: string }> = ({ discordId }) 
   if (loading || !status) {
     return null;
   }
-
-  const statusColors: Record<string, string> = {
-    online: "bg-emerald-500",
-    idle: "bg-amber-400",
-    dnd: "bg-rose-400",
-    offline: "bg-gray-400",
-  };
-
-  const statusMapping: Record<string, string> = {
-    online: "Online",
-    idle: "Idle",
-    dnd: "DND",
-  };
 
   const discordStatus = status.discord_status || "offline";
   const isMobile = status.active_on_discord_mobile;
@@ -385,7 +389,7 @@ const DiscordStatusIndicator: React.FC<{ discordId: string }> = ({ discordId }) 
       : "Zzz...";
 
   return (
-    <div className="absolute bottom-1 right-1 w-4 h-4 rounded-full ring-[3px] ring-[var(--color-bg-surface)] group flex justify-center">
+    <div className="absolute bottom-1 right-1 w-4 h-4 rounded-full ring-[3px] ring-[var(--color-bg-surface)] group/status flex justify-center">
       <span
         className={cn("w-full h-full rounded-full", statusColors[discordStatus])}
         role="status"
@@ -396,7 +400,7 @@ const DiscordStatusIndicator: React.FC<{ discordId: string }> = ({ discordId }) 
 
       {/* Hover Tooltip */}
       <div
-        className="absolute z-10 mb-1 px-2 py-1 bg-[var(--color-bg-surface)] border border-[var(--color-border-default)] text-[var(--color-text-primary)] text-xs opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none bottom-full rounded-md whitespace-nowrap"
+        className="absolute z-10 mb-1 px-2 py-1 bg-[var(--color-bg-surface)] border border-[var(--color-border-default)] text-[var(--color-text-primary)] text-xs opacity-0 group-hover/status:opacity-100 transition-opacity pointer-events-none bottom-full rounded-md whitespace-nowrap"
         aria-hidden="true"
       >
         {statusText}
@@ -407,11 +411,6 @@ const DiscordStatusIndicator: React.FC<{ discordId: string }> = ({ discordId }) 
 
 const TeamMemberCard: React.FC<{ member: TeamMember }> = ({ member }) => {
   const [imageError, setImageError] = useState(false);
-
-  const itemFadeIn: Variants = {
-    hidden: { opacity: 0, y: 20 },
-    visible: { opacity: 1, y: 0 },
-  };
 
   return (
     <motion.div
@@ -496,8 +495,8 @@ function parseCssColor(color: string): { r: number; g: number; b: number } | nul
     }
   }
 
-  // Handle rgb() or rgba() format
-  const rgbMatch = trimmed.match(/rgba?\s*\(\s*(\d+)\s*,\s*(\d+)\s*,\s*(\d+)/i);
+  // Handle rgb() or rgba() format — comma-separated or modern space-separated
+  const rgbMatch = trimmed.match(/rgba?\s*\(\s*(\d+)(?:\s*,\s*|\s+)(\d+)(?:\s*,\s*|\s+)(\d+)(?:[^)]*)?/i);
   if (rgbMatch) {
     return {
       r: parseInt(rgbMatch[1], 10),
@@ -523,17 +522,27 @@ const FazriAnalyzerLanding: React.FC = () => {
     setIsScrolled(latest > 10);
   });
 
-  // Compute accent color from CSS variable
+  // Compute accent color from CSS variable and update on theme change
   useEffect(() => {
-    if (typeof window !== 'undefined') {
-      const computedStyle = getComputedStyle(document.documentElement);
-      const accentColor = computedStyle.getPropertyValue('--color-accent').trim();
-
+    const readAccentColor = () => {
+      const accentColor = getComputedStyle(document.documentElement)
+        .getPropertyValue('--color-accent')
+        .trim();
       const parsed = parseCssColor(accentColor);
       if (parsed) {
         accentColorRGB.current = parsed;
       }
-    }
+    };
+
+    readAccentColor();
+
+    const observer = new MutationObserver(readAccentColor);
+    observer.observe(document.documentElement, {
+      attributes: true,
+      attributeFilter: ['class', 'style', 'data-theme'],
+    });
+
+    return () => observer.disconnect();
   }, []);
 
   const dotsRef = useRef<Dot[]>([]);
@@ -599,7 +608,6 @@ const FazriAnalyzerLanding: React.FC = () => {
         newDots.push({
           x,
           y,
-          baseColor: `var(--color-accent)`,
           targetOpacity: baseOpacity,
           currentOpacity: baseOpacity,
           opacitySpeed: Math.random() * 0.005 + 0.002,
