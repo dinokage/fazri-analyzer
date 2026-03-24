@@ -852,7 +852,7 @@ const FazriAnalyzerLanding: React.FC = () => {
     },
   };
 
-  const itemFadeIn = {
+  const sectionItemFadeIn = {
     hidden: { opacity: 0, y: 20 },
     visible: {
       opacity: 1,
@@ -1150,7 +1150,7 @@ const FazriAnalyzerLanding: React.FC = () => {
             ].map((feature, index) => (
               <motion.div
                 key={index}
-                variants={itemFadeIn}
+                variants={sectionItemFadeIn}
                 whileHover={{ y: -10, transition: { duration: 0.3 } }}
                 className="card-surface feature-card group relative overflow-hidden rounded-xl transition-all"
               >
@@ -1401,7 +1401,7 @@ const FazriAnalyzerLanding: React.FC = () => {
               Interested in implementing Fazri Analyzer for your campus? Contact
               us for a demo.
             </p>
-            <form className="space-y-4">
+            <form className="space-y-4" onSubmit={(e: FormEvent<HTMLFormElement>) => e.preventDefault()}>
               <div className="grid gap-4 sm:grid-cols-2">
                 <div className="space-y-2">
                   <label
@@ -1495,24 +1495,26 @@ const FazriAnalyzerLanding: React.FC = () => {
               </p>
               <div className="flex space-x-3">
                 {[
-                  { icon: <Github className="h-5 w-5" />, label: "GitHub" },
-                  { icon: <Linkedin className="h-5 w-5" />, label: "LinkedIn" },
-                  { icon: <Twitter className="h-5 w-5" />, label: "Twitter" },
-                ].map((social, index) => (
+                  { icon: <Github className="h-5 w-5" />, label: "GitHub", url: undefined },
+                  { icon: <Linkedin className="h-5 w-5" />, label: "LinkedIn", url: undefined },
+                  { icon: <Twitter className="h-5 w-5" />, label: "Twitter", url: undefined },
+                ].map((social, index) => social.url ? (
                   <motion.div
                     key={index}
                     whileHover={{ y: -5, scale: 1.1 }}
                     whileTap={{ scale: 0.9 }}
                   >
                     <a
-                      href="#"
+                      href={social.url}
                       className="social-icon transition-colors"
+                      target="_blank"
+                      rel="noopener noreferrer"
                     >
                       {social.icon}
                       <span className="sr-only">{social.label}</span>
                     </a>
                   </motion.div>
-                ))}
+                ) : null)}
               </div>
             </div>
 

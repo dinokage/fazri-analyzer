@@ -450,8 +450,7 @@ pipeline {
     post {
         success {
             script {
-                if (env.BACKEND_CHANGED != 'false') {
-                    echo """
+                echo """
                 ====================================
                 Deployment Successful!
                 ====================================
@@ -464,9 +463,12 @@ pipeline {
                 Sentry: Enabled (${DEPLOY_ENV})
                 ====================================
                 """
-                } else {
-                    echo "Build #${env.BUILD_NUMBER} skipped — no backend changes detected"
-                }
+            }
+        }
+
+        notBuilt {
+            script {
+                echo "Build #${env.BUILD_NUMBER} skipped — no backend changes detected"
             }
         }
 
