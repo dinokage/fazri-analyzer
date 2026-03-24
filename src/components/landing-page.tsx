@@ -389,10 +389,19 @@ const DiscordStatusIndicator: React.FC<{ discordId: string }> = ({ discordId }) 
 
   return (
     <div className="absolute bottom-1 right-1 w-4 h-4 rounded-full ring-[3px] ring-[var(--color-bg-surface)] group flex justify-center">
-      <span className={cn("w-full h-full rounded-full", statusColors[discordStatus])} />
+      <span
+        className={cn("w-full h-full rounded-full", statusColors[discordStatus])}
+        role="status"
+        aria-label={statusText}
+      >
+        <span className="sr-only">{statusText}</span>
+      </span>
 
       {/* Hover Tooltip */}
-      <div className="absolute z-10 mb-1 px-2 py-1 bg-[var(--color-bg-surface)] border border-[var(--color-border-default)] text-[var(--color-text-primary)] text-xs opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none bottom-full rounded-md whitespace-nowrap">
+      <div
+        className="absolute z-10 mb-1 px-2 py-1 bg-[var(--color-bg-surface)] border border-[var(--color-border-default)] text-[var(--color-text-primary)] text-xs opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none bottom-full rounded-md whitespace-nowrap"
+        aria-hidden="true"
+      >
         {statusText}
       </div>
     </div>
@@ -926,7 +935,7 @@ const FazriAnalyzerLanding: React.FC = () => {
                 </a>
                 <hr className="w-full border-[var(--color-border-default)]" />
                 <a
-                  href="#signin"
+                  href="/auth"
                   onClick={() => setIsMobileMenuOpen(false)}
                   className="nav-link text-sm font-medium"
                 >

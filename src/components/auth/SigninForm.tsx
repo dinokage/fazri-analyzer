@@ -2,6 +2,7 @@
 
 import { signIn } from "next-auth/react";
 import { useState } from "react";
+import { useRouter } from "next/navigation";
 import { motion, AnimatePresence } from "framer-motion";
 import {
   Card,
@@ -15,15 +16,13 @@ import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Loader2, Shield, Eye, EyeOff, Lock, User, ArrowRight } from "lucide-react";
 
 export default function SigninPage() {
+  const router = useRouter();
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
-  const [step, setStep] = useState<"username" | "password" | "loading" | "success">("username");
-  // userExists state is no longer strictly needed if we just transition steps,
-  // but we'll keep it for clarity if the UI relies on it.
-  const [userExists, setUserExists] = useState(false);
+  const [step, setStep] = useState<"username" | "password" | "loading">("username");
 
   const handleUsernameSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -47,8 +46,6 @@ export default function SigninPage() {
       const data = await response.json();
 
       if (data.exists) {
-        setUserExists(true); // User exists, proceed to password step
-        console.log(userExists)
         setStep("password");
       } else {
         setError("Username not found. Please check your username and try again.");
@@ -82,8 +79,8 @@ export default function SigninPage() {
         setError("Invalid password. Please try again.");
         setStep("password"); // Go back to password step on error
       } else {
-        // Authentication successful
-        window.location.href = "/dashboard"; // Redirect to home page
+        // Authentication successful - redirect to dashboard
+        router.push("/dashboard");
       }
     } catch (error) {
       console.error("Sign-in error:", error); // Log the actual error for debugging
@@ -98,7 +95,6 @@ export default function SigninPage() {
     setStep("username");
     setPassword("");
     setError("");
-    setUserExists(false); // Reset userExists state
   };
 
   return (
@@ -449,43 +445,7 @@ export default function SigninPage() {
                   </div>
                 </motion.div>
               )}
-
-              {step === "success" && (
-                <motion.div
-                  key="success-step"
-                  initial={{ opacity: 0, x: -100 }}
-                  animate={{ opacity: 1, x: 0 }}
-                  transition={{ duration: 0.4, ease: "easeOut" }}
-                  className="space-y-6 text-center py-8"
-                >
-                  <div className="space-y-4">
-                    <motion.div
-                      initial={{ scale: 0.8, opacity: 0 }}
-                      animate={{ scale: 1, opacity: 1 }}
-                      transition={{ duration: 0.5, delay: 0.2 }}
-                      className="mx-auto w-16 h-16 rounded-full bg-gradient-to-br from-green-500 to-emerald-600 flex items-center justify-center"
-                    >
-                      <svg
-                        xmlns="http://www.w3.org/2000/svg"
-                        className="h-8 w-8 text-white"
-                        viewBox="0 0 20 20"
-                        fill="currentColor"
-                      >
-                        <path
-                          fillRule="evenodd"
-                          d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z"
-                            clipRule="evenodd"
-                          />
-                        </svg>
-                      </motion.div>
-                      <div>
-                        <h2 className="text-2xl font-bold text-foreground">Welcome back!</h2>
-                        <p className="text-muted-foreground">Redirecting to your dashboard...</p>
-                      </div>
-                    </div>
-                  </motion.div>
-                )}
-              </AnimatePresence>
+            </AnimatePresence>
             </CardContent>
           </Card>
         </div>

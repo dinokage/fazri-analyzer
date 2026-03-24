@@ -91,7 +91,7 @@
 
 @layer base {
   * {
-    @apply border-border-default outline-none;
+    @apply border-border-default;
   }
 
   html {
@@ -368,21 +368,18 @@
 
   /* Header Background */
   .header-top {
-    background-color: var(--color-bg-primary);
+    background-color: rgb(10 10 10 / 0.8);
     border-bottom-color: var(--color-border-default);
-    opacity: 0.8;
   }
 
   .header-scrolled {
-    background-color: var(--color-bg-primary);
+    background-color: rgb(10 10 10 / 0.95);
     border-bottom-color: var(--color-border-default);
-    opacity: 0.95;
   }
 
   /* Mobile Menu Background */
   .mobile-menu-bg {
-    background-color: var(--color-bg-primary);
-    opacity: 0.95;
+    background-color: rgb(10 10 10 / 0.95);
     border-top: 1px solid var(--color-border-default);
   }
 
