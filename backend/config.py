@@ -101,6 +101,7 @@ class Settings(BaseSettings):
     DEMO_DEFAULT_SPEED: float = 1.0
     DEMO_AUTO_ADVANCE: bool = True
 
+
     # Notification Channel Flags
     EMAIL_ENABLED: bool = True
     SMS_ENABLED: bool = True
