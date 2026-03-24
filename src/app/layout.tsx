@@ -5,7 +5,6 @@ import { ThemeProvider } from "@/components/theme-provider";
 import {Providers} from "@/components/providers";
 import { SentryUserContext } from "@/components/SentryUserContext";
 import { siteConfig }  from "@/config/site";
-import "./globals.css";
 
 const inter = Inter({
   variable: "--font-inter",
