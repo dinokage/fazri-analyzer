@@ -61,17 +61,21 @@ pipeline {
                     }
 
                     if (!backendChanged) {
-                        echo "No changes in backend/, skipping build"
+                        echo "No backend changes detected — skipping build"
                         currentBuild.result = 'NOT_BUILT'
-                        error("No backend changes detected — skipping build")
+                        env.BACKEND_CHANGED = 'false'
+                    } else {
+                        echo "Backend changes detected, proceeding with build"
+                        env.BACKEND_CHANGED = 'true'
                     }
-
-                    echo "Backend changes detected, proceeding with build"
                 }
             }
         }
 
         stage('Validate Credentials') {
+            when {
+                expression { return env.BACKEND_CHANGED != 'false' }
+            }
             steps {
                 script {
                     def missing = []
@@ -128,6 +132,9 @@ pipeline {
         }
 
         stage('Build Image') {
+            when {
+                expression { return env.BACKEND_CHANGED != 'false' }
+            }
             steps {
                 script {
                     sh """
@@ -147,6 +154,9 @@ pipeline {
         }
 
         stage('Deploy') {
+            when {
+                expression { return env.BACKEND_CHANGED != 'false' }
+            }
             steps {
                 script {
                     // Stop and remove old container with better error handling
@@ -317,6 +327,9 @@ pipeline {
         }
 
         stage('Health Check') {
+            when {
+                expression { return env.BACKEND_CHANGED != 'false' }
+            }
             steps {
                 script {
                     sh """
@@ -357,6 +370,9 @@ pipeline {
         }
 
         stage('Sentry Release Tracking') {
+            when {
+                expression { return env.BACKEND_CHANGED != 'false' }
+            }
             steps {
                 script {
                     withCredentials([
@@ -411,6 +427,9 @@ pipeline {
         }
 
         stage('Cleanup') {
+            when {
+                expression { return env.BACKEND_CHANGED != 'false' }
+            }
             steps {
                 script {
                     sh """
