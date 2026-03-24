@@ -54,10 +54,7 @@ import { Input } from "@/components/ui/input";
 import { Card, CardContent, CardHeader } from "@/components/ui/card";
 import { useSession } from "next-auth/react";
 import { useRouter } from "next/navigation";
-
-function cn(...classes: (string | undefined | null | boolean)[]): string {
-  return classes.filter(Boolean).join(" ");
-}
+import { cn } from "@/lib/utils";
 
 interface RotatingTextRef {
   next: () => void;
@@ -409,6 +406,8 @@ const DiscordStatusIndicator: React.FC<{ discordId: string }> = ({ discordId }) 
 };
 
 const TeamMemberCard: React.FC<{ member: TeamMember }> = ({ member }) => {
+  const [imageError, setImageError] = useState(false);
+
   const itemFadeIn: Variants = {
     hidden: { opacity: 0, y: 20 },
     visible: { opacity: 1, y: 0 },
@@ -432,11 +431,12 @@ const TeamMemberCard: React.FC<{ member: TeamMember }> = ({ member }) => {
                 : "bg-[var(--color-bg-elevated)] border-2 border-[var(--color-border-default)] text-[var(--color-text-primary)]"
             )}
           >
-            {member.imageUrl ? (
+            {member.imageUrl && !imageError ? (
               <img
                 src={member.imageUrl}
                 alt={member.name}
                 className="w-full h-full object-cover rounded-full"
+                onError={() => setImageError(true)}
               />
             ) : (
               member.initials
@@ -472,6 +472,43 @@ const TeamMemberCard: React.FC<{ member: TeamMember }> = ({ member }) => {
   );
 };
 
+// Helper to parse CSS color values into RGB
+function parseCssColor(color: string): { r: number; g: number; b: number } | null {
+  const trimmed = color.trim();
+
+  // Handle hex format (#RGB or #RRGGBB)
+  if (trimmed.startsWith('#')) {
+    const hex = trimmed.substring(1);
+    if (hex.length === 3) {
+      // 3-digit hex (#RGB)
+      return {
+        r: parseInt(hex[0] + hex[0], 16),
+        g: parseInt(hex[1] + hex[1], 16),
+        b: parseInt(hex[2] + hex[2], 16),
+      };
+    } else if (hex.length === 6) {
+      // 6-digit hex (#RRGGBB)
+      return {
+        r: parseInt(hex.substring(0, 2), 16),
+        g: parseInt(hex.substring(2, 4), 16),
+        b: parseInt(hex.substring(4, 6), 16),
+      };
+    }
+  }
+
+  // Handle rgb() or rgba() format
+  const rgbMatch = trimmed.match(/rgba?\s*\(\s*(\d+)\s*,\s*(\d+)\s*,\s*(\d+)/i);
+  if (rgbMatch) {
+    return {
+      r: parseInt(rgbMatch[1], 10),
+      g: parseInt(rgbMatch[2], 10),
+      b: parseInt(rgbMatch[3], 10),
+    };
+  }
+
+  return null;
+}
+
 const FazriAnalyzerLanding: React.FC = () => {
     const { data: session } = useSession();
     const router = useRouter();
@@ -492,14 +529,9 @@ const FazriAnalyzerLanding: React.FC = () => {
       const computedStyle = getComputedStyle(document.documentElement);
       const accentColor = computedStyle.getPropertyValue('--color-accent').trim();
 
-      // Parse #C8F135 format
-      if (accentColor.startsWith('#')) {
-        const hex = accentColor.substring(1);
-        accentColorRGB.current = {
-          r: parseInt(hex.substring(0, 2), 16),
-          g: parseInt(hex.substring(2, 4), 16),
-          b: parseInt(hex.substring(4, 6), 16)
-        };
+      const parsed = parseCssColor(accentColor);
+      if (parsed) {
+        accentColorRGB.current = parsed;
       }
     }
   }, []);
