@@ -4,6 +4,7 @@
 /node_modules
 /auth/node_modules
 /auth/dist
+/docs
 /.pnp
 .pnp.*
 .yarn/*
