@@ -6,12 +6,10 @@ import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Separator } from "@/components/ui/separator";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { FullscreenLoader } from "@/components/fullscreen-loader";
-
 export default function ProfilePage() {
   const { data: session, isPending } = useSession();
 
-  if (isPending) return <FullscreenLoader />;
+  if (isPending) return null;
 
   const user = session?.user as Record<string, unknown> | undefined;
   if (!user) return null;

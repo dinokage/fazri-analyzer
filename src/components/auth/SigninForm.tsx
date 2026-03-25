@@ -70,7 +70,7 @@ export default function SigninPage() {
       setDirection(1);
       setUsernameChecked(true);
     } catch {
-      toast.error('Something went wrong. Please try again.');
+      toast.error('Auth service is unreachable. Please try again later.', { id: 'auth-unreachable' });
     }
     setCheckingUsername(false);
   };
@@ -83,17 +83,22 @@ export default function SigninPage() {
 
   const login = async () => {
     setSubmitted(true);
-    const { error } = await authClient.signIn.username({
-      username,
-      password,
-      rememberMe: true,
-    });
-    if (error) {
-      toast.error('Invalid password. Please try again.');
+    try {
+      const { error } = await authClient.signIn.username({
+        username,
+        password,
+        rememberMe: true,
+      });
+      if (error) {
+        toast.error('Invalid password. Please try again.');
+        setSubmitted(false);
+        return;
+      }
+      router.push('/dashboard');
+    } catch {
+      toast.error('Auth service is unreachable. Please try again later.', { id: 'auth-unreachable' });
       setSubmitted(false);
-      return;
     }
-    router.push('/dashboard');
   };
 
   const inputClass =
