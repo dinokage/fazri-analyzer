@@ -3,6 +3,7 @@ import express from "express";
 import cors from "cors";
 import { toNodeHandler } from "better-auth/node";
 import { auth } from "./auth";
+import { prisma } from "./lib/prisma";
 
 const app = express();
 const PORT = parseInt(process.env.PORT ?? "4000", 10);
@@ -25,6 +26,19 @@ app.use(express.json());
 
 app.get("/health", (_req, res) => {
   res.json({ status: "ok", timestamp: new Date().toISOString() });
+});
+
+app.post("/api/check-username", async (req, res) => {
+  const { username } = req.body;
+  if (!username || typeof username !== "string") {
+    res.status(400).json({ exists: false });
+    return;
+  }
+  const user = await prisma.user.findUnique({
+    where: { entity_id: username.trim() },
+    select: { id: true },
+  });
+  res.json({ exists: !!user });
 });
 
 app.listen(PORT, () => {

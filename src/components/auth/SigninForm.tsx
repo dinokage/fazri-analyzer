@@ -56,7 +56,7 @@ export default function SigninPage() {
     if (!username.trim()) return;
     setCheckingUsername(true);
     try {
-      const res = await fetch('/api/check', {
+      const res = await fetch(`${process.env.NEXT_PUBLIC_AUTH_SERVICE_URL}/api/check-username`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ username: username.trim() }),
