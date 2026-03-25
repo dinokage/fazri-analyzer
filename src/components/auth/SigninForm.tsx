@@ -8,9 +8,9 @@ import { useRef, useState, useEffect } from 'react';
 import { toast } from 'sonner';
 
 const slideVariants = {
-  enter: (d: number) => ({ x: d > 0 ? '6%' : '-6%', opacity: 0 }),
+  enter: (d: number) => ({ x: d > 0 ? '4%' : '-4%', opacity: 0 }),
   center: { x: 0, opacity: 1 },
-  exit: (d: number) => ({ x: d > 0 ? '-6%' : '6%', opacity: 0 }),
+  exit: (d: number) => ({ x: d > 0 ? '-4%' : '4%', opacity: 0 }),
 };
 
 const features = [
@@ -48,7 +48,13 @@ export default function SigninPage() {
 
   useEffect(() => {
     if (usernameChecked) {
-      setTimeout(() => passwordRef.current?.focus(), 50);
+      setTimeout(() => {
+        passwordRef.current?.focus();
+        passwordRef.current?.classList.add('ring-2', 'ring-neutral-400', 'dark:ring-neutral-400');
+        setTimeout(() => {
+          passwordRef.current?.classList.remove('ring-2', 'ring-neutral-400', 'dark:ring-neutral-400');
+        }, 800);
+      }, 420);
     }
   }, [usernameChecked]);
 
@@ -131,7 +137,7 @@ export default function SigninPage() {
                   initial="enter"
                   animate="center"
                   exit="exit"
-                  transition={{ duration: 0.3, ease: [0.32, 0.72, 0, 1] }}
+                  transition={{ duration: 0.4, ease: [0.4, 0, 0.2, 1] }}
                 >
                   <h1 className="text-2xl font-semibold tracking-tight text-neutral-900 dark:text-neutral-50">
                     Welcome back
@@ -185,7 +191,7 @@ export default function SigninPage() {
                   initial="enter"
                   animate="center"
                   exit="exit"
-                  transition={{ duration: 0.3, ease: [0.32, 0.72, 0, 1] }}
+                  transition={{ duration: 0.4, ease: [0.4, 0, 0.2, 1] }}
                 >
                   <h1 className="text-2xl font-semibold tracking-tight text-neutral-900 dark:text-neutral-50">
                     Enter password

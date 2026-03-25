@@ -44,6 +44,12 @@ export function SidebarLayout({ children }: { children: React.ReactNode }) {
   const isAuthenticated = !!session
   const isLoading = isPending
 
+  React.useEffect(() => {
+    if (!isPending && !session) {
+      router.push('/auth')
+    }
+  }, [isPending, session, router])
+
   // Get active alert count for badge
   const { count: activeAlertCount } = useActiveAlertCount(30000)
 

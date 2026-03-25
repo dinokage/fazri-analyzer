@@ -1,5 +1,5 @@
 // lib/api-client.ts
-import { authClient } from "@/lib/auth-client";
+import { authClient, getSession } from "@/lib/auth-client";
 import * as Sentry from "@sentry/nextjs";
 
 const API_BASE_URL = process.env.NEXT_PUBLIC_FASTAPI_BASE_URL || 'http://localhost:8000';
@@ -16,10 +16,16 @@ class ApiError extends Error {
 }
 
 async function getAuthHeaders(): Promise<HeadersInit> {
-  const { data } = await authClient.token();
+  // Check session first — get-session returns 200+null when unauthenticated,
+  // avoiding the 401 console error from /api/auth/token.
+  const session = await getSession();
+  if (!session?.data) {
+    throw new ApiError("No active session. Please log in.", 401);
+  }
 
+  const { data } = await authClient.token();
   if (!data?.token) {
-    throw new ApiError("No active session", 401);
+    throw new ApiError("No active session. Please log in.", 401);
   }
 
   return {
