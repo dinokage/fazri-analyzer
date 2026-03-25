@@ -30,6 +30,7 @@ def decode_jwt_token(token: str) -> Dict[str, Any]:
             options={
                 "verify_signature": True,
                 "verify_exp": True,
+                "verify_aud": False,
             },
         )
         return payload
