@@ -8,9 +8,13 @@ import { useRef, useState, useEffect } from 'react';
 import { toast } from 'sonner';
 
 const slideVariants = {
-  enter: (d: number) => ({ x: d > 0 ? '4%' : '-4%', opacity: 0 }),
+  enter: (d: number) => ({ x: d > 0 ? '3%' : '-3%', opacity: 0 }),
   center: { x: 0, opacity: 1 },
-  exit: (d: number) => ({ x: d > 0 ? '-4%' : '4%', opacity: 0 }),
+  exit: (d: number) => ({
+    x: d > 0 ? '-3%' : '3%',
+    opacity: 0,
+    transition: { duration: 0.18, ease: 'easeIn' },
+  }),
 };
 
 const features = [
@@ -137,7 +141,7 @@ export default function SigninPage() {
                   initial="enter"
                   animate="center"
                   exit="exit"
-                  transition={{ duration: 0.4, ease: [0.4, 0, 0.2, 1] }}
+                  transition={{ duration: 0.32, ease: 'easeOut' }}
                 >
                   <h1 className="text-2xl font-semibold tracking-tight text-neutral-900 dark:text-neutral-50">
                     Welcome back
@@ -191,7 +195,7 @@ export default function SigninPage() {
                   initial="enter"
                   animate="center"
                   exit="exit"
-                  transition={{ duration: 0.4, ease: [0.4, 0, 0.2, 1] }}
+                  transition={{ duration: 0.32, ease: 'easeOut' }}
                 >
                   <h1 className="text-2xl font-semibold tracking-tight text-neutral-900 dark:text-neutral-50">
                     Enter password
