@@ -1,8 +1,21 @@
 import type { NextConfig } from "next";
 import { withSentryConfig } from "@sentry/nextjs";
 
+const AUTH_SERVICE_URL =
+  process.env.AUTH_SERVICE_INTERNAL_URL ??
+  process.env.NEXT_PUBLIC_AUTH_SERVICE_URL ??
+  "http://localhost:4000";
+
 const nextConfig: NextConfig = {
   output: 'standalone',
+  async rewrites() {
+    return [
+      {
+        source: "/api/auth/:path*",
+        destination: `${AUTH_SERVICE_URL}/api/auth/:path*`,
+      },
+    ];
+  },
   images: {
     remotePatterns: [
       {
@@ -27,8 +40,8 @@ export default withSentryConfig(nextConfig, {
   // Automatically tree-shake Sentry logger statements in production
   widenClientFileUpload: true,
 
-  // Route browser requests to Sentry through a Next.js rewrite
-  tunnelRoute: "/monitoring",
+  // tunnelRoute disabled — causes React 19 script tag warning
+  // tunnelRoute: "/monitoring",
 
   // Disable source map upload in development
   ...(process.env.NODE_ENV !== 'production' && {

@@ -3,7 +3,8 @@ import { usernameClient } from "better-auth/client/plugins";
 import { jwtClient } from "better-auth/client/plugins";
 
 export const authClient = createAuthClient({
-  baseURL: process.env.NEXT_PUBLIC_AUTH_SERVICE_URL!,
+  // No baseURL — auth requests go to /api/auth/* (same origin)
+  // and are proxied to the auth service via Next.js rewrites in next.config.ts
   plugins: [usernameClient(), jwtClient()],
 });
 
