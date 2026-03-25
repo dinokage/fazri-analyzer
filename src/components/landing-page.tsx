@@ -1013,11 +1013,11 @@ const FazriAnalyzerLanding: React.FC = () => {
           <span className="inline-block h-[1.2em] sm:h-[1.2em] lg:h-[1.2em] overflow-hidden align-bottom">
             <RotatingText
               texts={[
-                "AI Analytics",
-                "Graph Intelligence",
+                "Movement Intelligence",
+                "Graph Analytics",
                 "Entity Resolution",
-                "Predictive Monitoring",
-                "Real-time Insights",
+                "Anomaly Detection",
+                "Real-time Alerts",
               ]}
               mainClassName="mx-1 text-[var(--color-accent)]"
               staggerFrom={"last"}
@@ -1040,9 +1040,9 @@ const FazriAnalyzerLanding: React.FC = () => {
           animate="visible"
           className="text-base sm:text-lg lg:text-xl max-w-2xl mx-auto mb-8 text-[var(--color-text-secondary)]"
         >
-          A modular, service-oriented system combining Next.js frontend, FastAPI
-          backend, and Neo4j graph analytics for comprehensive campus entity
-          resolution and security monitoring.
+          A campus identity and movement intelligence platform. Unify RFID,
+          WiFi, and access control data into a single entity timeline — and
+          surface anomalies in seconds, not hours.
         </motion.p>
 
         <motion.form
@@ -1099,7 +1099,7 @@ const FazriAnalyzerLanding: React.FC = () => {
               className="mx-auto max-w-[900px] md:text-xl text-[var(--color-text-secondary)]"
             >
               Comprehensive entity resolution and security monitoring powered by
-              advanced AI and graph analytics
+              cross-system data fusion and configurable rule-based detection
             </motion.p>
           </div>
 
@@ -1125,9 +1125,9 @@ const FazriAnalyzerLanding: React.FC = () => {
               },
               {
                 icon: <Brain className="h-10 w-10 text-[var(--color-accent)]" />,
-                title: "Predictive AI",
+                title: "Anomaly Detection",
                 description:
-                  "ML-powered anomaly detection and behavioral pattern analysis with a configurable rule engine for explainable results.",
+                  "Rule-based anomaly detection with configurable thresholds — curfew violations, impossible travel, unauthorized zone access. Explainable and auditable by design.",
               },
               {
                 icon: <Shield className="h-10 w-10 text-[var(--color-accent)]" />,
@@ -1491,7 +1491,7 @@ const FazriAnalyzerLanding: React.FC = () => {
               </div>
               <p className="text-sm text-[var(--color-text-secondary)]">
                 Advanced campus entity resolution and security monitoring
-                through AI-powered graph analytics.
+                through cross-system data fusion and rule-based detection.
               </p>
               <div className="flex space-x-3">
                 {[
