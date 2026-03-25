@@ -30,9 +30,7 @@ export type FazriSession = {
 };
 
 const AUTH_INTERNAL_URL =
-  process.env.AUTH_SERVICE_INTERNAL_URL ??
-  process.env.NEXT_PUBLIC_AUTH_SERVICE_URL ??
-  "http://localhost:4000";
+  process.env.NEXT_PUBLIC_AUTH_SERVICE_URL ?? "http://localhost:4000";
 
 export async function getAuthToken(headers: Headers): Promise<string | null> {
   try {
