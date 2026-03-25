@@ -19,6 +19,11 @@ export const auth = betterAuth({
   plugins: [
     username(),
     jwt({
+      jwks: {
+        keyPairConfig: {
+          alg: "RS256",
+        },
+      },
       jwt: {
         expirationTime: "30d",
         definePayload: ({ user, session }) => ({

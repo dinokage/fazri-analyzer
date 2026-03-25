@@ -20,6 +20,7 @@ def _get_jwks() -> dict:
 
 
 def decode_jwt_token(token: str) -> Dict[str, Any]:
+    global _jwks_cache
     try:
         jwks = _get_jwks()
         payload = jwt.decode(
