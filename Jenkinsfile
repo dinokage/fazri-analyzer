@@ -97,6 +97,7 @@ pipeline {
                         'fazri-gitlab-token',
                         'fazri-gitlab-project-id',
                         'fazri-better-auth-secret',
+                        'fazri-auth-service-url',
                         'fazri-sentry-backend-dsn',
                         'fazri-sentry-auth-token'
                     ]
@@ -193,6 +194,7 @@ pipeline {
                         string(credentialsId: 'fazri-gitlab-project-id', variable: 'GITLAB_PROJECT_ID'),
                         // better-auth / JWT
                         string(credentialsId: 'fazri-better-auth-secret', variable: 'BETTER_AUTH_SECRET'),
+                        string(credentialsId: 'fazri-auth-service-url', variable: 'AUTH_SERVICE_URL'),
                         // Sentry
                         string(credentialsId: 'fazri-sentry-backend-dsn', variable: 'SENTRY_DSN'),
                         string(credentialsId: 'fazri-sentry-auth-token', variable: 'SENTRY_AUTH_TOKEN')
@@ -228,6 +230,7 @@ pipeline {
                                 -e GITLAB_TOKEN=\$GITLAB_TOKEN \
                                 -e GITLAB_PROJECT_ID=\$GITLAB_PROJECT_ID \
                                 -e BETTER_AUTH_SECRET=\$BETTER_AUTH_SECRET \
+                                -e AUTH_SERVICE_URL=\$AUTH_SERVICE_URL \
                                 -e SENTRY_DSN=\$SENTRY_DSN \
                                 -e SENTRY_ENVIRONMENT=${DEPLOY_ENV} \
                                 -e SENTRY_TRACES_SAMPLE_RATE=0.1 \
