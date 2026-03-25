@@ -13,7 +13,7 @@ const slideVariants = {
   exit: (d: number) => ({
     x: d > 0 ? '-3%' : '3%',
     opacity: 0,
-    transition: { duration: 0.18, ease: 'easeIn' },
+    transition: { duration: 0.18, ease: 'easeIn' as const },
   }),
 };
 
