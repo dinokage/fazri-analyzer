@@ -7,7 +7,6 @@ from auth.exceptions import TokenExpiredError, InvalidTokenError
 
 _jwks_cache: dict | None = None
 
-
 def _get_jwks() -> dict:
     global _jwks_cache
     if _jwks_cache:
