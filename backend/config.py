@@ -32,7 +32,6 @@ class Settings(BaseSettings):
     # JWT Configuration (for better-auth integration)
     BETTER_AUTH_SECRET: str = ""  # REQUIRED: Must match auth service BETTER_AUTH_SECRET
     AUTH_SERVICE_URL: str = ""    # REQUIRED: Public URL of the auth service VPS (e.g. https://auth.fazri.com)
-    JWT_ALGORITHM: str = "RS256"
 
     # File Paths
     DATA_DIR: str = "/app/augmented"
