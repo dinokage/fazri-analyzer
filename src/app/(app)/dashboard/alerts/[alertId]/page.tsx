@@ -1,6 +1,6 @@
 import AlertDetailPageContent from './alert-detail-page';
-import { getServerSession } from 'next-auth';
-import { OPTIONS } from '@/auth';
+import { getAuthSession, getAuthToken } from '@/lib/auth-server';
+import { headers } from 'next/headers';
 import { redirect } from 'next/navigation';
 import { Metadata } from 'next';
 
@@ -34,7 +34,8 @@ async function getStaffIdByEmail(email: string, accessToken: string): Promise<st
 }
 
 export default async function AlertDetailPage({ params }: AlertDetailPageProps) {
-  const session = await getServerSession(OPTIONS);
+  const reqHeaders = await headers();
+  const session = await getAuthSession(reqHeaders);
   const { alertId } = await params;
 
   if (!session) {
@@ -45,12 +46,13 @@ export default async function AlertDetailPage({ params }: AlertDetailPageProps) 
     redirect('/dashboard/profile');
   }
 
-  if (!session.accessToken) {
+  const accessToken = await getAuthToken(reqHeaders);
+  if (!accessToken) {
     redirect('/auth');
   }
 
   // Look up the staff profile ID from the backend using the user's email
-  const staffId = await getStaffIdByEmail(session.user.email || '', session.accessToken);
+  const staffId = await getStaffIdByEmail(session.user.email || '', accessToken);
 
   if (!staffId) {
     // User doesn't have a staff profile - show an error or create one

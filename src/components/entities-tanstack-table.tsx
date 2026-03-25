@@ -17,7 +17,7 @@ import {
 import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Loader2, ChevronLeft, ChevronRight } from "lucide-react";
-import { getSession } from "next-auth/react";
+import { authClient } from "@/lib/auth-client";
 
 // Types
 type Identifier = {
@@ -67,9 +67,9 @@ function useEntities(
 
       try {
         // Get auth session
-        const session = await getSession();
+        const { data: tokenData } = await authClient.token();
 
-        if (!session?.accessToken) {
+        if (!tokenData?.token) {
           throw new Error("No active session. Please log in.");
         }
 
@@ -91,7 +91,7 @@ function useEntities(
           {
             headers: {
               'Content-Type': 'application/json',
-              'Authorization': `Bearer ${session.accessToken}`,
+              'Authorization': `Bearer ${tokenData.token}`,
             },
           }
         );

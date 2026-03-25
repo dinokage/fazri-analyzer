@@ -2,6 +2,8 @@
 
 # dependencies
 /node_modules
+/auth/node_modules
+/auth/dist
 /.pnp
 .pnp.*
 .yarn/*

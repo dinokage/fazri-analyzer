@@ -1,6 +1,6 @@
 "use client";
 
-import { useSession } from "next-auth/react";
+import { useSession } from "@/lib/auth-client";
 import { useEffect } from "react";
 import * as Sentry from "@sentry/nextjs";
 
@@ -10,35 +10,32 @@ import * as Sentry from "@sentry/nextjs";
  */
 export function SentryUserContext() {
   const { data: session } = useSession();
+  const user = session?.user as Record<string, unknown> | undefined;
 
   useEffect(() => {
-    if (session?.user) {
-      // Set user identification in Sentry
+    if (user) {
       Sentry.setUser({
-        id: session.user.id,
-        email: session.user.email || undefined,
-        username: session.user.entity_id || undefined,
+        id: user.id as string,
+        email: (user.email as string) || undefined,
+        username: (user.entity_id as string) || undefined,
       });
 
-      // Add additional user context
       Sentry.setContext("user_details", {
-        entity_id: session.user.entity_id,
-        role: session.user.role,
-        department: session.user.department,
-        student_id: session.user.student_id,
-        staff_id: session.user.staff_id,
-        face_id: session.user.face_id,
+        entity_id: user.entity_id,
+        role: user.role,
+        department: user.department,
+        student_id: user.student_id,
+        staff_id: user.staff_id,
+        face_id: user.face_id,
       });
 
-      // Add user role as a tag for filtering in Sentry
-      Sentry.setTag("user_role", session.user.role);
+      Sentry.setTag("user_role", user.role as string);
     } else {
-      // Clear user context when logged out
       Sentry.setUser(null);
       Sentry.setContext("user_details", null);
       Sentry.setTag("user_role", "anonymous");
     }
-  }, [session]);
+  }, [user]);
 
   // This component doesn't render anything
   return null;

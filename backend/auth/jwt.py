@@ -8,7 +8,7 @@ from auth.exceptions import TokenExpiredError, InvalidTokenError
 
 def decode_jwt_token(token: str) -> Dict[str, Any]:
     """
-    Decode and validate JWT token using NEXTAUTH_SECRET
+    Decode and validate JWT token using BETTER_AUTH_SECRET
 
     Args:
         token: JWT token string
@@ -24,7 +24,7 @@ def decode_jwt_token(token: str) -> Dict[str, Any]:
         # Decode and validate JWT
         payload = jwt.decode(
             token,
-            settings.NEXTAUTH_SECRET,
+            settings.BETTER_AUTH_SECRET,
             algorithms=[settings.JWT_ALGORITHM],
             options={
                 "verify_signature": True,

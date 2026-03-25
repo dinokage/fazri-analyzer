@@ -1,6 +1,6 @@
 import AlertsPageContent from './alerts-page';
-import { getServerSession } from 'next-auth';
-import { OPTIONS } from '@/auth';
+import { getAuthSession } from '@/lib/auth-server';
+import { headers } from 'next/headers';
 import { redirect } from 'next/navigation';
 import { Metadata } from 'next';
 
@@ -9,7 +9,7 @@ export const metadata: Metadata = {
 };
 
 export default async function AlertsPage() {
-  const session = await getServerSession(OPTIONS);
+  const session = await getAuthSession(await headers());
 
   if (!session) {
     redirect('/auth');

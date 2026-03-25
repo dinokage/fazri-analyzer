@@ -2,7 +2,7 @@
 
 import { AnimatePresence, motion } from 'framer-motion';
 import { ArrowLeft, Eye, EyeOff, Lock, Shield, User } from 'lucide-react';
-import { signIn } from 'next-auth/react';
+import { authClient } from '@/lib/auth-client';
 import { useRouter } from 'next/navigation';
 import { useRef, useState, useEffect } from 'react';
 import { toast } from 'sonner';
@@ -83,12 +83,12 @@ export default function SigninPage() {
 
   const login = async () => {
     setSubmitted(true);
-    const res = await signIn('credentials', {
-      entity_id: username,
+    const { error } = await authClient.signIn.username({
+      username,
       password,
-      redirect: false,
+      rememberMe: true,
     });
-    if (res?.error) {
+    if (error) {
       toast.error('Invalid password. Please try again.');
       setSubmitted(false);
       return;

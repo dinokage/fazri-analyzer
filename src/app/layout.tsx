@@ -1,6 +1,5 @@
 import type { Metadata } from "next";
 import { Inter, Space_Grotesk } from "next/font/google";
-import SessionWrapper from "@/components/SessionWrapper";
 import { ThemeProvider } from "@/components/theme-provider";
 import {Providers} from "@/components/providers";
 import { SentryUserContext } from "@/components/SentryUserContext";
@@ -38,7 +37,8 @@ export default function RootLayout({
     <html lang="en" suppressHydrationWarning>
       <body
         className={`${inter.variable} ${spaceGrotesk.variable} antialiased`}
-      ><SessionWrapper>
+        suppressHydrationWarning
+      >
         <SentryUserContext />
         <Providers>
           <ThemeProvider
@@ -50,7 +50,6 @@ export default function RootLayout({
             {children}
           </ThemeProvider>
         </Providers>
-        </SessionWrapper>
       </body>
     </html>
   );

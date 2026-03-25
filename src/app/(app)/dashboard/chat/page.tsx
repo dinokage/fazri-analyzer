@@ -1,5 +1,5 @@
-import { getServerSession } from 'next-auth';
-import { OPTIONS } from '@/auth';
+import { getAuthSession } from '@/lib/auth-server';
+import { headers } from 'next/headers';
 import { redirect } from 'next/navigation';
 import { Metadata } from 'next';
 import ChatPageContent from './chat-page';
@@ -9,7 +9,7 @@ export const metadata: Metadata = {
 };
 
 export default async function ChatPage() {
-  const session = await getServerSession(OPTIONS);
+  const session = await getAuthSession(await headers());
 
   if (!session) {
     redirect('/auth');

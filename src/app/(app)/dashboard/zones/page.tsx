@@ -1,6 +1,6 @@
 import ZonesPage from './zones'
-import { getServerSession } from 'next-auth'
-import { OPTIONS } from "@/auth";
+import { getAuthSession } from '@/lib/auth-server'
+import { headers } from 'next/headers'
 import { redirect } from 'next/navigation'
 import { Metadata } from 'next';
 
@@ -8,8 +8,8 @@ export const metadata:Metadata = {
   title: `Zones `,
 };
 export default async function EntitiesPage() {
-  const session = await getServerSession(OPTIONS);
-  if(!session){
+  const session = await getAuthSession(await headers());
+  if (!session) {
     redirect('/auth')
   }
   if (session.user.role !== "SUPER_ADMIN") {

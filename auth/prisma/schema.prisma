@@ -1,0 +1,95 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model user {
+  id            String    @id(map: "User_pkey") @default(cuid())
+  entity_id     String    @unique(map: "User_entity_id_key")
+  name          String
+  role          String
+  email         String    @unique(map: "User_email_key")
+  department    String?
+  student_id    String?
+  staff_id      String?
+  card_id       String?
+  device_hash   String?   @unique(map: "User_device_hash_key")
+  face_id       String?   @unique(map: "User_face_id_key")
+  password      String
+  image         String?
+  username      String    @unique
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @default(now()) @updatedAt
+  emailVerified Boolean   @default(false)
+  accounts      account[]
+  sessions      session[]
+}
+
+model session {
+  id        String   @id(map: "Session_pkey") @default(cuid())
+  token     String   @unique(map: "Session_sessionToken_key")
+  userId    String
+  expiresAt DateTime
+  createdAt DateTime @default(now())
+  updatedAt DateTime @default(now()) @updatedAt
+  ipAddress String?
+  userAgent String?
+  user      user     @relation(fields: [userId], references: [id], onDelete: Cascade, map: "Session_userId_fkey")
+}
+
+model account {
+  id                    String    @id(map: "Account_pkey") @default(cuid())
+  userId                String
+  type                  String?
+  provider              String?
+  providerAccountId     String?
+  refresh_token         String?
+  access_token          String?
+  expires_at            Int?
+  token_type            String?
+  scope                 String?
+  id_token              String?
+  session_state         String?
+  accountId             String?
+  providerId            String?
+  accessToken           String?
+  refreshToken          String?
+  idToken               String?
+  accessTokenExpiresAt  DateTime?
+  refreshTokenExpiresAt DateTime?
+  password              String?
+  createdAt             DateTime  @default(now())
+  updatedAt             DateTime  @default(now()) @updatedAt
+  user                  user      @relation(fields: [userId], references: [id], onDelete: Cascade, map: "Account_userId_fkey")
+
+  @@unique([providerId, accountId])
+  @@unique([provider, providerAccountId], map: "Account_provider_providerAccountId_key")
+}
+
+model verification {
+  identifier String
+  token      String   @unique(map: "VerificationToken_token_key")
+  expires    DateTime
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @default(now()) @updatedAt
+
+  @@unique([identifier, token], map: "VerificationToken_identifier_token_key")
+}
+
+model jwks {
+  id         String   @id @default(cuid())
+  publicKey  String
+  privateKey String
+  createdAt  DateTime @default(now())
+}
+
+enum UserRole {
+  STUDENT
+  STAFF
+  FACULTY
+  SUPER_ADMIN
+}
