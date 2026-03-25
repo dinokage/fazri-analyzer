@@ -5,7 +5,7 @@
   "scripts": {
     "dev": "npx prisma generate && next dev --turbopack",
     "build": "npx prisma generate && next build --turbopack",
-    "start": "next start",
+    "start": "node .next/standalone/server.js",
     "lint": "eslint"
   },
   "dependencies": {

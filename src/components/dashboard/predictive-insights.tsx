@@ -403,7 +403,7 @@ export function PredictiveInsights({ prediction }: PredictiveInsightsProps) {
                         {prediction.method === 'last_known_fallback' 
                           ? 'Using the last known location as a fallback when insufficient data is available for pattern-based predictions.'
                           : prediction.method === 'pattern_based'
-                          ? 'Using historical activity patterns and machine learning to predict the most likely location.'
+                          ? 'Using historical activity patterns to estimate the most likely location.'
                           : 'Advanced prediction method combining multiple data sources and algorithms.'
                         }
                       </p>
