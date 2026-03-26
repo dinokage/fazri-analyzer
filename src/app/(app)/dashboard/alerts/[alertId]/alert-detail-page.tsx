@@ -29,7 +29,7 @@ export default function AlertDetailPageContent({ alertId }: { alertId: string })
   return (
     <>
       <AlertNotificationListener enabled pollInterval={30000} />
-      <AlertDetail alertId={alertId} staffId={staffId ?? ''} />
+      <AlertDetail alertId={alertId} staffId={staffId} />
     </>
   );
 }

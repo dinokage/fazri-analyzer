@@ -17,7 +17,7 @@ import { EscalateAlertDialog } from './escalate-alert-dialog';
 
 interface AlertActionsProps {
   alert: Alert;
-  staffId: string;
+  staffId: string | null;
   onActionComplete?: () => void;
   compact?: boolean;
 }
@@ -33,6 +33,7 @@ export function AlertActions({
   const [showEscalateDialog, setShowEscalateDialog] = useState(false);
 
   const handleAcknowledge = async () => {
+    if (!staffId) return;
     setLoading('acknowledge');
     try {
       await apiClient.acknowledgeAlert(alert.id, staffId);
@@ -48,6 +49,7 @@ export function AlertActions({
   };
 
   const handleStartInvestigation = async () => {
+    if (!staffId) return;
     setLoading('investigate');
     try {
       // Use note to mark investigation start
@@ -84,7 +86,7 @@ export function AlertActions({
             size="sm"
             variant="outline"
             onClick={handleAcknowledge}
-            disabled={loading !== null}
+            disabled={loading !== null || !staffId}
           >
             {loading === 'acknowledge' ? (
               <Loader2 className="h-4 w-4 animate-spin" />
@@ -98,7 +100,7 @@ export function AlertActions({
           variant="outline"
           className="text-green-400 border-green-800 hover:bg-green-900/30"
           onClick={() => setShowResolveDialog(true)}
-          disabled={loading !== null}
+          disabled={loading !== null || !staffId}
         >
           <CheckCircle2 className="h-4 w-4" />
         </Button>
@@ -107,7 +109,7 @@ export function AlertActions({
           variant="outline"
           className="text-orange-400 border-orange-800 hover:bg-orange-900/30"
           onClick={() => setShowEscalateDialog(true)}
-          disabled={loading !== null}
+          disabled={loading !== null || !staffId}
         >
           <ArrowUpCircle className="h-4 w-4" />
         </Button>
@@ -136,7 +138,7 @@ export function AlertActions({
           <Button
             variant="outline"
             onClick={handleAcknowledge}
-            disabled={loading !== null}
+            disabled={loading !== null || !staffId}
             className="flex-1 min-w-[140px]"
           >
             {loading === 'acknowledge' ? (
@@ -152,7 +154,7 @@ export function AlertActions({
           <Button
             variant="outline"
             onClick={handleStartInvestigation}
-            disabled={loading !== null}
+            disabled={loading !== null || !staffId}
             className="flex-1 min-w-[140px]"
           >
             {loading === 'investigate' ? (
@@ -168,7 +170,7 @@ export function AlertActions({
           variant="outline"
           className="flex-1 min-w-[140px] text-green-400 border-green-800 hover:bg-green-900/30"
           onClick={() => setShowResolveDialog(true)}
-          disabled={loading !== null}
+          disabled={loading !== null || !staffId}
         >
           <CheckCircle2 className="h-4 w-4 mr-2" />
           Resolve
@@ -178,7 +180,7 @@ export function AlertActions({
           variant="outline"
           className="flex-1 min-w-[140px] text-orange-400 border-orange-800 hover:bg-orange-900/30"
           onClick={() => setShowEscalateDialog(true)}
-          disabled={loading !== null}
+          disabled={loading !== null || !staffId}
         >
           <ArrowUpCircle className="h-4 w-4 mr-2" />
           Escalate
