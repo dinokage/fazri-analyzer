@@ -2,15 +2,19 @@
 
 import { AnimatePresence, motion } from 'framer-motion';
 import { ArrowLeft, Eye, EyeOff, Lock, Shield, User } from 'lucide-react';
-import { signIn } from 'next-auth/react';
+import { authClient } from '@/lib/auth-client';
 import { useRouter } from 'next/navigation';
 import { useRef, useState, useEffect } from 'react';
 import { toast } from 'sonner';
 
 const slideVariants = {
-  enter: (d: number) => ({ x: d > 0 ? '6%' : '-6%', opacity: 0 }),
+  enter: (d: number) => ({ x: d > 0 ? '3%' : '-3%', opacity: 0 }),
   center: { x: 0, opacity: 1 },
-  exit: (d: number) => ({ x: d > 0 ? '-6%' : '6%', opacity: 0 }),
+  exit: (d: number) => ({
+    x: d > 0 ? '-3%' : '3%',
+    opacity: 0,
+    transition: { duration: 0.18, ease: 'easeIn' as const },
+  }),
 };
 
 const features = [
@@ -48,19 +52,32 @@ export default function SigninPage() {
 
   useEffect(() => {
     if (usernameChecked) {
-      setTimeout(() => passwordRef.current?.focus(), 50);
+      setTimeout(() => {
+        passwordRef.current?.focus();
+        passwordRef.current?.classList.add('ring-2', 'ring-neutral-400', 'dark:ring-neutral-400');
+        setTimeout(() => {
+          passwordRef.current?.classList.remove('ring-2', 'ring-neutral-400', 'dark:ring-neutral-400');
+        }, 800);
+      }, 420);
     }
   }, [usernameChecked]);
 
   const handleUsernameContinue = async () => {
-    if (!username.trim()) return;
+    const normalized = username.trim();
+    if (!normalized) return;
+    setUsername(normalized);
     setCheckingUsername(true);
     try {
-      const res = await fetch('/api/check', {
+      const res = await fetch(`${process.env.NEXT_PUBLIC_AUTH_SERVICE_URL}/api/check-username`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ username: username.trim() }),
+        body: JSON.stringify({ username: normalized }),
       });
+      if (!res.ok) {
+        toast.error('Auth service error. Please try again later.', { id: 'auth-service-error' });
+        setCheckingUsername(false);
+        return;
+      }
       const data = await res.json();
       if (!data.exists) {
         toast.error('No account found with this username.');
@@ -70,7 +87,7 @@ export default function SigninPage() {
       setDirection(1);
       setUsernameChecked(true);
     } catch {
-      toast.error('Something went wrong. Please try again.');
+      toast.error('Auth service is unreachable. Please try again later.', { id: 'auth-unreachable' });
     }
     setCheckingUsername(false);
   };
@@ -83,17 +100,29 @@ export default function SigninPage() {
 
   const login = async () => {
     setSubmitted(true);
-    const res = await signIn('credentials', {
-      entity_id: username,
-      password,
-      redirect: false,
-    });
-    if (res?.error) {
-      toast.error('Invalid password. Please try again.');
+    try {
+      const { error } = await authClient.signIn.username({
+        username,
+        password,
+        rememberMe: true,
+      });
+      if (error) {
+        if (error.status === 429) {
+          toast.error('Too many attempts. Please try again later.');
+        } else if (error.status === 401 || (error as Record<string, unknown>).code === 'INVALID_PASSWORD') {
+          toast.error('Invalid password. Please try again.');
+        } else {
+          toast.error('Authentication failed. Please try again.');
+          console.error('Sign-in error:', error);
+        }
+        setSubmitted(false);
+        return;
+      }
+      router.push('/dashboard');
+    } catch {
+      toast.error('Auth service is unreachable. Please try again later.', { id: 'auth-unreachable' });
       setSubmitted(false);
-      return;
     }
-    router.push('/dashboard');
   };
 
   const inputClass =
@@ -126,7 +155,7 @@ export default function SigninPage() {
                   initial="enter"
                   animate="center"
                   exit="exit"
-                  transition={{ duration: 0.3, ease: [0.32, 0.72, 0, 1] }}
+                  transition={{ duration: 0.32, ease: 'easeOut' }}
                 >
                   <h1 className="text-2xl font-semibold tracking-tight text-neutral-900 dark:text-neutral-50">
                     Welcome back
@@ -180,7 +209,7 @@ export default function SigninPage() {
                   initial="enter"
                   animate="center"
                   exit="exit"
-                  transition={{ duration: 0.3, ease: [0.32, 0.72, 0, 1] }}
+                  transition={{ duration: 0.32, ease: 'easeOut' }}
                 >
                   <h1 className="text-2xl font-semibold tracking-tight text-neutral-900 dark:text-neutral-50">
                     Enter password

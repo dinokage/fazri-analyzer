@@ -1,5 +1,5 @@
 "use client"
-import {useSession, signOut} from "next-auth/react"
+import { useSession, signOut } from "@/lib/auth-client"
 import { Avatar, AvatarImage } from "@/components/ui/avatar"
 import {
   DropdownMenu,

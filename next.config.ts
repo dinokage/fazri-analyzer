@@ -27,8 +27,8 @@ export default withSentryConfig(nextConfig, {
   // Automatically tree-shake Sentry logger statements in production
   widenClientFileUpload: true,
 
-  // Route browser requests to Sentry through a Next.js rewrite
-  tunnelRoute: "/monitoring",
+  // tunnelRoute disabled — causes React 19 script tag warning
+  // tunnelRoute: "/monitoring",
 
   // Disable source map upload in development
   ...(process.env.NODE_ENV !== 'production' && {

@@ -1,53 +1,50 @@
-import { getServerSession } from "next-auth";
-import { OPTIONS } from "@/auth";
-import { redirect } from "next/navigation";
+"use client";
+
+import { useSession } from "@/lib/auth-client";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Separator } from "@/components/ui/separator";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { Metadata } from "next";
+export default function ProfilePage() {
+  const { data: session, isPending } = useSession();
 
-export const metadata: Metadata = {
-  title: `Profile `,
-};
+  if (isPending) return null;
 
-export default async function ProfilePage() {
-  const session = await getServerSession(OPTIONS);
+  const user = session?.user as Record<string, unknown> | undefined;
+  if (!user) return null;
 
-  if (!session || !session.user) {
-    redirect("/auth");
-  }
-
-  const user = session.user as {
-    name: string;
-    email: string;
-    id: string;
-    entity_id: string;
-    role: string;
-    face_id: string | null;
-    student_id: string | null;
-    staff_id: string | null;
-    department: string | null;
-  };
+  const name = String(user.name ?? "");
+  const email = String(user.email ?? "");
+  const role = String(user.role ?? "");
+  const entity_id = String(user.entity_id ?? "");
+  const face_id = user.face_id ? String(user.face_id) : null;
+  const student_id = user.student_id ? String(user.student_id) : null;
+  const staff_id = user.staff_id ? String(user.staff_id) : null;
+  const department = user.department ? String(user.department) : null;
 
   return (
     <div className="container mx-auto max-w-2xl py-10 px-4">
       <Card className="shadow-lg border border-border rounded-2xl">
         <CardHeader className="flex flex-col items-center text-center">
           <Avatar className="h-20 w-20 mb-3">
-            <AvatarImage src={`https://cdn.hextasphere.com/hexta/ethos/${user.face_id}.jpg`} alt={user.name} />
+            {face_id && (
+              <AvatarImage
+                src={`https://cdn.hextasphere.com/hexta/ethos/${face_id}.jpg`}
+                alt={name}
+              />
+            )}
             <AvatarFallback>
-              {user.name
+              {name
                 .split(" ")
                 .map((n) => n[0])
                 .join("")
                 .toUpperCase()}
             </AvatarFallback>
           </Avatar>
-          <CardTitle className="text-2xl font-semibold">{user.name}</CardTitle>
+          <CardTitle className="text-2xl font-semibold">{name}</CardTitle>
           <Badge variant="secondary" className="mt-2 text-sm">
-            {user.role}
+            {role}
           </Badge>
         </CardHeader>
 
@@ -56,38 +53,38 @@ export default async function ProfilePage() {
         <CardContent className="mt-4 space-y-3 text-sm">
           <div className="flex justify-between">
             <span className="text-muted-foreground">Email</span>
-            <span className="font-medium">{user.email}</span>
+            <span className="font-medium">{email}</span>
           </div>
 
           <div className="flex justify-between">
             <span className="text-muted-foreground">Entity ID</span>
-            <span className="font-medium">{user.entity_id}</span>
+            <span className="font-medium">{entity_id}</span>
           </div>
 
-          {user.role === "STUDENT" && user.student_id && (
+          {role === "STUDENT" && student_id && (
             <div className="flex justify-between">
               <span className="text-muted-foreground">Student ID</span>
-              <span className="font-medium">{user.student_id}</span>
+              <span className="font-medium">{student_id}</span>
             </div>
           )}
 
-          {user.role === "STAFF" && user.staff_id && (
+          {role === "STAFF" && staff_id && (
             <div className="flex justify-between">
               <span className="text-muted-foreground">Staff ID</span>
-              <span className="font-medium">{user.staff_id}</span>
+              <span className="font-medium">{staff_id}</span>
             </div>
           )}
 
-          {user.department && (
+          {department && (
             <div className="flex justify-between">
               <span className="text-muted-foreground">Department</span>
-              <span className="font-medium">{user.department}</span>
+              <span className="font-medium">{department}</span>
             </div>
           )}
 
           <div className="flex justify-between">
             <span className="text-muted-foreground">Face ID</span>
-            <span className="font-medium">{user.face_id || "Not linked"}</span>
+            <span className="font-medium">{face_id ?? "Not linked"}</span>
           </div>
         </CardContent>
 

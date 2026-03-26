@@ -29,9 +29,9 @@ class Settings(BaseSettings):
     SECRET_KEY: str = ""  # REQUIRED: Set via environment variable - see .env.example
     ACCESS_TOKEN_EXPIRE_MINUTES: int = 30
 
-    # JWT Configuration (for NextAuth integration)
-    NEXTAUTH_SECRET: str = ""  # REQUIRED: Must match frontend NEXTAUTH_SECRET
-    JWT_ALGORITHM: str = "HS256"  # NextAuth uses HS256
+    # JWT Configuration (for better-auth integration)
+    BETTER_AUTH_SECRET: str = ""  # REQUIRED: Must match auth service BETTER_AUTH_SECRET
+    AUTH_SERVICE_URL: str = ""    # REQUIRED: Public URL of the auth service VPS (e.g. https://auth.fazri.com)
 
     # File Paths
     DATA_DIR: str = "/app/augmented"

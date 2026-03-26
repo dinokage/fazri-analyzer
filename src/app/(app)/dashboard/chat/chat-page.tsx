@@ -1,12 +1,12 @@
 'use client';
 
-import { useSession } from 'next-auth/react';
+import { useSession } from '@/lib/auth-client';
 import { Sparkles, Shield, Zap } from 'lucide-react';
 import AIChatCard from '@/components/ui/ai-chat';
 
 export default function ChatPageContent() {
   const { data: session } = useSession();
-  const userName = session?.user?.name || undefined;
+  const userName = (session?.user as Record<string, unknown>)?.name as string | undefined;
 
   return (
     <div className="space-y-6">

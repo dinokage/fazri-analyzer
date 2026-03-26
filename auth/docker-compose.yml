@@ -1,0 +1,10 @@
+services:
+  auth:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: fazri_auth_test
+    ports:
+      - "4000:4000"
+    env_file:
+      - .env

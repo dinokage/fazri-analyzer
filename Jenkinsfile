@@ -96,7 +96,8 @@ pipeline {
                         'fazri-gitlab-url',
                         'fazri-gitlab-token',
                         'fazri-gitlab-project-id',
-                        'fazri-nextauth-secret',
+                        'fazri-better-auth-secret',
+                        'fazri-auth-service-url',
                         'fazri-sentry-backend-dsn',
                         'fazri-sentry-auth-token'
                     ]
@@ -191,8 +192,8 @@ pipeline {
                         string(credentialsId: 'fazri-gitlab-url', variable: 'GITLAB_URL'),
                         string(credentialsId: 'fazri-gitlab-token', variable: 'GITLAB_TOKEN'),
                         string(credentialsId: 'fazri-gitlab-project-id', variable: 'GITLAB_PROJECT_ID'),
-                        // NextAuth / JWT
-                        string(credentialsId: 'fazri-nextauth-secret', variable: 'NEXTAUTH_SECRET'),
+                        // JWT / auth service URL
+                        string(credentialsId: 'fazri-auth-service-url', variable: 'AUTH_SERVICE_URL'),
                         // Sentry
                         string(credentialsId: 'fazri-sentry-backend-dsn', variable: 'SENTRY_DSN'),
                         string(credentialsId: 'fazri-sentry-auth-token', variable: 'SENTRY_AUTH_TOKEN')
@@ -200,7 +201,8 @@ pipeline {
                         sh """
                             echo "Starting new container..."
 
-                            # Force-remove in case a parallel pipeline created one since our cleanup
+                            # Stop then remove — stop first to prevent restart policy from recreating the container
+                            docker stop ${CONTAINER_NAME} 2>/dev/null || true
                             docker rm -f ${CONTAINER_NAME} 2>/dev/null || true
 
                             # Start the new container
@@ -227,7 +229,7 @@ pipeline {
                                 -e GITLAB_URL=\$GITLAB_URL \
                                 -e GITLAB_TOKEN=\$GITLAB_TOKEN \
                                 -e GITLAB_PROJECT_ID=\$GITLAB_PROJECT_ID \
-                                -e NEXTAUTH_SECRET=\$NEXTAUTH_SECRET \
+                                -e AUTH_SERVICE_URL=\$AUTH_SERVICE_URL \
                                 -e SENTRY_DSN=\$SENTRY_DSN \
                                 -e SENTRY_ENVIRONMENT=${DEPLOY_ENV} \
                                 -e SENTRY_TRACES_SAMPLE_RATE=0.1 \

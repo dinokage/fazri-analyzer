@@ -29,7 +29,7 @@ import { cn } from '@/lib/utils';
 
 interface AlertDetailProps {
   alertId: string;
-  staffId: string;
+  staffId: string | null;
 }
 
 function getSeverityIcon(severity: AlertSeverity) {

@@ -17,7 +17,7 @@ import {
 import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Loader2, ChevronLeft, ChevronRight } from "lucide-react";
-import { getSession } from "next-auth/react";
+import { authClient, getSession } from "@/lib/auth-client";
 
 // Types
 type Identifier = {
@@ -66,12 +66,12 @@ function useEntities(
       setError(null);
 
       try {
-        // Get auth session
+        // Guard: bail silently if no session (sidebar-layout will redirect)
         const session = await getSession();
+        if (!session?.data) return;
 
-        if (!session?.accessToken) {
-          throw new Error("No active session. Please log in.");
-        }
+        const { data: tokenData } = await authClient.token();
+        if (!tokenData?.token) return;
 
         const params = new URLSearchParams({
           limit: limit.toString(),
@@ -91,7 +91,7 @@ function useEntities(
           {
             headers: {
               'Content-Type': 'application/json',
-              'Authorization': `Bearer ${session.accessToken}`,
+              'Authorization': `Bearer ${tokenData.token}`,
             },
           }
         );

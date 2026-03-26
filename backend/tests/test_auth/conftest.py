@@ -10,13 +10,13 @@ from auth.models import UserRole
 @pytest.fixture
 def jwt_secret() -> str:
     """Get JWT secret for testing"""
-    return settings.NEXTAUTH_SECRET
+    return settings.BETTER_AUTH_SECRET
 
 
 @pytest.fixture
 def jwt_algorithm() -> str:
     """Get JWT algorithm for testing"""
-    return settings.JWT_ALGORITHM
+    return getattr(settings, "JWT_ALGORITHM", "HS256")
 
 
 @pytest.fixture
@@ -111,16 +111,16 @@ def create_test_token(claims: Dict[str, Any], secret: str = None, algorithm: str
 
     Args:
         claims: JWT claims dictionary
-        secret: JWT secret (defaults to settings.NEXTAUTH_SECRET)
-        algorithm: JWT algorithm (defaults to settings.JWT_ALGORITHM)
+        secret: JWT secret (defaults to settings.BETTER_AUTH_SECRET)
+        algorithm: JWT algorithm (defaults to "HS256")
 
     Returns:
         Encoded JWT token string
     """
     return jwt.encode(
         claims,
-        secret or settings.NEXTAUTH_SECRET,
-        algorithm=algorithm or settings.JWT_ALGORITHM,
+        secret or settings.BETTER_AUTH_SECRET,
+        algorithm=algorithm or getattr(settings, "JWT_ALGORITHM", "HS256"),
     )
 
 

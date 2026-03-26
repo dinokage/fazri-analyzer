@@ -26,7 +26,7 @@ import { toast } from 'sonner';
 
 interface ResolveAlertDialogProps {
   alert: Alert;
-  staffId: string;
+  staffId: string | null;
   open: boolean;
   onOpenChange: (open: boolean) => void;
   onResolved?: () => void;
@@ -62,8 +62,8 @@ export function ResolveAlertDialog({
   const [loading, setLoading] = useState(false);
 
   const handleResolve = async () => {
-    if (!notes.trim()) {
-      toast.error('Please provide resolution notes');
+    if (!staffId || !notes.trim()) {
+      toast.error(!staffId ? 'No staff profile linked to your account' : 'Please provide resolution notes');
       return;
     }
 

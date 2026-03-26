@@ -3,7 +3,7 @@
 import * as React from "react"
 import Link from "next/link"
 import { usePathname, useRouter } from "next/navigation"
-import { useSession, signOut } from "next-auth/react"
+import { useSession, signOut } from "@/lib/auth-client"
 import {
   SidebarProvider,
   Sidebar,
@@ -36,29 +36,22 @@ import { Button } from "@/components/ui/button"
 export function SidebarLayout({ children }: { children: React.ReactNode }) {
   const pathname = usePathname()
   const router = useRouter()
-  const { data: session, status } = useSession()
+  const { data: session, isPending } = useSession()
   const isActive = (href: string) => pathname === href
 
-  const isSuperAdmin = session?.user?.role === "SUPER_ADMIN"
-  const isAuthenticated = status === "authenticated"
-  const isLoading = status === "loading"
+  const user = session?.user as Record<string, unknown> | undefined
+  const isSuperAdmin = user?.role === "SUPER_ADMIN"
+  const isAuthenticated = !!session
+  const isLoading = isPending
+
+  React.useEffect(() => {
+    if (!isPending && !session) {
+      router.push('/auth')
+    }
+  }, [isPending, session, router])
 
   // Get active alert count for badge
   const { count: activeAlertCount } = useActiveAlertCount(30000)
-
-  React.useEffect(() => {
-    if (status === "unauthenticated") {
-      router.push("/auth")
-    }
-  }, [status, router])
-
-  if (!isAuthenticated && !isLoading) {
-    return (
-      <div className="flex items-center justify-center min-h-screen">
-        Redirecting to auth...
-      </div>
-    );
-  }
 
   return (
     <SidebarProvider>
@@ -190,17 +183,17 @@ export function SidebarLayout({ children }: { children: React.ReactNode }) {
               isAuthenticated && (
                 <div className="flex items-center justify-between gap-2 w-full min-w-0">
                   <div className="text-sm text-sidebar-foreground flex flex-col min-w-0 flex-1">
-                    <p className="font-semibold truncate">{session.user?.name}</p>
-                    {session.user?.email && (
+                    <p className="font-semibold truncate">{String(user?.name ?? '')}</p>
+                    {!!user?.email && (
                       <p className="text-xs leading-none text-sidebar-foreground/80 truncate">
-                        {session.user.email}
+                        {String(user.email)}
                       </p>
                     )}
                   </div>
                   <Button
                     variant="ghost"
                     size="icon"
-                    onClick={() => signOut({ callbackUrl: "/auth" })}
+                    onClick={() => signOut({ fetchOptions: { onSuccess: () => router.push("/auth") } })}
                     className="text-sidebar-foreground hover:text-accent-foreground hover:bg-accent flex-shrink-0"
                     title="Logout"
                   >
