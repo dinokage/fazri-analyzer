@@ -44,16 +44,6 @@ model session {
 model account {
   id                    String    @id(map: "Account_pkey") @default(cuid())
   userId                String
-  type                  String?
-  provider              String?
-  providerAccountId     String?
-  refresh_token         String?
-  access_token          String?
-  expires_at            Int?
-  token_type            String?
-  scope                 String?
-  id_token              String?
-  session_state         String?
   accountId             String?
   providerId            String?
   accessToken           String?
@@ -61,13 +51,13 @@ model account {
   idToken               String?
   accessTokenExpiresAt  DateTime?
   refreshTokenExpiresAt DateTime?
+  scope                 String?
   password              String?
   createdAt             DateTime  @default(now())
   updatedAt             DateTime  @default(now()) @updatedAt
   user                  user      @relation(fields: [userId], references: [id], onDelete: Cascade, map: "Account_userId_fkey")
 
   @@unique([providerId, accountId])
-  @@unique([provider, providerAccountId], map: "Account_provider_providerAccountId_key")
 }
 
 model verification {
