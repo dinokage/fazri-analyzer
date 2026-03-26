@@ -201,7 +201,8 @@ pipeline {
                         sh """
                             echo "Starting new container..."
 
-                            # Force-remove in case a parallel pipeline created one since our cleanup
+                            # Stop then remove — stop first to prevent restart policy from recreating the container
+                            docker stop ${CONTAINER_NAME} 2>/dev/null || true
                             docker rm -f ${CONTAINER_NAME} 2>/dev/null || true
 
                             # Start the new container
