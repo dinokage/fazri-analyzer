@@ -1,6 +1,5 @@
 import { createAuthClient } from "better-auth/react";
-import { usernameClient } from "better-auth/client/plugins";
-import { jwtClient } from "better-auth/client/plugins";
+import { usernameClient, jwtClient } from "better-auth/client/plugins";
 import { toast } from "sonner";
 
 export const authClient = createAuthClient({

@@ -28,10 +28,12 @@ export default function ProfilePage() {
       <Card className="shadow-lg border border-border rounded-2xl">
         <CardHeader className="flex flex-col items-center text-center">
           <Avatar className="h-20 w-20 mb-3">
-            <AvatarImage
-              src={`https://cdn.hextasphere.com/hexta/ethos/${face_id}.jpg`}
-              alt={name}
-            />
+            {face_id && (
+              <AvatarImage
+                src={`https://cdn.hextasphere.com/hexta/ethos/${face_id}.jpg`}
+                alt={name}
+              />
+            )}
             <AvatarFallback>
               {name
                 .split(" ")

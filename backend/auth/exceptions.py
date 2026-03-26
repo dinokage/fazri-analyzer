@@ -30,3 +30,12 @@ class InvalidTokenError(AuthenticationError):
     """Invalid token format or signature"""
     def __init__(self, detail: str = "Invalid token"):
         super().__init__(detail=detail)
+
+
+class AuthServiceUnavailableError(HTTPException):
+    """Auth service or JWKS endpoint is unreachable (503)"""
+    def __init__(self, detail: str = "Authentication service is temporarily unavailable"):
+        super().__init__(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail=detail,
+        )

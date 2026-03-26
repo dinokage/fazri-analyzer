@@ -34,11 +34,16 @@ app.post("/api/check-username", async (req, res) => {
     res.status(400).json({ exists: false });
     return;
   }
-  const user = await prisma.user.findUnique({
-    where: { entity_id: username.trim() },
-    select: { id: true },
-  });
-  res.json({ exists: !!user });
+  try {
+    const user = await prisma.user.findUnique({
+      where: { entity_id: username.trim() },
+      select: { id: true },
+    });
+    res.json({ exists: !!user });
+  } catch (err) {
+    console.error("check-username db error:", err);
+    res.status(500).json({ exists: false });
+  }
 });
 
 app.listen(PORT, () => {
