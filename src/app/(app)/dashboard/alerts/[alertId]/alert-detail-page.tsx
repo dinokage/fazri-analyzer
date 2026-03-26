@@ -9,9 +9,11 @@ export default function AlertDetailPageContent({ alertId }: { alertId: string })
 
   if (isPending) return null;
 
-  const staffId = (session?.user as Record<string, unknown>)?.staff_id as string | null ?? null;
+  const user = session?.user as Record<string, unknown> | undefined;
+  const staffId = user?.staff_id as string | null ?? null;
+  const isSuperAdmin = user?.role === 'SUPER_ADMIN';
 
-  if (!staffId) {
+  if (!staffId && !isSuperAdmin) {
     return (
       <div className="flex items-center justify-center h-96">
         <div className="text-center">

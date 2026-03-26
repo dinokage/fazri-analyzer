@@ -73,6 +73,11 @@ export default function SigninPage() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ username: normalized }),
       });
+      if (!res.ok) {
+        toast.error('Auth service error. Please try again later.', { id: 'auth-service-error' });
+        setCheckingUsername(false);
+        return;
+      }
       const data = await res.json();
       if (!data.exists) {
         toast.error('No account found with this username.');
@@ -102,7 +107,14 @@ export default function SigninPage() {
         rememberMe: true,
       });
       if (error) {
-        toast.error('Invalid password. Please try again.');
+        if (error.status === 429) {
+          toast.error('Too many attempts. Please try again later.');
+        } else if (error.status === 401 || (error as Record<string, unknown>).code === 'INVALID_PASSWORD') {
+          toast.error('Invalid password. Please try again.');
+        } else {
+          toast.error('Authentication failed. Please try again.');
+          console.error('Sign-in error:', error);
+        }
         setSubmitted(false);
         return;
       }

@@ -21,15 +21,15 @@ def _get_jwks() -> dict:
     except (requests.exceptions.RequestException, OSError) as e:
         _jwks_cache = None
         raise AuthServiceUnavailableError(
-            detail=f"Could not fetch JWKS from auth service: {str(e)}"
-        )
+            detail=f"Could not fetch JWKS from auth service: {e!r}"
+        ) from e
 
 
 def _decode(token: str, jwks: dict) -> Dict[str, Any]:
     return jwt.decode(
         token,
         jwks,
-        algorithms=["EdDSA", "RS256", "ES256"],
+        algorithms=["RS256"],
         options={
             "verify_signature": True,
             "verify_exp": True,
@@ -55,4 +55,4 @@ def decode_jwt_token(token: str) -> Dict[str, Any]:
         except ExpiredSignatureError:
             raise TokenExpiredError()
         except JWTError as e:
-            raise InvalidTokenError(detail=f"Invalid token: {str(e)}")
+            raise InvalidTokenError(detail=f"Invalid token: {e!r}") from e

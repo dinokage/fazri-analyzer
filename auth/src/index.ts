@@ -35,8 +35,9 @@ app.post("/api/check-username", async (req, res) => {
     return;
   }
   try {
+    const normalizedUsername = username.trim().toLowerCase();
     const user = await prisma.user.findUnique({
-      where: { entity_id: username.trim() },
+      where: { username: normalizedUsername },
       select: { id: true },
     });
     res.json({ exists: !!user });
