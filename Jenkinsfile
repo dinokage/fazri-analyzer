@@ -345,10 +345,12 @@ pipeline {
         }
         failure {
             echo '✗ Deployment failed — check logs above'
-            sh '''
-                docker logs ${BACKEND_CONTAINER:-fazri-api} --tail=30 2>&1 || true
-                docker logs ${AUTH_CONTAINER:-fazri-auth}   --tail=30 2>&1 || true
-            '''
+            node {
+                sh '''
+                    docker logs ${BACKEND_CONTAINER:-fazri-api} --tail=30 2>&1 || true
+                    docker logs ${AUTH_CONTAINER:-fazri-auth}   --tail=30 2>&1 || true
+                '''
+            }
         }
         always {
             echo 'Build #' + env.BUILD_NUMBER + ' on branch ' + env.GIT_BRANCH + ' — done.'
