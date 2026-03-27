@@ -72,13 +72,13 @@ pipeline {
                         env.BACKEND_CONTAINER = 'fazri-api'
                         env.AUTH_CONTAINER    = 'fazri-auth'
                         env.BACKEND_PORT      = '8000'
-                        env.AUTH_PORT         = '4000'
+                        env.AUTH_PORT         = '4002'
                     } else {
                         env.DEPLOY_ENV        = 'staging'
                         env.BACKEND_CONTAINER = 'fazri-api-staging'
                         env.AUTH_CONTAINER    = 'fazri-auth-staging'
                         env.BACKEND_PORT      = '8001'
-                        env.AUTH_PORT         = '4001'
+                        env.AUTH_PORT         = '4003'
                     }
                     echo 'Branch:            ' + env.BRANCH_NAME
                     echo 'Deploy target:     ' + env.DEPLOY_ENV
@@ -142,13 +142,13 @@ pipeline {
         }
 
         // ─────────────────────────────────────────────────────────────────────
-        // Stop the old container and start the new one.
-        // Backend and auth deploy in parallel to reduce total deploy time.
+        // Deploy and health-check each service in its own parallel branch.
+        // If backend fails, auth still deploys and health-checks, and vice versa.
         // ─────────────────────────────────────────────────────────────────────
         stage('Deploy') {
             parallel {
 
-                stage('Deploy Backend') {
+                stage('Backend') {
                     when { expression { env.BUILD_BACKEND == 'true' } }
                     steps {
                         sh '''
@@ -204,10 +204,26 @@ pipeline {
                                 echo "✓ Backend deployed"
                             '''
                         }
+                        echo "Waiting for backend to be healthy..."
+                        sh '''
+                            sleep 10
+                            for i in $(seq 1 12); do
+                                if docker exec ${BACKEND_CONTAINER} \
+                                    curl -sf http://localhost:8000/health > /dev/null 2>&1; then
+                                    echo "✓ Backend is healthy"
+                                    exit 0
+                                fi
+                                echo "Attempt ${i}/12 — waiting..."
+                                sleep 5
+                            done
+                            echo "✗ Backend health check failed after 60s"
+                            docker logs ${BACKEND_CONTAINER} --tail=50
+                            exit 1
+                        '''
                     }
                 }
 
-                stage('Deploy Auth') {
+                stage('Auth') {
                     when { expression { env.BUILD_AUTH == 'true' } }
                     steps {
                         sh '''
@@ -234,43 +250,6 @@ pipeline {
 
                             echo "✓ Auth service deployed"
                         '''
-                    }
-                }
-
-            }
-        }
-
-        // ─────────────────────────────────────────────────────────────────────
-        // Health-check both services before declaring success.
-        // ─────────────────────────────────────────────────────────────────────
-        stage('Health Checks') {
-            parallel {
-
-                stage('Backend Health') {
-                    when { expression { env.BUILD_BACKEND == 'true' } }
-                    steps {
-                        echo "Waiting for backend to be healthy..."
-                        sh '''
-                            sleep 10
-                            for i in $(seq 1 12); do
-                                if docker exec ${BACKEND_CONTAINER} \
-                                    curl -sf http://localhost:8000/health > /dev/null 2>&1; then
-                                    echo "✓ Backend is healthy"
-                                    exit 0
-                                fi
-                                echo "Attempt ${i}/12 — waiting..."
-                                sleep 5
-                            done
-                            echo "✗ Backend health check failed after 60s"
-                            docker logs ${BACKEND_CONTAINER} --tail=50
-                            exit 1
-                        '''
-                    }
-                }
-
-                stage('Auth Health') {
-                    when { expression { env.BUILD_AUTH == 'true' } }
-                    steps {
                         echo "Waiting for auth service to be healthy..."
                         sh '''
                             sleep 10
