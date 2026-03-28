@@ -326,10 +326,11 @@ pipeline {
             echo '✗ Deployment failed — check logs above'
             script {
                 node('built-in') {
-                    sh '''
-                        docker logs ${BACKEND_CONTAINER:-fazri-api} --tail=30 2>&1 || true
-                        docker logs ${AUTH_CONTAINER:-fazri-auth}   --tail=30 2>&1 || true
-                    '''
+                    def isProd      = env.BRANCH_NAME == 'master'
+                    def backendCtr  = env.BACKEND_CONTAINER ?: (isProd ? 'fazri-api'  : 'fazri-api-staging')
+                    def authCtr     = env.AUTH_CONTAINER    ?: (isProd ? 'fazri-auth' : 'fazri-auth-staging')
+                    sh "docker logs ${backendCtr} --tail=30 2>&1 || true"
+                    sh "docker logs ${authCtr}    --tail=30 2>&1 || true"
                 }
             }
         }

@@ -1,11 +1,11 @@
 /**
  * Seed script: CSV → better-auth PostgreSQL
  * Reads student_staff_profiles.csv and bulk-inserts users + credential accounts.
- * Default password for every user is their entity_id (e.g. "E100000").
+ * Default password for every user is read from the DEFAULT_SEED_PASSWORD env var.
  * Safe to re-run — ON CONFLICT DO NOTHING skips already-seeded rows.
  *
  * Usage:
- *   npx tsx scripts/seed-users.ts [path/to/student_staff_profiles.csv]
+ *   DEFAULT_SEED_PASSWORD=<password> npx tsx scripts/seed-users.ts [path/to/student_staff_profiles.csv]
  *
  * Default CSV path: ../../backend/augmented/student_staff_profiles.csv
  */
@@ -69,18 +69,24 @@ async function parseCsv(filePath: string): Promise<CsvRow[]> {
 }
 
 async function seed(csvPath: string) {
+  const defaultPassword = process.env.DEFAULT_SEED_PASSWORD;
+  if (!defaultPassword) {
+    console.error("DEFAULT_SEED_PASSWORD env var is required");
+    process.exit(1);
+  }
+
   console.log(`Reading CSV: ${csvPath}`);
   const rows = await parseCsv(csvPath);
   console.log(`Found ${rows.length} rows — hashing passwords and seeding...`);
 
+  const before = await prisma.user.count();
   let inserted = 0;
-  let skipped = 0;
 
   for (let i = 0; i < rows.length; i += BATCH_SIZE) {
     const batch = rows.slice(i, i + BATCH_SIZE);
 
     // Hash the shared default password once per batch
-    const hashed = await bcrypt.hash(process.env.DEFAULT_SEED_PASSWORD ?? "change-me", BCRYPT_ROUNDS);
+    const hashed = await bcrypt.hash(defaultPassword, BCRYPT_ROUNDS);
 
     // Bulk insert users — skip on conflict
     await prisma.$executeRaw`
@@ -139,13 +145,13 @@ async function seed(csvPath: string) {
     process.stdout.write(`\r  Processed ${inserted}/${rows.length}...`);
   }
 
-  // Count actual rows to show skipped
   const total = await prisma.user.count();
-  skipped = rows.length - (total < rows.length ? total : rows.length - skipped);
+  const skipped = rows.length - (total - before);
 
   console.log(`\n\nDone.`);
+  console.log(`  Rows in CSV:  ${rows.length}`);
   console.log(`  Users in DB:  ${total}`);
-  console.log(`  Default password = set via DEFAULT_SEED_PASSWORD env var`);
+  console.log(`  Skipped (conflicts): ${skipped}`);
 }
 
 const csvPath =
