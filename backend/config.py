@@ -52,7 +52,7 @@ class Settings(BaseSettings):
     USE_VERTEX_AI: bool = False  # Set to True to use Vertex AI instead of Google AI Studio
     VERTEX_PROJECT_ID: str = ""  # Google Cloud Project ID for Vertex AI
     VERTEX_LOCATION: str = "us-central1"  # Vertex AI location
-    CHATBOT_MODEL: str = "gemini-2.0-flash"
+    CHATBOT_MODEL: str = "gemini-2.5-flash"
     CHATBOT_MAX_TOKENS: int = 4096
     CHATBOT_TEMPERATURE: float = 0.3
     CHATBOT_MAX_TOOL_CALLS: int = 5
