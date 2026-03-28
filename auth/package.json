@@ -9,7 +9,7 @@
     "db:push": "prisma db push",
     "db:migrate": "prisma migrate deploy",
     "migrate:users": "tsx scripts/migrate-users.ts",
-    "seed:users": "tsx scripts/seed-users.ts"
+    "seed:users": "node dist/scripts/seed-users.js"
   },
   "dependencies": {
     "better-auth": "^1.2.7",

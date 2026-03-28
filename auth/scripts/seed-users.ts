@@ -150,7 +150,7 @@ async function seed(csvPath: string) {
 
 const csvPath =
   process.argv[2] ??
-  path.resolve(__dirname, "../../backend/augmented/student_staff_profiles.csv");
+  path.resolve(__dirname, "../../../backend/augmented/student_staff_profiles.csv");
 
 if (!fs.existsSync(csvPath)) {
   console.error(`CSV not found: ${csvPath}`);
