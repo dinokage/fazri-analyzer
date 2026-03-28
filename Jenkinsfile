@@ -153,7 +153,6 @@ pipeline {
                                 -t ${BACKEND_IMAGE}:${IMAGE_TAG} \
                                 $([ "${BRANCH_NAME}" = "master" ] && echo "-t ${BACKEND_IMAGE}:latest" || echo "") \
                                 backend/
-                            docker image prune -f --filter "label=image=${BACKEND_IMAGE}" 2>/dev/null || true
                         '''
                     }
                 }
@@ -167,7 +166,6 @@ pipeline {
                                 -t ${AUTH_IMAGE}:${IMAGE_TAG} \
                                 $([ "${BRANCH_NAME}" = "master" ] && echo "-t ${AUTH_IMAGE}:latest" || echo "") \
                                 auth/
-                            docker image prune -f --filter "label=image=${AUTH_IMAGE}" 2>/dev/null || true
                         '''
                     }
                 }
@@ -273,6 +271,7 @@ pipeline {
                                 -e DATABASE_URL="${AUTH_DATABASE_URL}" \
                                 -e BETTER_AUTH_SECRET="${BETTER_AUTH_SECRET}" \
                                 -e TRUSTED_ORIGINS="${AUTH_TRUSTED_ORIGINS}" \
+                                -e AUTH_SERVICE_URL="${AUTH_SERVICE_URL}" \
                                 -e PORT=4000 \
                                 ${AUTH_IMAGE}:${IMAGE_TAG}
 
@@ -309,7 +308,7 @@ pipeline {
 
         // ─────────────────────────────────────────────────────────────────────
         stage('Sentry Release') {
-            when { expression { env.BUILD_BACKEND == 'true' } }
+            when { expression { env.BUILD_BACKEND == 'true' || env.BUILD_AUTH == 'true' } }
             steps {
                 sh """
                     if command -v sentry-cli > /dev/null 2>&1; then
@@ -317,24 +316,49 @@ pipeline {
                     else
                         curl -sL https://sentry.io/get-cli/ | bash
                     fi
-
-                    RELEASE_VERSION="fazri-analyzer-backend@${env.GIT_COMMIT}"
-
-                    sentry-cli releases new "\$RELEASE_VERSION" \
-                        --org rayzrsole --project fazri-backend || true
-
-                    sentry-cli releases set-commits "\$RELEASE_VERSION" --auto \
-                        --org rayzrsole --project fazri-backend || true
-
-                    sentry-cli releases deploys "\$RELEASE_VERSION" new \
-                        --env ${DEPLOY_ENV} \
-                        --org rayzrsole --project fazri-backend
-
-                    sentry-cli releases finalize "\$RELEASE_VERSION" \
-                        --org rayzrsole --project fazri-backend
-
-                    echo "✓ Sentry release: \$RELEASE_VERSION (${DEPLOY_ENV})"
                 """
+                script {
+                    if (env.BUILD_BACKEND == 'true') {
+                        sh """
+                            RELEASE_VERSION="fazri-analyzer-backend@${env.GIT_COMMIT}"
+
+                            sentry-cli releases new "\$RELEASE_VERSION" \
+                                --org rayzrsole --project fazri-backend || true
+
+                            sentry-cli releases set-commits "\$RELEASE_VERSION" --auto \
+                                --org rayzrsole --project fazri-backend || true
+
+                            sentry-cli releases deploys "\$RELEASE_VERSION" new \
+                                --env ${DEPLOY_ENV} \
+                                --org rayzrsole --project fazri-backend
+
+                            sentry-cli releases finalize "\$RELEASE_VERSION" \
+                                --org rayzrsole --project fazri-backend
+
+                            echo "✓ Sentry release (backend): \$RELEASE_VERSION (${DEPLOY_ENV})"
+                        """
+                    }
+                    if (env.BUILD_AUTH == 'true') {
+                        sh """
+                            RELEASE_VERSION="fazri-analyzer-auth@${env.GIT_COMMIT}"
+
+                            sentry-cli releases new "\$RELEASE_VERSION" \
+                                --org rayzrsole --project fazri-auth || true
+
+                            sentry-cli releases set-commits "\$RELEASE_VERSION" --auto \
+                                --org rayzrsole --project fazri-auth || true
+
+                            sentry-cli releases deploys "\$RELEASE_VERSION" new \
+                                --env ${DEPLOY_ENV} \
+                                --org rayzrsole --project fazri-auth
+
+                            sentry-cli releases finalize "\$RELEASE_VERSION" \
+                                --org rayzrsole --project fazri-auth
+
+                            echo "✓ Sentry release (auth): \$RELEASE_VERSION (${DEPLOY_ENV})"
+                        """
+                    }
+                }
             }
         }
 
