@@ -61,7 +61,7 @@ async function parseCsv(filePath: string): Promise<CsvRow[]> {
     const values = line.split(",");
     const row = Object.fromEntries(
       headers.map((h, i) => [h, (values[i] ?? "").trim()])
-    ) as CsvRow;
+    ) as unknown as CsvRow;
     rows.push(row);
   }
 
