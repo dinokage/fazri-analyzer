@@ -7,8 +7,7 @@
     "build": "prisma generate && tsc",
     "start": "node dist/index.js",
     "db:push": "prisma db push",
-    "db:migrate": "prisma migrate deploy",
-    "migrate:users": "tsx scripts/migrate-users.ts"
+    "db:migrate": "prisma migrate deploy"
   },
   "dependencies": {
     "better-auth": "^1.2.7",

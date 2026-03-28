@@ -1,4 +1,3 @@
-// lib/api-client.ts
 import { authClient, getSession } from "@/lib/auth-client";
 import * as Sentry from "@sentry/nextjs";
 
