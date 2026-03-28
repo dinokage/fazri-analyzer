@@ -24,4 +24,4 @@ EXPOSE 4000
 HEALTHCHECK --interval=30s --timeout=10s --start-period=5s --retries=3 \
   CMD node -e "require('http').get('http://localhost:4000/health', (r) => r.statusCode === 200 ? process.exit(0) : process.exit(1))"
 
-CMD ["node", "dist/index.js"]
+CMD ["node", "dist/src/index.js"]
