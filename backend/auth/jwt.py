@@ -40,7 +40,6 @@ def _decode(token: str, jwks: dict) -> Dict[str, Any]:
         },
     )
 
-
 def decode_jwt_token(token: str) -> Dict[str, Any]:
     try:
         jwks = _get_jwks()
