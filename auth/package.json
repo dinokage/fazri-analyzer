@@ -8,7 +8,8 @@
     "start": "node dist/index.js",
     "db:push": "prisma db push",
     "db:migrate": "prisma migrate deploy",
-    "migrate:users": "tsx scripts/migrate-users.ts"
+    "migrate:users": "tsx scripts/migrate-users.ts",
+    "seed:users": "tsx scripts/seed-users.ts"
   },
   "dependencies": {
     "better-auth": "^1.2.7",
