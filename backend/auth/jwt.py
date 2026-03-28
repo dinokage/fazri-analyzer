@@ -27,6 +27,7 @@ def _get_jwks() -> dict:
                 detail=f"Could not fetch JWKS from auth service: {e!r}"
             ) from e
 
+
 def _decode(token: str, jwks: dict) -> Dict[str, Any]:
     return jwt.decode(
         token,
