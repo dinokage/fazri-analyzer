@@ -13,7 +13,6 @@ pipeline {
         AUTH_IMAGE      = 'fazri-analyzer-auth'
         NETWORK_NAME    = 'backend_fazri-network'
         DOCKER_BUILDKIT = '1'
-        IMAGE_TAG       = "${env.BUILD_NUMBER}"
 
         // ── Backend credentials ───────────────────────────────────────────────
         POSTGRES_SERVER   = credentials('fazri-postgres-server')
@@ -80,8 +79,13 @@ pipeline {
                         env.BACKEND_PORT      = '8001'
                         env.AUTH_PORT         = '4003'
                     }
+                    def sanitizedBranch = env.BRANCH_NAME.replaceAll('[^a-zA-Z0-9]', '-').toLowerCase()
+                    def shortSha        = env.GIT_COMMIT?.take(7) ?: 'unknown'
+                    env.IMAGE_TAG       = "${sanitizedBranch}-${shortSha}"
+
                     echo 'Branch:            ' + env.BRANCH_NAME
                     echo 'Deploy target:     ' + env.DEPLOY_ENV
+                    echo 'Image tag:         ' + env.IMAGE_TAG
                     echo 'Backend container: ' + env.BACKEND_CONTAINER + ' (' + env.BACKEND_PORT + ')'
                     echo 'Auth container:    ' + env.AUTH_CONTAINER    + ' (' + env.AUTH_PORT    + ')'
                 }
@@ -92,12 +96,30 @@ pipeline {
         stage('Detect Changes') {
             steps {
                 script {
-                    def changedFiles = sh(
-                        script: "git rev-parse HEAD~1 > /dev/null 2>&1 && git diff --name-only HEAD~1 HEAD || echo 'all'",
+                    def baseline
+                    def isFirstRun
+
+                    if (env.GIT_PREVIOUS_SUCCESSFUL_COMMIT) {
+                        baseline   = env.GIT_PREVIOUS_SUCCESSFUL_COMMIT
+                        isFirstRun = false
+                    } else {
+                        def mergeBase = sh(
+                            script: "git merge-base origin/master HEAD 2>/dev/null || echo ''",
+                            returnStdout: true
+                        ).trim()
+                        if (mergeBase) {
+                            baseline   = mergeBase
+                            isFirstRun = false
+                        } else {
+                            baseline   = null
+                            isFirstRun = true
+                        }
+                    }
+
+                    def changedFiles = isFirstRun ? 'all' : sh(
+                        script: "git diff --name-only ${baseline} HEAD",
                         returnStdout: true
                     ).trim()
-
-                    def isFirstRun = changedFiles == 'all'
 
                     env.BUILD_BACKEND = (changedFiles.contains('backend/')    ||
                                          changedFiles.contains('Jenkinsfile') ||
@@ -126,7 +148,13 @@ pipeline {
                     when { expression { env.BUILD_BACKEND == 'true' } }
                     steps {
                         echo "Building backend image (live container still up)..."
-                        sh 'docker build -f backend/Dockerfile --target production -t ${BACKEND_IMAGE}:${IMAGE_TAG} -t ${BACKEND_IMAGE}:latest backend/'
+                        sh '''
+                            docker build -f backend/Dockerfile --target production \
+                                -t ${BACKEND_IMAGE}:${IMAGE_TAG} \
+                                $([ "${BRANCH_NAME}" = "master" ] && echo "-t ${BACKEND_IMAGE}:latest" || echo "") \
+                                backend/
+                            docker image prune -f --filter "label=image=${BACKEND_IMAGE}" 2>/dev/null || true
+                        '''
                     }
                 }
 
@@ -134,7 +162,13 @@ pipeline {
                     when { expression { env.BUILD_AUTH == 'true' } }
                     steps {
                         echo "Building auth service image (live container still up)..."
-                        sh 'docker build -f auth/Dockerfile -t ${AUTH_IMAGE}:${IMAGE_TAG} -t ${AUTH_IMAGE}:latest auth/'
+                        sh '''
+                            docker build -f auth/Dockerfile \
+                                -t ${AUTH_IMAGE}:${IMAGE_TAG} \
+                                $([ "${BRANCH_NAME}" = "master" ] && echo "-t ${AUTH_IMAGE}:latest" || echo "") \
+                                auth/
+                            docker image prune -f --filter "label=image=${AUTH_IMAGE}" 2>/dev/null || true
+                        '''
                     }
                 }
 
@@ -186,9 +220,9 @@ pipeline {
                                     -e SENTRY_ENVIRONMENT=${DEPLOY_ENV} \
                                     -e SENTRY_TRACES_SAMPLE_RATE=0.1 \
                                     -e SENTRY_ENABLED=true \
-                                    -v app_data:/app/augmented \
-                                    -v app_ml_models:/app/ml_models \
-                                    -v app_logs:/app/logs \
+                                    -v app_data_${DEPLOY_ENV}:/app/augmented \
+                                    -v app_ml_models_${DEPLOY_ENV}:/app/ml_models \
+                                    -v app_logs_${DEPLOY_ENV}:/app/logs \
                                     ${BACKEND_IMAGE}:${IMAGE_TAG}
 
                                 if ! docker ps --format '{{.Names}}' | grep -q "^${BACKEND_CONTAINER}$"; then
@@ -307,7 +341,20 @@ pipeline {
         // ─────────────────────────────────────────────────────────────────────
         stage('Cleanup') {
             steps {
-                sh 'docker image prune -f || true'
+                sh '''
+                    docker image prune -f || true
+                    # Remove old tagged images for built services, keeping only the current tag and latest
+                    if [ "${BUILD_BACKEND}" = "true" ]; then
+                        docker images ${BACKEND_IMAGE} --format "{{.Tag}}" \
+                            | grep -v "^${IMAGE_TAG}$" | grep -v "^latest$" \
+                            | xargs -r -I{} docker rmi ${BACKEND_IMAGE}:{} 2>/dev/null || true
+                    fi
+                    if [ "${BUILD_AUTH}" = "true" ]; then
+                        docker images ${AUTH_IMAGE} --format "{{.Tag}}" \
+                            | grep -v "^${IMAGE_TAG}$" | grep -v "^latest$" \
+                            | xargs -r -I{} docker rmi ${AUTH_IMAGE}:{} 2>/dev/null || true
+                    fi
+                '''
             }
         }
 
