@@ -1,0 +1,7 @@
+version: 2
+
+ignored-matches:
+  - name: Sentry auth token CLI flag pattern
+    match: "auth-token \\$SENTRY_AUTH_TOKEN"
+  - name: Jenkins credentials() references are credential IDs, not secrets
+    match: "credentials('fazri-"
