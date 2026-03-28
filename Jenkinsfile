@@ -209,6 +209,7 @@ pipeline {
                                     -e USE_VERTEX_AI=true \
                                     -e VERTEX_PROJECT_ID="${VERTEX_PROJECT_ID}" \
                                     -e VERTEX_LOCATION="${VERTEX_LOCATION}" \
+                                    -e CHATBOT_MODEL="gemini-2.0-flash-001" \
                                     -e GOOGLE_APPLICATION_CREDENTIALS=/app/credentials/service-account.json \
                                     -e GITLAB_URL="${GITLAB_URL}" \
                                     -e GITLAB_TOKEN="${GITLAB_TOKEN}" \
