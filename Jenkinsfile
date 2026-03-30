@@ -40,6 +40,8 @@ pipeline {
         DEEPFACE_SERVER_URL     = credentials('fazri-deepface-server-url')
         DEEPFACE_WEBHOOK_SECRET = credentials('fazri-deepface-webhook-secret')
         DEEPFACE_POSTGRES_URI   = credentials('fazri-deepface-postgres-uri')
+        DEEPFACE_SENTRY_DSN     = credentials('fazri-deepface-sentry-dsn')
+        AUTH_SENTRY_DSN         = credentials('fazri-auth-sentry-dsn')
 
         // ── Auth service credentials ──────────────────────────────────────────
         AUTH_DATABASE_URL    = credentials('fazri-auth-database-url')
@@ -290,6 +292,10 @@ pipeline {
                                 -e TRUSTED_ORIGINS="${AUTH_TRUSTED_ORIGINS}" \
                                 -e AUTH_SERVICE_URL="${AUTH_SERVICE_URL}" \
                                 -e PORT=4000 \
+                                -e SENTRY_DSN="${AUTH_SENTRY_DSN}" \
+                                -e SENTRY_ENVIRONMENT=${DEPLOY_ENV} \
+                                -e SENTRY_TRACES_SAMPLE_RATE=0.1 \
+                                -e SENTRY_ENABLED=true \
                                 ${AUTH_IMAGE}:${IMAGE_TAG}
 
                             if ! docker ps --format '{{.Names}}' | grep -q "^${AUTH_CONTAINER}$"; then
@@ -334,6 +340,10 @@ pipeline {
                                 --network ${NETWORK_NAME} \
                                 -e DEEPFACE_WEBHOOK_SECRET="${DEEPFACE_WEBHOOK_SECRET}" \
                                 -e DEEPFACE_POSTGRES_URI="${DEEPFACE_POSTGRES_URI}" \
+                                -e SENTRY_DSN="${DEEPFACE_SENTRY_DSN}" \
+                                -e SENTRY_ENVIRONMENT=${DEPLOY_ENV} \
+                                -e SENTRY_TRACES_SAMPLE_RATE=0.1 \
+                                -e SENTRY_ENABLED=true \
                                 -v deepface_models_${DEPLOY_ENV}:/app/models \
                                 -v deepface_data_${DEPLOY_ENV}:/app/data \
                                 ${DEEPFACE_IMAGE}:${IMAGE_TAG}

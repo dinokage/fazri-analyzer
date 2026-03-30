@@ -26,6 +26,12 @@ class Settings(BaseSettings):
         "postgresql://deepface:deepface@localhost:5432/deepface"
     )
 
+    # Sentry
+    sentry_dsn: str = ""
+    sentry_environment: str = "development"
+    sentry_traces_sample_rate: float = 0.1
+    sentry_enabled: bool = False
+
     @property
     def connection_details(self) -> str:
         return self.deepface_postgres_uri
