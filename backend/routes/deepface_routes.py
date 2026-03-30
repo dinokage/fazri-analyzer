@@ -15,8 +15,10 @@ Endpoints:
 
 from __future__ import annotations
 
+import asyncio
 import hashlib
 import hmac
+import io
 import logging
 import time
 import psycopg2
@@ -24,7 +26,11 @@ from datetime import datetime, timezone
 from typing import Any, Dict, List, Optional
 from uuid import UUID
 
+import cv2
+import httpx
+import numpy as np
 from fastapi import APIRouter, Depends, HTTPException, Request, UploadFile, File, status
+from fastapi.responses import StreamingResponse
 from sqlalchemy.orm import Session
 
 from auth.dependencies import require_staff, require_admin
@@ -188,9 +194,76 @@ def _create_alert_from_anomaly(
 
     db.refresh(alert)
 
+    # Web Push to all subscribed browser sessions
+    try:
+        from services.push_service import send_push_to_all
+        send_push_to_all(
+            db=db,
+            title=alert_data.title,
+            body=alert_data.description[:120],
+            url=f"/dashboard/alerts/{alert.id}",
+        )
+    except Exception as exc:
+        logger.warning("Web Push delivery error: %s", exc)
+
+    # Fire Discord webhook (non-blocking best-effort)
+    if settings.DISCORD_WEBHOOK_URL:
+        severity_colors = {
+            "low": 3447003,       # blue
+            "medium": 16776960,   # yellow
+            "high": 16744272,     # orange
+            "critical": 15158332, # red
+        }
+        color = severity_colors.get(anomaly.get("severity", "medium"), 15158332)
+        discord_payload = {
+            "content": "🚨 **Unknown Face Detected**",
+            "embeds": [{
+                "title": alert_data.title,
+                "description": alert_data.description[:500],
+                "color": color,
+                "fields": [
+                    {"name": "Severity", "value": anomaly.get("severity", "medium").upper(), "inline": True},
+                    {"name": "Zone", "value": zone_id, "inline": True},
+                    {"name": "Alert ID", "value": str(alert.id), "inline": False},
+                ],
+                "timestamp": datetime.now(timezone.utc).isoformat(),
+            }],
+        }
+        asyncio.create_task(_post_discord_webhook(settings.DISCORD_WEBHOOK_URL, discord_payload))
+
 
 def _stream_to_response(stream: CameraStream) -> StreamResponse:
     return StreamResponse.model_validate(stream)
+
+
+async def _post_discord_webhook(url: str, payload: Dict[str, Any]) -> None:
+    """Fire-and-forget Discord webhook POST."""
+    try:
+        async with httpx.AsyncClient(timeout=5) as client:
+            await client.post(url, json=payload)
+    except Exception as exc:
+        logger.warning("Discord webhook delivery failed: %s", exc)
+
+
+def _grab_rtsp_frame(rtsp_url: str, timeout_seconds: float = 5.0) -> bytes:
+    """
+    Blocking helper: open the RTSP stream, grab one frame, return it as JPEG bytes.
+    Raises RuntimeError if a frame cannot be captured within the timeout.
+    Intended to be run in a thread executor so it does not block the event loop.
+    """
+    cap = cv2.VideoCapture(rtsp_url)
+    cap.set(cv2.CAP_PROP_BUFFERSIZE, 1)
+    deadline = time.monotonic() + timeout_seconds
+    try:
+        while time.monotonic() < deadline:
+            ret, frame = cap.read()
+            if ret and frame is not None:
+                ok, buf = cv2.imencode(".jpg", frame, [cv2.IMWRITE_JPEG_QUALITY, 80])
+                if ok:
+                    return buf.tobytes()
+        raise RuntimeError("Could not grab a frame within the timeout")
+    finally:
+        cap.release()
 
 
 # ============================================================================
@@ -511,6 +584,144 @@ async def delete_stream(
 
     db.delete(cam_stream)
     db.commit()
+
+
+# ============================================================================
+# Camera snapshot
+# ============================================================================
+
+
+@router.get(
+    "/streams/{stream_id}/snapshot",
+    summary="Grab a single JPEG frame from a camera stream",
+)
+async def get_stream_snapshot(
+    stream_id: str,
+    db: Session = Depends(get_db),
+    current_user: AuthenticatedUser = Depends(require_staff()),
+) -> StreamingResponse:
+    """
+    Connects to the RTSP URL of the given stream and returns one JPEG frame.
+    Uses a thread executor so the blocking OpenCV call does not stall the event loop.
+    Returns HTTP 504 if the camera does not respond within 5 seconds.
+    """
+    cam_stream = (
+        db.query(CameraStream)
+        .filter(CameraStream.stream_id == stream_id)
+        .first()
+    )
+    if cam_stream is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=f"Stream '{stream_id}' not found")
+
+    loop = asyncio.get_event_loop()
+    try:
+        jpeg_bytes = await asyncio.wait_for(
+            loop.run_in_executor(None, _grab_rtsp_frame, cam_stream.rtsp_url),
+            timeout=8.0,
+        )
+    except (asyncio.TimeoutError, RuntimeError) as exc:
+        raise HTTPException(
+            status_code=status.HTTP_504_GATEWAY_TIMEOUT,
+            detail=f"Could not capture a frame from stream '{stream_id}': {exc}",
+        )
+
+    return StreamingResponse(io.BytesIO(jpeg_bytes), media_type="image/jpeg")
+
+
+# ============================================================================
+# ONVIF probe
+# ============================================================================
+
+
+@router.post(
+    "/onvif/probe",
+    summary="Probe an NVR/IP camera via ONVIF to discover channels",
+)
+async def probe_onvif(
+    body: Dict[str, Any],
+    current_user: AuthenticatedUser = Depends(require_admin()),
+) -> Dict[str, Any]:
+    """
+    Attempt an ONVIF connection to the given IP camera or NVR.
+
+    Request body:
+        { "ip": "192.168.1.64", "port": 80, "username": "admin", "password": "..." }
+
+    Returns on success:
+        { "vendor": "Hikvision", "model": "DS-2CD2143G2-I", "channels": [
+            { "id": "Profile_1", "name": "MainStream", "rtsp_url": "rtsp://..." }
+          ] }
+
+    Returns on failure:
+        { "error": "onvif_failed", "message": "..." }
+    """
+    ip = body.get("ip", "").strip()
+    port = int(body.get("port", 80))
+    username = body.get("username", "")
+    password = body.get("password", "")
+
+    if not ip:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="ip is required")
+
+    loop = asyncio.get_event_loop()
+    try:
+        result = await asyncio.wait_for(
+            loop.run_in_executor(None, _onvif_probe, ip, port, username, password),
+            timeout=15.0,
+        )
+        return result
+    except asyncio.TimeoutError:
+        return {"error": "onvif_failed", "message": "Connection timed out — ONVIF may be disabled on this device"}
+    except Exception as exc:
+        return {"error": "onvif_failed", "message": str(exc)}
+
+
+def _onvif_probe(ip: str, port: int, username: str, password: str) -> Dict[str, Any]:
+    """
+    Blocking ONVIF discovery using the onvif2 library.
+    Fetches device info and all media profile stream URIs.
+    """
+    try:
+        from onvif import ONVIFCamera  # type: ignore
+    except ImportError:
+        raise RuntimeError("onvif2 package is not installed — run: pip install onvif2")
+
+    cam = ONVIFCamera(ip, port, username, password)
+    cam.update_xaddrs()
+
+    # Device info
+    device_svc = cam.create_devicemgmt_service()
+    info = device_svc.GetDeviceInformation()
+    vendor = getattr(info, "Manufacturer", "Unknown")
+    model = getattr(info, "Model", "Unknown")
+
+    # Media profiles → stream URIs
+    media_svc = cam.create_media_service()
+    profiles = media_svc.GetProfiles()
+
+    channels: List[Dict[str, Any]] = []
+    for profile in profiles:
+        try:
+            uri_req = media_svc.create_type("GetStreamUri")
+            uri_req.ProfileToken = profile.token
+            uri_req.StreamSetup = {
+                "Stream": "RTP-Unicast",
+                "Transport": {"Protocol": "RTSP"},
+            }
+            uri_resp = media_svc.GetStreamUri(uri_req)
+            rtsp_url = uri_resp.Uri
+            # Inject credentials into the RTSP URL if provided
+            if username and "://" in rtsp_url and "@" not in rtsp_url:
+                rtsp_url = rtsp_url.replace("rtsp://", f"rtsp://{username}:{password}@")
+            channels.append({
+                "id": profile.token,
+                "name": getattr(profile, "Name", profile.token),
+                "rtsp_url": rtsp_url,
+            })
+        except Exception:
+            continue
+
+    return {"vendor": vendor, "model": model, "channels": channels}
 
 
 # ============================================================================

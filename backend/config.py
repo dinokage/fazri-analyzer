@@ -153,6 +153,20 @@ class Settings(BaseSettings):
     # Connection string to the DeepFace pgvector Postgres DB (for batch sync)
     DEEPFACE_POSTGRES_URI: str = "postgresql://deepface:deepface@deepface-postgres:5432/deepface"
 
+    # =========================================================================
+    # Discord Webhook
+    # =========================================================================
+    # Incoming webhook URL for unknown-face alert notifications.
+    # Leave empty to disable.
+    DISCORD_WEBHOOK_URL: str = ""
+
+    # =========================================================================
+    # Web Push (VAPID)
+    # =========================================================================
+    VAPID_PRIVATE_KEY: str = ""  # Base64url-encoded VAPID private key
+    VAPID_PUBLIC_KEY: str = ""   # Base64url-encoded VAPID public key (sent to clients)
+    VAPID_CLAIMS_EMAIL: str = "alerts@fazri.campus"  # mailto: claim in VAPID JWT
+
     model_config = ConfigDict(
         env_file=".env",
         env_file_encoding='utf-8',

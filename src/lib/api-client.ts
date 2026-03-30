@@ -760,6 +760,66 @@ export const apiClient = {
     return handleResponse(response);
   },
 
+  async getVapidPublicKey(): Promise<string> {
+    const response = await fetch(
+      `${API_BASE_URL}/api/v1/notifications/vapid-public-key`,
+      { headers: await getAuthHeaders() }
+    );
+    const data = await handleResponse(response);
+    return data.publicKey as string;
+  },
+
+  async subscribePush(subscription: { endpoint: string; p256dh: string; auth: string }) {
+    const response = await fetch(
+      `${API_BASE_URL}/api/v1/notifications/push-subscription`,
+      {
+        method: 'POST',
+        headers: await getAuthHeaders(),
+        body: JSON.stringify(subscription),
+      }
+    );
+    return handleResponse(response);
+  },
+
+  async unsubscribePush(subscription: { endpoint: string; p256dh: string; auth: string }) {
+    const response = await fetch(
+      `${API_BASE_URL}/api/v1/notifications/push-subscription`,
+      {
+        method: 'DELETE',
+        headers: await getAuthHeaders(),
+        body: JSON.stringify(subscription),
+      }
+    );
+    return handleResponse(response);
+  },
+
+  getCameraSnapshotUrl(streamId: string): string {
+    return `${API_BASE_URL}/api/v1/deepface/streams/${encodeURIComponent(streamId)}/snapshot`;
+  },
+
+  async probeOnvif(data: {
+    ip: string;
+    port?: number;
+    username?: string;
+    password?: string;
+  }): Promise<{
+    vendor?: string;
+    model?: string;
+    channels?: Array<{ id: string; name: string; rtsp_url: string }>;
+    error?: string;
+    message?: string;
+  }> {
+    const response = await fetch(
+      `${API_BASE_URL}/api/v1/deepface/onvif/probe`,
+      {
+        method: 'POST',
+        headers: await getAuthHeaders(),
+        body: JSON.stringify(data),
+      }
+    );
+    return handleResponse(response);
+  },
+
   async registerFace(entityId: string, file: File) {
     // Do NOT use getAuthHeaders() here — it always sets Content-Type: application/json,
     // which prevents the browser from setting the multipart/form-data boundary that
