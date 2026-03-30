@@ -687,15 +687,21 @@ def _onvif_probe(ip: str, port: int, username: str, password: str, use_https: bo
     """
     Blocking ONVIF discovery using the onvif-zeep library.
 
-    Strategy — tries 4 combinations in order:
-    1. Requested protocol + digest auth (most common)
-    2. Opposite protocol + digest auth (protocol mismatch)
-    3. Requested protocol + plaintext auth (some NVRs reject digest)
-    4. Opposite protocol + plaintext auth
+    Two-level retry strategy:
+    - Outer loop  : auth mode (digest first, then plaintext)
+    - Inner loop  : protocol  (requested first, then opposite)
+
+    Connection errors (OSError) advance the *inner* loop — the same auth
+    might work on the other protocol.
+
+    Auth errors advance the *outer* loop — if the NVR rejects digest even
+    with the correct password, plaintext is tried next. A wrong password
+    will fail in both auth modes, so it costs at most 2 attempts instead
+    of 4, and the user gets a clear "invalid credentials" error quickly.
 
     SSL verification is always disabled for LAN self-signed certs.
-    NOTE: ONVIF WS-Security uses raw (un-encoded) credentials — encoding
-    is only applied to the RTSP URL userinfo component returned by the NVR.
+    NOTE: ONVIF WS-Security credentials are passed raw (not percent-encoded);
+    encoding is only applied to RTSP URL userinfo returned by the NVR.
     """
     try:
         from onvif import ONVIFCamera  # type: ignore
@@ -703,35 +709,33 @@ def _onvif_probe(ip: str, port: int, username: str, password: str, use_https: bo
         raise RuntimeError("onvif-zeep package is not installed — run: pip install onvif-zeep")
 
     last_error: Optional[Exception] = None
-    # 4-combination retry: (protocol, use_digest)
-    attempts = [
-        (use_https, True),
-        (not use_https, True),
-        (use_https, False),
-        (not use_https, False),
-    ]
-    for https, use_digest in attempts:
-        try:
-            result = _onvif_attempt(ip, port, username, password, https, use_digest)
-            result["protocol"] = "https" if https else "http"
-            result["auth_mode"] = "digest" if use_digest else "plaintext"
-            return result
-        except (OSError, ConnectionError) as exc:
-            last_error = exc
-            logger.info(
-                "ONVIF %s/digest=%s attempt failed for %s:%d (connection): %s",
-                "HTTPS" if https else "HTTP", use_digest, ip, port, exc,
-            )
-        except Exception as exc:
-            if _is_auth_error(exc):
+
+    for use_digest in (True, False):
+        # Within each auth mode, try preferred protocol then fall back
+        for https in (use_https, not use_https):
+            try:
+                result = _onvif_attempt(ip, port, username, password, https, use_digest)
+                result["protocol"] = "https" if https else "http"
+                result["auth_mode"] = "digest" if use_digest else "plaintext"
+                return result
+            except (OSError, ConnectionError) as exc:
                 last_error = exc
                 logger.info(
-                    "ONVIF %s/digest=%s attempt failed for %s:%d (auth): %s",
-                    "HTTPS" if https else "HTTP", use_digest, ip, port, exc,
+                    "ONVIF %s/digest=%s failed for %s:%d (connection) — retrying with %s: %s",
+                    "HTTPS" if https else "HTTP", use_digest, ip, port,
+                    "HTTP" if https else "HTTPS", exc,
                 )
-            else:
-                # Unexpected error (bad XML, service unavailable, etc.) — stop immediately
-                raise exc
+                # continue inner loop to try opposite protocol
+            except Exception as exc:
+                if _is_auth_error(exc):
+                    last_error = exc
+                    logger.info(
+                        "ONVIF %s/digest=%s failed for %s:%d (auth) — switching auth mode: %s",
+                        "HTTPS" if https else "HTTP", use_digest, ip, port, exc,
+                    )
+                    break  # stop trying protocols; advance to next auth mode
+                else:
+                    raise  # unexpected error — surface immediately
 
     raise last_error or RuntimeError("ONVIF probe failed on all protocol/auth combinations")
 
