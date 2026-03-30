@@ -802,6 +802,7 @@ export const apiClient = {
     port?: number;
     username?: string;
     password?: string;
+    use_https?: boolean;
   }): Promise<{
     vendor?: string;
     model?: string;

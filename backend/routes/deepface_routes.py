@@ -645,7 +645,7 @@ async def probe_onvif(
     Attempt an ONVIF connection to the given IP camera or NVR.
 
     Request body:
-        { "ip": "192.168.1.64", "port": 80, "username": "admin", "password": "..." }
+        { "ip": "192.168.1.64", "port": 80, "username": "admin", "password": "...", "use_https": false }
 
     Returns on success:
         { "vendor": "Hikvision", "model": "DS-2CD2143G2-I", "channels": [
@@ -659,6 +659,7 @@ async def probe_onvif(
     port = int(body.get("port", 80))
     username = body.get("username", "")
     password = body.get("password", "")
+    use_https = bool(body.get("use_https", False))
 
     if not ip:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="ip is required")
@@ -666,7 +667,7 @@ async def probe_onvif(
     loop = asyncio.get_event_loop()
     try:
         result = await asyncio.wait_for(
-            loop.run_in_executor(None, _onvif_probe, ip, port, username, password),
+            loop.run_in_executor(None, _onvif_probe, ip, port, username, password, use_https),
             timeout=15.0,
         )
         return result
@@ -676,17 +677,19 @@ async def probe_onvif(
         return {"error": "onvif_failed", "message": str(exc)}
 
 
-def _onvif_probe(ip: str, port: int, username: str, password: str) -> Dict[str, Any]:
+def _onvif_probe(ip: str, port: int, username: str, password: str, use_https: bool = False) -> Dict[str, Any]:
     """
-    Blocking ONVIF discovery using the onvif2 library.
+    Blocking ONVIF discovery using the onvif-zeep library.
     Fetches device info and all media profile stream URIs.
+    Pass use_https=True for NVRs that enforce HTTPS on the ONVIF management port.
     """
     try:
         from onvif import ONVIFCamera  # type: ignore
     except ImportError:
-        raise RuntimeError("onvif2 package is not installed — run: pip install onvif2")
+        raise RuntimeError("onvif-zeep package is not installed — run: pip install onvif-zeep")
 
-    cam = ONVIFCamera(ip, port, username, password)
+    # encrypt=True → HTTPS, encrypt=False → HTTP
+    cam = ONVIFCamera(ip, port, username, password, encrypt=use_https)
     cam.update_xaddrs()
 
     # Device info

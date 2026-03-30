@@ -56,15 +56,15 @@ type NvrDiscoveryState = 'idle' | 'probing' | 'success' | 'failed';
 // Vendor RTSP URL templates
 const VENDOR_TEMPLATES: Record<string, (ip: string, user: string, pass: string, ch: number) => string> = {
   hikvision: (ip, u, p, ch) =>
-    `rtsp://${u}:${p}@${ip}/Streaming/Channels/${ch}01`,
+    `rtsp://${encodeURIComponent(u)}:${encodeURIComponent(p)}@${ip}/Streaming/Channels/${ch}01`,
   dahua: (ip, u, p, ch) =>
-    `rtsp://${u}:${p}@${ip}/cam/realmonitor?channel=${ch}&subtype=0`,
+    `rtsp://${encodeURIComponent(u)}:${encodeURIComponent(p)}@${ip}/cam/realmonitor?channel=${ch}&subtype=0`,
   reolink: (ip, u, p, ch) =>
-    `rtsp://${u}:${p}@${ip}/h264Preview_0${String(ch).padStart(2, '0')}_main`,
+    `rtsp://${encodeURIComponent(u)}:${encodeURIComponent(p)}@${ip}/h264Preview_0${String(ch).padStart(2, '0')}_main`,
   axis: (ip, u, p, _ch) =>
-    `rtsp://${u}:${p}@${ip}/axis-media/media.amp?videocodec=h264`,
+    `rtsp://${encodeURIComponent(u)}:${encodeURIComponent(p)}@${ip}/axis-media/media.amp?videocodec=h264`,
   generic: (ip, u, p, ch) =>
-    `rtsp://${u}:${p}@${ip}:554/stream${ch}`,
+    `rtsp://${encodeURIComponent(u)}:${encodeURIComponent(p)}@${ip}:554/stream${ch}`,
 };
 
 // ─── Status badge ─────────────────────────────────────────────────────────────
@@ -201,7 +201,7 @@ function ConfirmForm({ prefillRtspUrl = '', onSubmit, onBack, submitting }: Conf
 
 // ─── Main page ────────────────────────────────────────────────────────────────
 
-const EMPTY_NVR = { ip: '', port: '80', username: '', password: '' };
+const EMPTY_NVR = { ip: '', port: '80', username: '', password: '', useHttps: false };
 
 export default function CamerasPageContent() {
   const { data: session, isPending } = useSession();
@@ -327,6 +327,7 @@ export default function CamerasPageContent() {
         port: parseInt(nvrForm.port) || 80,
         username: nvrForm.username,
         password: nvrForm.password,
+        use_https: nvrForm.useHttps,
       });
       if (result.error) {
         setNvrDiscovery('failed');
@@ -622,11 +623,23 @@ export default function CamerasPageContent() {
                     <label className="text-xs text-gray-400">Port</label>
                     <Input
                       value={nvrForm.port}
-                      onChange={(e) => setNvrForm((f) => ({ ...f, port: e.target.value }))}
+                      onChange={(e) => {
+                        const port = e.target.value;
+                        // Auto-suggest HTTPS for standard HTTPS ports
+                        const autoHttps = port === '443' || port === '8443';
+                        setNvrForm((f) => ({ ...f, port, useHttps: autoHttps }));
+                      }}
                       placeholder="80"
                       className="bg-[#1a1a24] border-gray-700 text-white placeholder:text-gray-600"
                     />
                   </div>
+                </div>
+                <div className="flex items-center justify-between rounded-lg border border-gray-800 bg-[#1a1a24] px-3 py-2">
+                  <div>
+                    <p className="text-sm text-white">Use HTTPS</p>
+                    <p className="text-xs text-gray-500">Enable for NVRs that enforce HTTPS on the ONVIF port</p>
+                  </div>
+                  <Toggle value={nvrForm.useHttps} onChange={(v) => setNvrForm((f) => ({ ...f, useHttps: v }))} />
                 </div>
                 <div className="grid grid-cols-2 gap-2">
                   <div className="space-y-1">
