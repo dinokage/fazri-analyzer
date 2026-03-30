@@ -677,16 +677,25 @@ async def probe_onvif(
         return {"error": "onvif_failed", "message": str(exc)}
 
 
+def _is_auth_error(exc: Exception) -> bool:
+    """Return True when the exception indicates an authentication rejection."""
+    msg = str(exc).lower()
+    return any(k in msg for k in ("not authorized", "sender not authorized", "failedauthentication", "unauthorized", "access denied"))
+
+
 def _onvif_probe(ip: str, port: int, username: str, password: str, use_https: bool = False) -> Dict[str, Any]:
     """
     Blocking ONVIF discovery using the onvif-zeep library.
 
-    Strategy:
-    1. Try the requested protocol (HTTP or HTTPS).
-    2. If a connection-level error occurs (reset, refused, SSL), automatically
-       retry with the opposite protocol.
-    3. SSL certificate verification is always disabled — NVRs on LANs
-       universally use self-signed certificates.
+    Strategy — tries 4 combinations in order:
+    1. Requested protocol + digest auth (most common)
+    2. Opposite protocol + digest auth (protocol mismatch)
+    3. Requested protocol + plaintext auth (some NVRs reject digest)
+    4. Opposite protocol + plaintext auth
+
+    SSL verification is always disabled for LAN self-signed certs.
+    NOTE: ONVIF WS-Security uses raw (un-encoded) credentials — encoding
+    is only applied to the RTSP URL userinfo component returned by the NVR.
     """
     try:
         from onvif import ONVIFCamera  # type: ignore
@@ -694,34 +703,51 @@ def _onvif_probe(ip: str, port: int, username: str, password: str, use_https: bo
         raise RuntimeError("onvif-zeep package is not installed — run: pip install onvif-zeep")
 
     last_error: Optional[Exception] = None
-    # Try requested protocol first, then fall back to the opposite
-    for https in (use_https, not use_https):
+    # 4-combination retry: (protocol, use_digest)
+    attempts = [
+        (use_https, True),
+        (not use_https, True),
+        (use_https, False),
+        (not use_https, False),
+    ]
+    for https, use_digest in attempts:
         try:
-            result = _onvif_attempt(ip, port, username, password, https)
+            result = _onvif_attempt(ip, port, username, password, https, use_digest)
             result["protocol"] = "https" if https else "http"
+            result["auth_mode"] = "digest" if use_digest else "plaintext"
             return result
         except (OSError, ConnectionError) as exc:
             last_error = exc
             logger.info(
-                "ONVIF %s attempt failed for %s:%d — retrying with %s: %s",
-                "HTTPS" if https else "HTTP", ip, port,
-                "HTTP" if https else "HTTPS", exc,
+                "ONVIF %s/digest=%s attempt failed for %s:%d (connection): %s",
+                "HTTPS" if https else "HTTP", use_digest, ip, port, exc,
             )
-            continue
         except Exception as exc:
-            # Non-connection errors (auth failure, bad XML, etc.) — don't retry
-            raise exc
+            if _is_auth_error(exc):
+                last_error = exc
+                logger.info(
+                    "ONVIF %s/digest=%s attempt failed for %s:%d (auth): %s",
+                    "HTTPS" if https else "HTTP", use_digest, ip, port, exc,
+                )
+            else:
+                # Unexpected error (bad XML, service unavailable, etc.) — stop immediately
+                raise exc
 
-    raise last_error or RuntimeError("ONVIF probe failed on both HTTP and HTTPS")
+    raise last_error or RuntimeError("ONVIF probe failed on all protocol/auth combinations")
 
 
-def _onvif_attempt(ip: str, port: int, username: str, password: str, use_https: bool) -> Dict[str, Any]:
+def _onvif_attempt(ip: str, port: int, username: str, password: str, use_https: bool, use_digest: bool = True) -> Dict[str, Any]:
     """
     Single ONVIF connection attempt.
-    Patches requests.Session to disable SSL verification for the duration
-    of this call so self-signed NVR certificates are accepted.
+
+    Patches:
+    - requests.Session to disable SSL verification (self-signed NVR certs)
+    - zeep.wsse.UsernameToken to use plaintext auth when use_digest=False
+      (some NVRs send "sender not authorized" when digest is used)
+
+    IMPORTANT: ONVIF WS-Security credentials are passed raw (not percent-encoded).
+    Percent-encoding only applies to credentials embedded in RTSP URL userinfo.
     """
-    import contextlib
     import requests
     import urllib3
     from onvif import ONVIFCamera  # type: ignore
@@ -737,6 +763,24 @@ def _onvif_attempt(ip: str, port: int, username: str, password: str, use_https: 
         self.verify = False
 
     requests.Session.__init__ = _patched_init  # type: ignore[method-assign]
+
+    # Optionally patch zeep's UsernameToken to force plaintext auth
+    original_token_class = None
+    if not use_digest:
+        try:
+            import zeep.wsse  # type: ignore
+
+            original_token_class = zeep.wsse.UsernameToken
+
+            class _PlaintextToken(zeep.wsse.UsernameToken):
+                def __init__(self, *args, **kwargs):
+                    kwargs["use_digest"] = False
+                    super().__init__(*args, **kwargs)
+
+            zeep.wsse.UsernameToken = _PlaintextToken  # type: ignore[attr-defined]
+        except Exception:
+            pass  # zeep not available yet; ONVIFCamera import will fail anyway
+
     try:
         cam = ONVIFCamera(ip, port, username, password, encrypt=use_https)
         cam.update_xaddrs()
@@ -778,6 +822,12 @@ def _onvif_attempt(ip: str, port: int, username: str, password: str, use_https: 
         return {"vendor": vendor, "model": model, "channels": channels}
     finally:
         requests.Session.__init__ = original_init  # type: ignore[method-assign]
+        if original_token_class is not None:
+            try:
+                import zeep.wsse  # type: ignore
+                zeep.wsse.UsernameToken = original_token_class  # type: ignore[attr-defined]
+            except Exception:
+                pass
 
 
 # ============================================================================
