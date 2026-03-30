@@ -1,0 +1,706 @@
+"""
+DeepFace Integration Routes.
+
+Endpoints:
+  POST   /api/v1/deepface/webhook                              — Receive face-match events from DeepFace server (no auth)
+  POST   /api/v1/deepface/streams                              — Register and start a camera stream (admin)
+  GET    /api/v1/deepface/streams                              — List all camera streams (staff)
+  PATCH  /api/v1/deepface/streams/{stream_id}                  — Update stream config (admin)
+  DELETE /api/v1/deepface/streams/{stream_id}                  — Stop and remove a stream (admin)
+  POST   /api/v1/deepface/entities/{entity_id}/register        — Register face photo (admin)
+  GET    /api/v1/deepface/entities/{entity_id}/registration    — Check face registration status (staff)
+  POST   /api/v1/deepface/search                               — Ad-hoc face search (staff)
+  POST   /api/v1/deepface/index/build                          — Rebuild ANN index (admin)
+"""
+
+from __future__ import annotations
+
+import hashlib
+import hmac
+import logging
+import time
+import psycopg2
+from datetime import datetime, timezone
+from typing import Any, Dict, List, Optional
+from uuid import UUID
+
+from fastapi import APIRouter, Depends, HTTPException, Request, UploadFile, File, status
+from sqlalchemy.orm import Session
+
+from auth.dependencies import require_staff, require_admin
+from auth.models import AuthenticatedUser
+from config import settings
+from database.connection import get_db
+from models.db.camera_streams import CameraStream, CameraStreamStatus
+from models.db.alerts import AlertSeverity, ActorType
+from models.schemas.alerts import AlertCreate, AlertSeverityEnum, LocationSchema
+from models.schemas.deepface import (
+    FaceRegistrationResponse,
+    FaceSearchResponse,
+    FaceSearchResult,
+    StreamCreateRequest,
+    StreamListResponse,
+    StreamResponse,
+    StreamUpdateRequest,
+    WebhookPayload,
+    WebhookProcessedResponse,
+)
+from services.deepface_client import get_deepface_client
+from services.cctv_graph_service import get_cctv_graph_service
+from services.deepface_anomaly import DeepFaceAnomalyAnalyzer
+from services.alerts.alert_service import AlertService
+from services.alerts.assignment_engine import AssignmentEngine
+
+logger = logging.getLogger(__name__)
+
+router = APIRouter(prefix="/api/v1/deepface", tags=["deepface"])
+
+
+# ============================================================================
+# Helpers
+# ============================================================================
+
+
+def _verify_webhook_signature(raw_body: bytes, signature_header: Optional[str]) -> None:
+    """
+    Validate the HMAC-SHA256 signature on the incoming webhook.
+
+    The DeepFace server must set X-DeepFace-Signature to
+    "sha256=<hex_digest>" computed over the raw request body.
+
+    Raises HTTP 403 when verification fails.
+    Skips verification entirely when DEEPFACE_WEBHOOK_SECRET is empty
+    (development convenience — never leave empty in production).
+    """
+    secret = settings.DEEPFACE_WEBHOOK_SECRET
+    if not secret:
+        return  # Dev mode — skip
+
+    if not signature_header:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Missing X-DeepFace-Signature header",
+        )
+
+    # Expected format: "sha256=<hex>"
+    parts = signature_header.split("=", 1)
+    if len(parts) != 2 or parts[0] != "sha256":
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Invalid signature format (expected sha256=<hex>)",
+        )
+
+    expected = hmac.new(
+        secret.encode(),
+        raw_body,
+        hashlib.sha256,
+    ).hexdigest()
+
+    if not hmac.compare_digest(expected, parts[1]):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Webhook signature mismatch",
+        )
+
+
+def _create_alert_from_anomaly(
+    anomaly: Dict[str, Any],
+    entity: Optional[Dict[str, Any]],
+    zone_id: str,
+    match_data: Optional[Dict[str, Any]],
+    payload: WebhookPayload,
+    db: Session,
+) -> None:
+    """
+    Translate an anomaly dict into an Alert record and auto-assign it.
+
+    Mirrors the two-step pattern from alert_routes.py lines 118-143:
+      1. AlertService.create_alert()
+      2. AssignmentEngine.assign_alert() or assign_critical_alert()
+    """
+    severity_map = {
+        "low": AlertSeverityEnum.LOW,
+        "medium": AlertSeverityEnum.MEDIUM,
+        "high": AlertSeverityEnum.HIGH,
+        "critical": AlertSeverityEnum.CRITICAL,
+    }
+    severity = severity_map.get(anomaly.get("severity", "medium"), AlertSeverityEnum.MEDIUM)
+
+    affected = [entity["entity_id"]] if entity else []
+
+    evidence: Dict[str, Any] = {
+        "face_recognition": {
+            "stream_id": payload.stream_id,
+            "timestamp": payload.timestamp.isoformat(),
+            "frames_processed": payload.frames_processed,
+            "rtsp_url": payload.rtsp_url,
+        },
+        "cctv_frames": {
+            "stream_id": payload.stream_id,
+            "faces_found": payload.faces_found,
+        },
+        "anomaly_details": anomaly.get("details", {}),
+    }
+
+    if match_data:
+        evidence["face_recognition"].update({
+            "distance": match_data.get("distance"),
+            "confidence": match_data.get("confidence"),
+            "threshold": match_data.get("threshold"),
+            "facial_area": match_data.get("facial_area"),
+        })
+
+    alert_data = AlertCreate(
+        anomaly_type=anomaly["anomaly_type"],
+        title=f"Face Recognition Alert: {anomaly['anomaly_type'].replace('_', ' ').title()}",
+        description=anomaly["description"],
+        severity=severity,
+        location=LocationSchema(zone_id=zone_id),
+        affected_entities=affected,
+        data_sources=["CCTV"],
+        evidence=evidence,
+        is_mock=False,
+    )
+
+    alert_service = AlertService(db)
+    alert = alert_service.create_alert(
+        alert_data=alert_data,
+        actor_type=ActorType.SYSTEM,
+    )
+
+    assignment_engine = AssignmentEngine(db)
+    if alert.severity == AlertSeverity.CRITICAL:
+        assigned = assignment_engine.assign_critical_alert(alert, max_assignees=3)
+        if assigned:
+            logger.info(
+                "Critical deepface alert %s auto-assigned to %d staff",
+                alert.id,
+                len(assigned),
+            )
+    else:
+        assigned = assignment_engine.assign_alert(alert)
+        if assigned:
+            logger.info(
+                "Deepface alert %s auto-assigned to %s",
+                alert.id,
+                assigned.name,
+            )
+
+    db.refresh(alert)
+
+
+def _stream_to_response(stream: CameraStream) -> StreamResponse:
+    return StreamResponse.model_validate(stream)
+
+
+# ============================================================================
+# Webhook receiver
+# ============================================================================
+
+
+@router.post(
+    "/webhook",
+    response_model=WebhookProcessedResponse,
+    summary="Receive face-match events from DeepFace server",
+    description=(
+        "Called automatically by the DeepFace server when a face is matched "
+        "in an active RTSP stream. No authentication required — secured via "
+        "HMAC-SHA256 signature (X-DeepFace-Signature header)."
+    ),
+)
+async def deepface_webhook(
+    request: Request,
+    db: Session = Depends(get_db),
+) -> WebhookProcessedResponse:
+    """
+    Core integration endpoint.
+
+    For each face match in the payload:
+      1. Validate HMAC signature
+      2. Look up CameraStream config (zone_id, alert_on_unknown_face)
+      3. Resolve entity from Neo4j by img_name (= entity_id)
+      4. Write DETECTED_IN edge to Neo4j
+      5. Run anomaly rules
+      6. Create alert + auto-assign if anomaly detected
+    """
+    # Read raw body first (needed for signature verification)
+    raw_body = await request.body()
+    sig_header = request.headers.get("X-DeepFace-Signature")
+    _verify_webhook_signature(raw_body, sig_header)
+
+    # Parse payload (Pydantic does not consume the body stream so we pass raw)
+    import json as _json
+    try:
+        payload_dict = _json.loads(raw_body)
+        payload = WebhookPayload(**payload_dict)
+    except Exception as exc:
+        logger.warning("DeepFace webhook: failed to parse payload: %s", exc)
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail=f"Invalid webhook payload: {exc}",
+        )
+
+    # Look up camera stream config
+    cam_stream: Optional[CameraStream] = (
+        db.query(CameraStream)
+        .filter(CameraStream.stream_id == payload.stream_id)
+        .first()
+    )
+
+    if cam_stream is None:
+        # Unknown stream — log and accept (don't 404, DeepFace would keep retrying)
+        logger.warning(
+            "Webhook received for unknown stream_id=%s — ignoring",
+            payload.stream_id,
+        )
+        return WebhookProcessedResponse(status="ok", processed=0, alerts_created=0)
+
+    zone_id = cam_stream.zone_id
+    alert_on_unknown_face = cam_stream.alert_on_unknown_face
+
+    graph_svc = get_cctv_graph_service()
+    alerts_created = 0
+    processed = 0
+
+    for match in payload.matches:
+        entity_id = match.img_name
+        match_dict = match.model_dump()
+
+        # Resolve entity from Neo4j
+        entity = graph_svc.get_entity_by_entity_id(entity_id)
+
+        # Write detection event to Neo4j
+        if entity is not None:
+            graph_svc.create_detected_in(
+                entity_id=entity_id,
+                zone_id=zone_id,
+                timestamp=payload.timestamp,
+                stream_id=payload.stream_id,
+                face_id=entity.get("face_id", entity_id),
+            )
+        else:
+            # Log unknown face event
+            graph_svc.create_unknown_detected_in(
+                zone_id=zone_id,
+                timestamp=payload.timestamp,
+                stream_id=payload.stream_id,
+            )
+
+        # Gather data for anomaly analysis
+        recent_detections: List[Dict[str, Any]] = []
+        authorized_zones: List[str] = []
+
+        if entity is not None:
+            recent_detections = graph_svc.get_recent_detections(
+                entity_id=entity_id,
+                minutes=settings.DEEPFACE_IMPOSSIBLE_TRAVEL_MINUTES * 2,
+            )
+            authorized_zones = graph_svc.get_authorized_zones(entity_id)
+
+        # Run anomaly rules
+        anomaly = DeepFaceAnomalyAnalyzer.analyze(
+            match=match_dict,
+            entity=entity,
+            zone_id=zone_id,
+            authorized_zones=authorized_zones,
+            recent_detections=recent_detections,
+            alert_on_unknown_face=alert_on_unknown_face,
+        )
+
+        if anomaly and settings.ALERT_SYSTEM_ENABLED:
+            try:
+                _create_alert_from_anomaly(
+                    anomaly=anomaly,
+                    entity=entity,
+                    zone_id=zone_id,
+                    match_data=match_dict,
+                    payload=payload,
+                    db=db,
+                )
+                alerts_created += 1
+            except Exception as exc:
+                logger.error(
+                    "Failed to create alert for anomaly %s: %s",
+                    anomaly.get("anomaly_type"),
+                    exc,
+                    exc_info=True,
+                )
+
+        processed += 1
+
+    # Update last_event_at on the camera stream record
+    cam_stream.last_event_at = datetime.now(timezone.utc)
+    db.commit()
+
+    return WebhookProcessedResponse(
+        status="ok",
+        processed=processed,
+        alerts_created=alerts_created,
+    )
+
+
+# ============================================================================
+# Stream management
+# ============================================================================
+
+
+@router.post(
+    "/streams",
+    response_model=StreamResponse,
+    status_code=status.HTTP_201_CREATED,
+    summary="Register and start a new camera stream",
+)
+async def create_stream(
+    body: StreamCreateRequest,
+    request: Request,
+    db: Session = Depends(get_db),
+    current_user: AuthenticatedUser = Depends(require_admin()),
+) -> StreamResponse:
+    """
+    Create a CameraStream DB record, then instruct the DeepFace server to
+    start monitoring the RTSP URL.  The webhook URL is constructed from the
+    current request's base URL so it works in both local dev and production.
+    """
+    # Check uniqueness
+    existing = (
+        db.query(CameraStream)
+        .filter(CameraStream.stream_id == body.stream_id)
+        .first()
+    )
+    if existing:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail=f"Stream with stream_id='{body.stream_id}' already exists",
+        )
+
+    # Build the webhook URL pointing back at ourselves
+    base = str(request.base_url).rstrip("/")
+    webhook_url = f"{base}/api/v1/deepface/webhook"
+
+    # Tell DeepFace server to start monitoring
+    deepface_client = get_deepface_client()
+    deepface_stream_id: Optional[str] = None
+    error_msg: Optional[str] = None
+    stream_status = CameraStreamStatus.ACTIVE
+
+    try:
+        df_response = await deepface_client.start_stream(
+            stream_id=body.stream_id,
+            rtsp_url=body.rtsp_url,
+            webhook_url=webhook_url,
+        )
+        deepface_stream_id = df_response.get("stream_id", body.stream_id)
+        logger.info(
+            "DeepFace stream started: stream_id=%s deepface_stream_id=%s",
+            body.stream_id,
+            deepface_stream_id,
+        )
+    except Exception as exc:
+        logger.error("Failed to start DeepFace stream %s: %s", body.stream_id, exc)
+        stream_status = CameraStreamStatus.ERROR
+        error_msg = str(exc)
+
+    # Persist to DB regardless (admin may fix stream later)
+    cam_stream = CameraStream(
+        stream_id=body.stream_id,
+        rtsp_url=body.rtsp_url,
+        zone_id=body.zone_id,
+        building=body.building,
+        floor=body.floor,
+        alert_on_unknown_face=body.alert_on_unknown_face,
+        status=stream_status,
+        deepface_stream_id=deepface_stream_id,
+        created_by=current_user.entity_id or current_user.email,
+        error_message=error_msg,
+    )
+    db.add(cam_stream)
+    db.commit()
+    db.refresh(cam_stream)
+
+    return _stream_to_response(cam_stream)
+
+
+@router.get(
+    "/streams",
+    response_model=StreamListResponse,
+    summary="List all registered camera streams",
+)
+async def list_streams(
+    db: Session = Depends(get_db),
+    current_user: AuthenticatedUser = Depends(require_staff()),
+) -> StreamListResponse:
+    """Return all camera streams ordered by creation time."""
+    streams = db.query(CameraStream).order_by(CameraStream.created_at).all()
+    return StreamListResponse(
+        streams=[_stream_to_response(s) for s in streams],
+        total=len(streams),
+    )
+
+
+@router.patch(
+    "/streams/{stream_id}",
+    response_model=StreamResponse,
+    summary="Update camera stream configuration",
+)
+async def update_stream(
+    stream_id: str,
+    body: StreamUpdateRequest,
+    db: Session = Depends(get_db),
+    current_user: AuthenticatedUser = Depends(require_admin()),
+) -> StreamResponse:
+    """Update mutable fields on a camera stream (zone_id, floor, alert config)."""
+    cam_stream = (
+        db.query(CameraStream)
+        .filter(CameraStream.stream_id == stream_id)
+        .first()
+    )
+    if cam_stream is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Stream '{stream_id}' not found",
+        )
+
+    if body.zone_id is not None:
+        cam_stream.zone_id = body.zone_id
+    if body.building is not None:
+        cam_stream.building = body.building
+    if body.floor is not None:
+        cam_stream.floor = body.floor
+    if body.alert_on_unknown_face is not None:
+        cam_stream.alert_on_unknown_face = body.alert_on_unknown_face
+
+    db.commit()
+    db.refresh(cam_stream)
+    return _stream_to_response(cam_stream)
+
+
+@router.delete(
+    "/streams/{stream_id}",
+    status_code=status.HTTP_204_NO_CONTENT,
+    summary="Stop and remove a camera stream",
+)
+async def delete_stream(
+    stream_id: str,
+    db: Session = Depends(get_db),
+    current_user: AuthenticatedUser = Depends(require_admin()),
+) -> None:
+    """Stop DeepFace monitoring for this stream and remove the DB record."""
+    cam_stream = (
+        db.query(CameraStream)
+        .filter(CameraStream.stream_id == stream_id)
+        .first()
+    )
+    if cam_stream is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Stream '{stream_id}' not found",
+        )
+
+    # Tell DeepFace server to stop
+    if cam_stream.status == CameraStreamStatus.ACTIVE:
+        deepface_client = get_deepface_client()
+        try:
+            df_id = cam_stream.deepface_stream_id or stream_id
+            await deepface_client.stop_stream(df_id)
+        except Exception as exc:
+            logger.warning(
+                "Could not stop DeepFace stream %s (continuing with DB delete): %s",
+                stream_id,
+                exc,
+            )
+
+    db.delete(cam_stream)
+    db.commit()
+
+
+# ============================================================================
+# Face registration
+# ============================================================================
+
+
+@router.get(
+    "/entities/{entity_id}/registration",
+    summary="Check face registration status for an entity",
+)
+async def get_entity_registration_status(
+    entity_id: str,
+    current_user: AuthenticatedUser = Depends(require_staff()),
+) -> Dict[str, Any]:
+    """
+    Query the DeepFace pgvector DB for face embeddings where img_name = entity_id.
+
+    Returns:
+        {
+            "entity_id": str,
+            "registered": bool,
+            "face_count": int,
+            "registered_at": ISO-8601 string | null
+        }
+
+    Returns registered=False (not an error) if the DeepFace DB is unreachable or
+    the table does not exist yet — frontend should handle this gracefully.
+    """
+    try:
+        conn = psycopg2.connect(settings.DEEPFACE_POSTGRES_URI)
+        with conn:
+            with conn.cursor() as cur:
+                cur.execute(
+                    "SELECT COUNT(*), MIN(created_at) FROM face_embeddings WHERE img_name = %s",
+                    (entity_id,),
+                )
+                row = cur.fetchone()
+                count = int(row[0]) if row else 0
+                registered_at = row[1].isoformat() if (row and row[1]) else None
+        return {
+            "entity_id": entity_id,
+            "registered": count > 0,
+            "face_count": count,
+            "registered_at": registered_at,
+        }
+    except Exception as exc:
+        logger.warning(
+            "Face registration status query failed for entity_id=%s: %s", entity_id, exc
+        )
+        return {
+            "entity_id": entity_id,
+            "registered": False,
+            "face_count": 0,
+            "registered_at": None,
+        }
+
+
+@router.post(
+    "/entities/{entity_id}/register",
+    response_model=FaceRegistrationResponse,
+    summary="Register a face photo for an entity",
+)
+async def register_face(
+    entity_id: str,
+    image: UploadFile = File(..., description="Face photo (JPEG or PNG)"),
+    current_user: AuthenticatedUser = Depends(require_admin()),
+) -> FaceRegistrationResponse:
+    """
+    Upload a face photo for the given entity_id and register it in the
+    DeepFace embedding database using entity_id as the img_name label.
+
+    After this call succeeds, update the user's face_id field via the auth
+    service API (fazri-analyzer does not own the Prisma auth DB directly).
+    """
+    image_data = await image.read()
+    if not image_data:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Uploaded image is empty",
+        )
+
+    deepface_client = get_deepface_client()
+    try:
+        result = await deepface_client.register_face(
+            entity_id=entity_id,
+            image_data=image_data,
+            content_type=image.content_type or "image/jpeg",
+        )
+        logger.info("Face registered for entity_id=%s: %s", entity_id, result)
+        return FaceRegistrationResponse(
+            entity_id=entity_id,
+            registered=True,
+            message=f"Face successfully registered for entity '{entity_id}'",
+        )
+    except Exception as exc:
+        logger.error("Face registration failed for entity_id=%s: %s", entity_id, exc)
+        raise HTTPException(
+            status_code=status.HTTP_502_BAD_GATEWAY,
+            detail=f"DeepFace server registration failed: {exc}",
+        )
+
+
+# ============================================================================
+# Manual face search
+# ============================================================================
+
+
+@router.post(
+    "/search",
+    response_model=FaceSearchResponse,
+    summary="Search for matching faces from an uploaded query image",
+)
+async def search_face(
+    image: UploadFile = File(..., description="Query face image (JPEG or PNG)"),
+    current_user: AuthenticatedUser = Depends(require_staff()),
+) -> FaceSearchResponse:
+    """
+    Upload a query face image and return all matching entities enriched with
+    their campus entity data from Neo4j.
+    """
+    image_data = await image.read()
+    if not image_data:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Uploaded image is empty",
+        )
+
+    t_start = time.monotonic()
+    deepface_client = get_deepface_client()
+
+    try:
+        raw_matches = await deepface_client.search_face(
+            image_data=image_data,
+            content_type=image.content_type or "image/jpeg",
+        )
+    except Exception as exc:
+        logger.error("Face search failed: %s", exc)
+        raise HTTPException(
+            status_code=status.HTTP_502_BAD_GATEWAY,
+            detail=f"DeepFace server search failed: {exc}",
+        )
+
+    query_ms = (time.monotonic() - t_start) * 1000
+    graph_svc = get_cctv_graph_service()
+    results: List[FaceSearchResult] = []
+
+    for m in raw_matches:
+        entity_id = m.get("img_name")
+        entity = graph_svc.get_entity_by_entity_id(entity_id) if entity_id else None
+        results.append(
+            FaceSearchResult(
+                img_name=entity_id or "unknown",
+                entity_id=entity_id,
+                entity_name=entity.get("name") if entity else None,
+                entity_role=entity.get("role") if entity else None,
+                entity_department=entity.get("department") if entity else None,
+                distance=m.get("distance", 1.0),
+                confidence=m.get("confidence", 0.0),
+                threshold=m.get("threshold", settings.DEEPFACE_CONFIDENCE_THRESHOLD),
+            )
+        )
+
+    return FaceSearchResponse(results=results, query_time_ms=round(query_ms, 2))
+
+
+# ============================================================================
+# Index management
+# ============================================================================
+
+
+@router.post(
+    "/index/build",
+    summary="Trigger DeepFace ANN index rebuild",
+)
+async def build_index(
+    current_user: AuthenticatedUser = Depends(require_admin()),
+) -> Dict[str, Any]:
+    """
+    Tell the DeepFace server to rebuild its approximate-nearest-neighbour
+    search index.  Call after registering a batch of new faces.
+    """
+    deepface_client = get_deepface_client()
+    try:
+        result = await deepface_client.build_index()
+        logger.info("DeepFace index rebuilt: %s", result)
+        return {"status": "ok", "deepface_response": result}
+    except Exception as exc:
+        logger.error("Index rebuild failed: %s", exc)
+        raise HTTPException(
+            status_code=status.HTTP_502_BAD_GATEWAY,
+            detail=f"DeepFace index rebuild failed: {exc}",
+        )

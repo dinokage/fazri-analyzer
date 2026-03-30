@@ -133,6 +133,26 @@ class Settings(BaseSettings):
     DATABASE_POOL_TIMEOUT: int = 30
     DATABASE_POOL_RECYCLE: int = 3600
 
+    # =========================================================================
+    # DeepFace Integration
+    # =========================================================================
+
+    DEEPFACE_ENABLED: bool = True
+    # URL of the DeepFace server (container-to-container: http://deepface-server:8000)
+    DEEPFACE_SERVER_URL: str = "http://deepface-server:8000"
+    # HMAC-SHA256 secret for webhook signature validation; empty = skip (dev only)
+    DEEPFACE_WEBHOOK_SECRET: str = ""
+    # Face distance threshold: 0.0 = identical, >0.40 = no match (ArcFace default)
+    DEEPFACE_CONFIDENCE_THRESHOLD: float = 0.40
+    # Distance above which to flag a "low confidence" anomaly even if within threshold
+    DEEPFACE_LOW_CONFIDENCE_DISTANCE: float = 0.35
+    # How long in minutes before a second detection in a different zone is "impossible travel"
+    DEEPFACE_IMPOSSIBLE_TRAVEL_MINUTES: int = 5
+    # Interval for batch sync from DeepFace pgvector DB (seconds); 0 = disabled
+    DEEPFACE_BATCH_SYNC_INTERVAL_SECONDS: int = 300
+    # Connection string to the DeepFace pgvector Postgres DB (for batch sync)
+    DEEPFACE_POSTGRES_URI: str = "postgresql://deepface:deepface@deepface-postgres:5432/deepface"
+
     model_config = ConfigDict(
         env_file=".env",
         env_file_encoding='utf-8',

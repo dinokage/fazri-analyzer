@@ -123,6 +123,8 @@ logger = logging.getLogger(__name__)
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     """Application lifespan handler for startup/shutdown events"""
+    import asyncio
+
     # Startup
     logger.info("Starting Fazri Analyzer API...")
 
@@ -135,9 +137,30 @@ async def lifespan(app: FastAPI):
         except Exception as e:
             logger.error(f"Failed to initialize alert system: {e}")
 
+    # Start DeepFace batch sync background task if enabled
+    _batch_sync_task = None
+    if settings.DEEPFACE_ENABLED and settings.DEEPFACE_BATCH_SYNC_INTERVAL_SECONDS > 0:
+        try:
+            from services.deepface_batch_sync import DeepFaceBatchSync
+            _batch_sync = DeepFaceBatchSync()
+            _batch_sync_task = asyncio.create_task(_batch_sync.run_forever())
+            logger.info(
+                "DeepFace batch sync started (interval=%ds)",
+                settings.DEEPFACE_BATCH_SYNC_INTERVAL_SECONDS,
+            )
+        except Exception as e:
+            logger.error(f"Failed to start DeepFace batch sync: {e}")
+
     yield
 
-    # Shutdown
+    # Shutdown — cancel the batch sync task cleanly
+    if _batch_sync_task and not _batch_sync_task.done():
+        _batch_sync_task.cancel()
+        try:
+            await _batch_sync_task
+        except asyncio.CancelledError:
+            pass
+
     logger.info("Shutting down Fazri Analyzer API...")
 
 
@@ -239,6 +262,12 @@ if settings.ALERT_SYSTEM_ENABLED:
     app.include_router(notification_router)
     app.include_router(demo_router)
     logger.info("Alert system routes registered")
+
+# Include DeepFace integration routes
+if settings.DEEPFACE_ENABLED:
+    from routes.deepface_routes import router as deepface_router
+    app.include_router(deepface_router)
+    logger.info("DeepFace integration routes registered")
 
 @app.get("/")
 async def root():

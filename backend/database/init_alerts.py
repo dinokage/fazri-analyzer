@@ -31,6 +31,7 @@ def create_tables():
 
     # Import models to register them with Base
     from models.db import alerts  # noqa: F401
+    from models.db import camera_streams  # noqa: F401
 
     Base.metadata.create_all(bind=engine)
     logger.info("Alert system tables created successfully")
