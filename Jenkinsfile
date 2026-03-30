@@ -370,7 +370,7 @@ pipeline {
 
         // ─────────────────────────────────────────────────────────────────────
         stage('Sentry Release') {
-            when { expression { env.BUILD_BACKEND == 'true' || env.BUILD_AUTH == 'true' } }
+            when { expression { env.BUILD_BACKEND == 'true' || env.BUILD_AUTH == 'true' || env.BUILD_DEEPFACE == 'true' } }
             steps {
                 sh """
                     if command -v sentry-cli > /dev/null 2>&1; then
@@ -418,6 +418,26 @@ pipeline {
                                 --org rayzrsole --project fazri-auth
 
                             echo "✓ Sentry release (auth): \$RELEASE_VERSION (${DEPLOY_ENV})"
+                        """
+                    }
+                    if (env.BUILD_DEEPFACE == 'true') {
+                        sh """
+                            RELEASE_VERSION="fazri-deepface-server@${env.GIT_COMMIT}"
+
+                            sentry-cli releases new "\$RELEASE_VERSION" \
+                                --org rayzrsole --project fazri-deepface || true
+
+                            sentry-cli releases set-commits "\$RELEASE_VERSION" --auto \
+                                --org rayzrsole --project fazri-deepface || true
+
+                            sentry-cli releases deploys "\$RELEASE_VERSION" new \
+                                --env ${DEPLOY_ENV} \
+                                --org rayzrsole --project fazri-deepface
+
+                            sentry-cli releases finalize "\$RELEASE_VERSION" \
+                                --org rayzrsole --project fazri-deepface
+
+                            echo "✓ Sentry release (deepface): \$RELEASE_VERSION (${DEPLOY_ENV})"
                         """
                     }
                 }
