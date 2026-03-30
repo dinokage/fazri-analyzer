@@ -104,41 +104,23 @@ pipeline {
         stage('Detect Changes') {
             steps {
                 script {
-                    def baseline
-                    def isFirstRun
-
-                    if (env.GIT_PREVIOUS_SUCCESSFUL_COMMIT) {
-                        baseline   = env.GIT_PREVIOUS_SUCCESSFUL_COMMIT
-                        isFirstRun = false
-                    } else {
-                        def mergeBase = sh(
-                            script: "git merge-base origin/master HEAD 2>/dev/null || echo ''",
-                            returnStdout: true
-                        ).trim()
-                        if (mergeBase) {
-                            baseline   = mergeBase
-                            isFirstRun = false
-                        } else {
-                            baseline   = null
-                            isFirstRun = true
-                        }
-                    }
-
-                    def changedFiles = isFirstRun ? 'all' : sh(
-                        script: "git diff --name-only ${baseline} HEAD",
+                    def changedFiles = sh(
+                        script: "git rev-parse HEAD~1 > /dev/null 2>&1 && git diff --name-only HEAD~1 HEAD || echo 'all'",
                         returnStdout: true
                     ).trim()
 
-                    env.BUILD_BACKEND = (changedFiles.contains('backend/')    ||
-                                         changedFiles.contains('Jenkinsfile') ||
-                                         isFirstRun) ? 'true' : 'false'
+                    def isFirstRun = changedFiles == 'all'
 
-                    env.BUILD_AUTH    = (changedFiles.contains('auth/')       ||
-                                         changedFiles.contains('Jenkinsfile') ||
-                                         isFirstRun) ? 'true' : 'false'
+                    env.BUILD_BACKEND  = (changedFiles.contains('backend/')          ||
+                                          changedFiles.contains('Jenkinsfile')        ||
+                                          isFirstRun) ? 'true' : 'false'
 
-                    env.BUILD_DEEPFACE = (changedFiles.contains('deepface-server/') ||
-                                          changedFiles.contains('Jenkinsfile')       ||
+                    env.BUILD_AUTH     = (changedFiles.contains('auth/')             ||
+                                          changedFiles.contains('Jenkinsfile')        ||
+                                          isFirstRun) ? 'true' : 'false'
+
+                    env.BUILD_DEEPFACE = (changedFiles.contains('deepface-server/')  ||
+                                          changedFiles.contains('Jenkinsfile')        ||
                                           isFirstRun) ? 'true' : 'false'
 
                     // Use concatenation instead of GString interpolation to avoid
