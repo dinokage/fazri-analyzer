@@ -719,6 +719,69 @@ export const apiClient = {
     );
     return handleResponse(response);
   },
+
+  // ===== DEEPFACE / CAMERA STREAM ENDPOINTS =====
+
+  async getCameraStreams() {
+    const response = await fetch(
+      `${API_BASE_URL}/api/v1/deepface/streams`,
+      { headers: await getAuthHeaders() }
+    );
+    return handleResponse(response);
+  },
+
+  async createCameraStream(data: {
+    stream_id: string;
+    rtsp_url: string;
+    zone_id: string;
+    building?: string;
+    floor?: string;
+    alert_on_unknown_face: boolean;
+  }) {
+    const response = await fetch(
+      `${API_BASE_URL}/api/v1/deepface/streams`,
+      {
+        method: 'POST',
+        headers: await getAuthHeaders(),
+        body: JSON.stringify(data),
+      }
+    );
+    return handleResponse(response);
+  },
+
+  async deleteCameraStream(streamId: string) {
+    const response = await fetch(
+      `${API_BASE_URL}/api/v1/deepface/streams/${encodeURIComponent(streamId)}`,
+      {
+        method: 'DELETE',
+        headers: await getAuthHeaders(),
+      }
+    );
+    return handleResponse(response);
+  },
+
+  async registerFace(entityId: string, file: File) {
+    // Do NOT use getAuthHeaders() here — it always sets Content-Type: application/json,
+    // which prevents the browser from setting the multipart/form-data boundary that
+    // FastAPI's UploadFile parser requires.
+    const session = await getSession();
+    if (!session?.data) throw new ApiError('No active session. Please log in.', 401);
+    const { data } = await authClient.token();
+    if (!data?.token) throw new ApiError('No active session. Please log in.', 401);
+
+    const formData = new FormData();
+    formData.append('image', file);
+
+    const response = await fetch(
+      `${API_BASE_URL}/api/v1/deepface/entities/${encodeURIComponent(entityId)}/register`,
+      {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${data.token}` },
+        body: formData,
+      }
+    );
+    return handleResponse(response);
+  },
 };
 
 export { ApiError };

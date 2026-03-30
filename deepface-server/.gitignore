@@ -1,0 +1,27 @@
+# Virtual environment
+deepface/
+venv/
+.venv/
+env/
+
+# Python cache
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.Python
+
+# Environment files
+.env
+.env.*
+!.env.example
+
+# Model weights (large binary files — baked into Docker image)
+weights/
+*.h5
+*.pkl
+*.onnx
+
+# Logs
+*.log
+logs/

@@ -1,0 +1,32 @@
+# Web framework
+fastapi==0.115.12
+uvicorn[standard]==0.34.0
+python-multipart==0.0.20        # required for UploadFile / Form support
+
+# Settings
+pydantic-settings==2.7.1
+
+# DeepFace + ML stack
+deepface==0.0.99
+tensorflow==2.19.0              # swap for tensorflow-cpu if no GPU; 2.18 has ml_dtypes packaging bug on aarch64
+tf-keras                        # required by retina-face with TF 2.16+
+retina-face==0.0.17             # retinaface detector backend
+opencv-python-headless==4.11.0.86   # headless — no GUI in server context
+
+# InsightFace — required for Buffalo_L recognition model
+insightface>=0.7.3
+onnxruntime>=1.9.0
+albumentations
+
+# Image processing
+Pillow==11.1.0
+numpy==1.26.4                   # pin <2; TF 2.18 is incompatible with numpy 2.x
+
+# Database
+psycopg[binary]                 # PostgreSQL driver (psycopg v3, required by DeepFace)
+pgvector==0.3.6                 # pgvector Python client
+
+# Utilities
+python-dotenv==1.0.1
+pandas==2.2.3                   # returned by DeepFace.search()
+httpx==0.27.2                   # async HTTP client for webhook delivery

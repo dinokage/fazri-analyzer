@@ -11,6 +11,7 @@ pipeline {
         // ── Image names ───────────────────────────────────────────────────────
         BACKEND_IMAGE   = 'fazri-analyzer-backend'
         AUTH_IMAGE      = 'fazri-analyzer-auth'
+        DEEPFACE_IMAGE  = 'fazri-deepface-server'
         NETWORK_NAME    = 'backend_fazri-network'
         DOCKER_BUILDKIT = '1'
 
@@ -72,17 +73,19 @@ pipeline {
             steps {
                 script {
                     if (env.BRANCH_NAME == 'master') {
-                        env.DEPLOY_ENV        = 'production'
-                        env.BACKEND_CONTAINER = 'fazri-api'
-                        env.AUTH_CONTAINER    = 'fazri-auth'
-                        env.BACKEND_PORT      = '8000'
-                        env.AUTH_PORT         = '4002'
+                        env.DEPLOY_ENV         = 'production'
+                        env.BACKEND_CONTAINER  = 'fazri-api'
+                        env.AUTH_CONTAINER     = 'fazri-auth'
+                        env.DEEPFACE_CONTAINER = 'deepface-server'
+                        env.BACKEND_PORT       = '8000'
+                        env.AUTH_PORT          = '4002'
                     } else {
-                        env.DEPLOY_ENV        = 'staging'
-                        env.BACKEND_CONTAINER = 'fazri-api-staging'
-                        env.AUTH_CONTAINER    = 'fazri-auth-staging'
-                        env.BACKEND_PORT      = '8001'
-                        env.AUTH_PORT         = '4003'
+                        env.DEPLOY_ENV         = 'staging'
+                        env.BACKEND_CONTAINER  = 'fazri-api-staging'
+                        env.AUTH_CONTAINER     = 'fazri-auth-staging'
+                        env.DEEPFACE_CONTAINER = 'deepface-server-staging'
+                        env.BACKEND_PORT       = '8001'
+                        env.AUTH_PORT          = '4003'
                     }
                     def sanitizedBranch = env.BRANCH_NAME.replaceAll('[^a-zA-Z0-9]', '-').toLowerCase()
                     def shortSha        = env.GIT_COMMIT?.take(7) ?: 'unknown'
@@ -134,11 +137,16 @@ pipeline {
                                          changedFiles.contains('Jenkinsfile') ||
                                          isFirstRun) ? 'true' : 'false'
 
+                    env.BUILD_DEEPFACE = (changedFiles.contains('deepface-server/') ||
+                                          changedFiles.contains('Jenkinsfile')       ||
+                                          isFirstRun) ? 'true' : 'false'
+
                     // Use concatenation instead of GString interpolation to avoid
                     // Jenkins masking these values when a credential shares the same string.
                     echo 'Changed files:\n' + changedFiles
-                    echo 'Build backend: '  + env.BUILD_BACKEND
-                    echo 'Build auth:    '  + env.BUILD_AUTH
+                    echo 'Build backend:  ' + env.BUILD_BACKEND
+                    echo 'Build auth:     ' + env.BUILD_AUTH
+                    echo 'Build deepface: ' + env.BUILD_DEEPFACE
                 }
             }
         }
@@ -171,6 +179,19 @@ pipeline {
                                 -t ${AUTH_IMAGE}:${IMAGE_TAG} \
                                 $([ "${BRANCH_NAME}" = "master" ] && echo "-t ${AUTH_IMAGE}:latest" || echo "") \
                                 auth/
+                        '''
+                    }
+                }
+
+                stage('Build DeepFace Image') {
+                    when { expression { env.BUILD_DEEPFACE == 'true' } }
+                    steps {
+                        echo "Building DeepFace server image (live container still up)..."
+                        sh '''
+                            docker build -f deepface-server/Dockerfile \
+                                -t ${DEEPFACE_IMAGE}:${IMAGE_TAG} \
+                                $([ "${BRANCH_NAME}" = "master" ] && echo "-t ${DEEPFACE_IMAGE}:latest" || echo "") \
+                                deepface-server/
                         '''
                     }
                 }
@@ -317,6 +338,51 @@ pipeline {
                     }
                 }
 
+                stage('DeepFace Server') {
+                    when { expression { env.BUILD_DEEPFACE == 'true' } }
+                    steps {
+                        sh '''
+                            echo "Removing existing DeepFace container..."
+                            docker rm -f ${DEEPFACE_CONTAINER} 2>/dev/null || true
+
+                            echo "Starting DeepFace server container..."
+                            docker run -d \
+                                --name ${DEEPFACE_CONTAINER} \
+                                --restart unless-stopped \
+                                --network ${NETWORK_NAME} \
+                                -e DEEPFACE_WEBHOOK_SECRET="${DEEPFACE_WEBHOOK_SECRET}" \
+                                -e DEEPFACE_POSTGRES_URI="${DEEPFACE_POSTGRES_URI}" \
+                                -v deepface_models_${DEPLOY_ENV}:/app/models \
+                                -v deepface_data_${DEPLOY_ENV}:/app/data \
+                                ${DEEPFACE_IMAGE}:${IMAGE_TAG}
+
+                            if ! docker ps --format '{{.Names}}' | grep -q "^${DEEPFACE_CONTAINER}$"; then
+                                echo "✗ DeepFace container failed to start"
+                                docker logs ${DEEPFACE_CONTAINER} 2>&1 || true
+                                exit 1
+                            fi
+
+                            echo "✓ DeepFace server deployed"
+                        '''
+                        echo "Waiting for DeepFace server to be healthy..."
+                        sh '''
+                            sleep 10
+                            for i in $(seq 1 18); do
+                                if docker exec ${DEEPFACE_CONTAINER} \
+                                    curl -sf http://localhost:8000/health > /dev/null 2>&1; then
+                                    echo "✓ DeepFace server is healthy"
+                                    exit 0
+                                fi
+                                echo "Attempt ${i}/18 — waiting..."
+                                sleep 5
+                            done
+                            echo "✗ DeepFace server health check failed after 90s"
+                            docker logs ${DEEPFACE_CONTAINER} --tail=50
+                            exit 1
+                        '''
+                    }
+                }
+
             }
         }
 
@@ -392,6 +458,11 @@ pipeline {
                             | grep -v "^${IMAGE_TAG}$" | grep -v "^latest$" \
                             | xargs -r -I{} docker rmi ${AUTH_IMAGE}:{} 2>/dev/null || true
                     fi
+                    if [ "${BUILD_DEEPFACE}" = "true" ]; then
+                        docker images ${DEEPFACE_IMAGE} --format "{{.Tag}}" \
+                            | grep -v "^${IMAGE_TAG}$" | grep -v "^latest$" \
+                            | xargs -r -I{} docker rmi ${DEEPFACE_IMAGE}:{} 2>/dev/null || true
+                    fi
                 '''
             }
         }
@@ -402,8 +473,9 @@ pipeline {
         success {
             script {
                 def built = []
-                if (env.BUILD_BACKEND == 'true') built.add("backend (${env.BACKEND_CONTAINER})")
-                if (env.BUILD_AUTH    == 'true') built.add("auth (${env.AUTH_CONTAINER})")
+                if (env.BUILD_BACKEND  == 'true') built.add("backend (${env.BACKEND_CONTAINER})")
+                if (env.BUILD_AUTH     == 'true') built.add("auth (${env.AUTH_CONTAINER})")
+                if (env.BUILD_DEEPFACE == 'true') built.add("deepface (${env.DEEPFACE_CONTAINER})")
                 echo '✓ Deployment successful! Built: ' + built.join(', ')
             }
         }
@@ -411,11 +483,13 @@ pipeline {
             echo '✗ Deployment failed — check logs above'
             script {
                 node('built-in') {
-                    def isProd      = env.BRANCH_NAME == 'master'
-                    def backendCtr  = env.BACKEND_CONTAINER ?: (isProd ? 'fazri-api'  : 'fazri-api-staging')
-                    def authCtr     = env.AUTH_CONTAINER    ?: (isProd ? 'fazri-auth' : 'fazri-auth-staging')
-                    sh "docker logs ${backendCtr} --tail=30 2>&1 || true"
-                    sh "docker logs ${authCtr}    --tail=30 2>&1 || true"
+                    def isProd        = env.BRANCH_NAME == 'master'
+                    def backendCtr    = env.BACKEND_CONTAINER  ?: (isProd ? 'fazri-api'           : 'fazri-api-staging')
+                    def authCtr       = env.AUTH_CONTAINER     ?: (isProd ? 'fazri-auth'          : 'fazri-auth-staging')
+                    def deepfaceCtr   = env.DEEPFACE_CONTAINER ?: (isProd ? 'deepface-server'     : 'deepface-server-staging')
+                    sh "docker logs ${backendCtr}  --tail=30 2>&1 || true"
+                    sh "docker logs ${authCtr}     --tail=30 2>&1 || true"
+                    sh "docker logs ${deepfaceCtr} --tail=30 2>&1 || true"
                 }
             }
         }

@@ -1,0 +1,686 @@
+{
+  "openapi": "3.1.0",
+  "info": {
+    "title": "DeepFace Server",
+    "description": "Face detection and recognition API powered by DeepFace + Buffalo_L + retinaface + pgvector",
+    "version": "0.1.0"
+  },
+  "servers": [
+    {
+      "url": "http://localhost:8000",
+      "description": "Local development server"
+    }
+  ],
+  "paths": {
+    "/health": {
+      "get": {
+        "tags": ["system"],
+        "summary": "Health Check",
+        "description": "Returns server health status including active model, detector backend, and database host.",
+        "operationId": "health_health_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/HealthResponse" }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/detect": {
+      "post": {
+        "tags": ["detection"],
+        "summary": "Detect Faces",
+        "description": "Detect all faces in an image; return bounding boxes and base64 PNG crops. Accepts multipart/form-data with a `file` field OR JSON body with a `image` field (base64 string).",
+        "operationId": "detect_detect_post",
+        "requestBody": {
+          "content": {
+            "multipart/form-data": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "file": {
+                    "type": "string",
+                    "format": "binary",
+                    "description": "Image file to process"
+                  },
+                  "enforce_detection": {
+                    "type": "string",
+                    "description": "Raise error if no face detected (default: true)",
+                    "default": "true"
+                  }
+                }
+              }
+            },
+            "application/json": {
+              "schema": { "$ref": "#/components/schemas/DetectRequest" }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/DetectResponse" }
+              }
+            }
+          },
+          "422": {
+            "description": "No face detected or invalid input",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/HTTPError" }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/represent": {
+      "post": {
+        "tags": ["recognition"],
+        "summary": "Get Face Embeddings",
+        "description": "Return 512-dim Buffalo_L embeddings for every face in the image. Accepts multipart/form-data with a `file` field OR JSON body with an `image` field (base64 string).",
+        "operationId": "represent_represent_post",
+        "requestBody": {
+          "content": {
+            "multipart/form-data": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "file": {
+                    "type": "string",
+                    "format": "binary",
+                    "description": "Image file to process"
+                  },
+                  "enforce_detection": {
+                    "type": "string",
+                    "description": "Raise error if no face detected (default: true)",
+                    "default": "true"
+                  }
+                }
+              }
+            },
+            "application/json": {
+              "schema": { "$ref": "#/components/schemas/RepresentRequest" }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/RepresentResponse" }
+              }
+            }
+          },
+          "422": {
+            "description": "No face detected or invalid input",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/HTTPError" }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/register": {
+      "post": {
+        "tags": ["database"],
+        "summary": "Register Face",
+        "description": "Register a face into the pgvector database with an identity label. Accepts multipart/form-data with a `file` field OR JSON body with an `image` field (base64 string). `img_name` is required.",
+        "operationId": "register_register_post",
+        "requestBody": {
+          "content": {
+            "multipart/form-data": {
+              "schema": {
+                "type": "object",
+                "required": ["img_name"],
+                "properties": {
+                  "file": {
+                    "type": "string",
+                    "format": "binary",
+                    "description": "Image file to process"
+                  },
+                  "img_name": {
+                    "type": "string",
+                    "description": "Identity label stored in the DB"
+                  },
+                  "enforce_detection": {
+                    "type": "string",
+                    "description": "Raise error if no face detected (default: true)",
+                    "default": "true"
+                  }
+                }
+              }
+            },
+            "application/json": {
+              "schema": { "$ref": "#/components/schemas/RegisterRequest" }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/RegisterResponse" }
+              }
+            }
+          },
+          "422": {
+            "description": "Missing img_name, no face detected, or invalid input",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/HTTPError" }
+              }
+            }
+          },
+          "500": {
+            "description": "Embedding dimension mismatch",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/HTTPError" }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/search": {
+      "post": {
+        "tags": ["database"],
+        "summary": "Search Faces",
+        "description": "Search the pgvector database for faces matching the query image. Accepts multipart/form-data with a `file` field OR JSON body with an `image` field (base64 string).",
+        "operationId": "search_search_post",
+        "requestBody": {
+          "content": {
+            "multipart/form-data": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "file": {
+                    "type": "string",
+                    "format": "binary",
+                    "description": "Image file to query"
+                  },
+                  "enforce_detection": {
+                    "type": "string",
+                    "description": "Raise error if no face detected (default: true)",
+                    "default": "true"
+                  },
+                  "search_method": {
+                    "type": "string",
+                    "enum": ["exact", "ann"],
+                    "description": "Search algorithm: exact or approximate nearest neighbor",
+                    "default": "exact"
+                  },
+                  "similarity_search": {
+                    "type": "string",
+                    "description": "Use similarity (cosine) instead of distance (default: false)",
+                    "default": "false"
+                  },
+                  "k": {
+                    "type": "integer",
+                    "description": "Maximum number of results to return (optional)"
+                  }
+                }
+              }
+            },
+            "application/json": {
+              "schema": { "$ref": "#/components/schemas/SearchRequest" }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/SearchResponse" }
+              }
+            }
+          },
+          "422": {
+            "description": "No face detected or invalid input",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/HTTPError" }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/build-index": {
+      "post": {
+        "tags": ["database"],
+        "summary": "Build ANN Index",
+        "description": "Build the ANN index on the pgvector DB for fast approximate search. Requires at least one registered face.",
+        "operationId": "build_index_build_index_post",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/BuildIndexResponse" }
+              }
+            }
+          },
+          "422": {
+            "description": "Database has no registered faces",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/HTTPError" }
+              }
+            }
+          },
+          "500": {
+            "description": "Internal error during index build",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/HTTPError" }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/stream/start": {
+      "post": {
+        "tags": ["streams"],
+        "summary": "Start Stream",
+        "description": "Start processing an RTSP stream; face recognition results are POSTed to webhook_url at each interval.",
+        "operationId": "stream_start_stream_start_post",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": { "$ref": "#/components/schemas/StreamStartRequest" }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/StreamStartResponse" }
+              }
+            }
+          },
+          "409": {
+            "description": "Stream with this ID already exists",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/HTTPError" }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/stream/stop/{stream_id}": {
+      "post": {
+        "tags": ["streams"],
+        "summary": "Stop Stream",
+        "description": "Stop a running RTSP stream processor by its stream_id.",
+        "operationId": "stream_stop_stream_stop__stream_id__post",
+        "parameters": [
+          {
+            "name": "stream_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "description": "The stream_id returned by /stream/start"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/StreamStopResponse" }
+              }
+            }
+          },
+          "404": {
+            "description": "Stream not found",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/HTTPError" }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/stream/status": {
+      "get": {
+        "tags": ["streams"],
+        "summary": "Stream Status",
+        "description": "List all active stream processors and their current state.",
+        "operationId": "stream_status_stream_status_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/StreamStatusResponse" }
+              }
+            }
+          }
+        }
+      }
+    }
+  },
+  "components": {
+    "schemas": {
+      "HTTPError": {
+        "type": "object",
+        "properties": {
+          "detail": { "type": "string" }
+        }
+      },
+      "FacialArea": {
+        "type": "object",
+        "required": ["x", "y", "w", "h"],
+        "properties": {
+          "x": { "type": "integer" },
+          "y": { "type": "integer" },
+          "w": { "type": "integer" },
+          "h": { "type": "integer" },
+          "left_eye": {
+            "oneOf": [
+              { "type": "array", "items": { "type": "integer" }, "minItems": 2, "maxItems": 2 },
+              { "type": "null" }
+            ]
+          },
+          "right_eye": {
+            "oneOf": [
+              { "type": "array", "items": { "type": "integer" }, "minItems": 2, "maxItems": 2 },
+              { "type": "null" }
+            ]
+          }
+        }
+      },
+      "DetectRequest": {
+        "type": "object",
+        "required": ["image"],
+        "properties": {
+          "image": {
+            "type": "string",
+            "description": "Base64-encoded image (raw or data-URI)"
+          },
+          "enforce_detection": {
+            "type": "boolean",
+            "default": true
+          }
+        }
+      },
+      "DetectedFace": {
+        "type": "object",
+        "required": ["facial_area", "confidence", "face_base64"],
+        "properties": {
+          "facial_area": { "$ref": "#/components/schemas/FacialArea" },
+          "confidence": { "type": "number" },
+          "face_base64": {
+            "type": "string",
+            "description": "Base64-encoded PNG crop of the detected face"
+          }
+        }
+      },
+      "DetectResponse": {
+        "type": "object",
+        "required": ["faces_detected", "faces"],
+        "properties": {
+          "faces_detected": { "type": "integer" },
+          "faces": {
+            "type": "array",
+            "items": { "$ref": "#/components/schemas/DetectedFace" }
+          }
+        }
+      },
+      "RepresentRequest": {
+        "type": "object",
+        "required": ["image"],
+        "properties": {
+          "image": {
+            "type": "string",
+            "description": "Base64-encoded image (raw or data-URI)"
+          },
+          "enforce_detection": {
+            "type": "boolean",
+            "default": true
+          }
+        }
+      },
+      "FaceEmbedding": {
+        "type": "object",
+        "required": ["embedding", "facial_area", "face_confidence"],
+        "properties": {
+          "embedding": {
+            "type": "array",
+            "items": { "type": "number" },
+            "description": "512-dimensional face embedding vector (Buffalo_L)"
+          },
+          "facial_area": { "$ref": "#/components/schemas/FacialArea" },
+          "face_confidence": { "type": "number" }
+        }
+      },
+      "RepresentResponse": {
+        "type": "object",
+        "required": ["model_name", "embeddings"],
+        "properties": {
+          "model_name": { "type": "string" },
+          "embeddings": {
+            "type": "array",
+            "items": { "$ref": "#/components/schemas/FaceEmbedding" }
+          }
+        }
+      },
+      "RegisterRequest": {
+        "type": "object",
+        "required": ["image", "img_name"],
+        "properties": {
+          "image": {
+            "type": "string",
+            "description": "Base64-encoded image (raw or data-URI)"
+          },
+          "img_name": {
+            "type": "string",
+            "description": "Identity label stored in the DB"
+          },
+          "enforce_detection": {
+            "type": "boolean",
+            "default": true
+          }
+        }
+      },
+      "RegisterResponse": {
+        "type": "object",
+        "required": ["inserted", "img_name"],
+        "properties": {
+          "inserted": { "type": "integer" },
+          "img_name": { "type": "string" }
+        }
+      },
+      "SearchRequest": {
+        "type": "object",
+        "required": ["image"],
+        "properties": {
+          "image": {
+            "type": "string",
+            "description": "Base64-encoded image (raw or data-URI)"
+          },
+          "enforce_detection": {
+            "type": "boolean",
+            "default": true
+          },
+          "search_method": {
+            "type": "string",
+            "enum": ["exact", "ann"],
+            "default": "exact"
+          },
+          "similarity_search": {
+            "type": "boolean",
+            "default": false
+          },
+          "k": {
+            "oneOf": [
+              { "type": "integer", "minimum": 1 },
+              { "type": "null" }
+            ],
+            "description": "Maximum number of results to return (optional)"
+          }
+        }
+      },
+      "SearchMatch": {
+        "type": "object",
+        "properties": {
+          "id": {},
+          "img_name": { "type": "string" },
+          "distance": { "type": "number" },
+          "threshold": { "type": "number" },
+          "confidence": { "type": "number" },
+          "distance_metric": { "type": "string" },
+          "source_x": { "type": "integer" },
+          "source_y": { "type": "integer" },
+          "source_w": { "type": "integer" },
+          "source_h": { "type": "integer" },
+          "target_x": { "type": "integer" },
+          "target_y": { "type": "integer" },
+          "target_w": { "type": "integer" },
+          "target_h": { "type": "integer" }
+        }
+      },
+      "SearchFaceResult": {
+        "type": "object",
+        "required": ["matches"],
+        "properties": {
+          "matches": {
+            "type": "array",
+            "items": { "$ref": "#/components/schemas/SearchMatch" }
+          }
+        }
+      },
+      "SearchResponse": {
+        "type": "object",
+        "required": ["results"],
+        "properties": {
+          "results": {
+            "type": "array",
+            "items": { "$ref": "#/components/schemas/SearchFaceResult" },
+            "description": "One entry per detected face in the query image"
+          }
+        }
+      },
+      "BuildIndexResponse": {
+        "type": "object",
+        "required": ["status", "message"],
+        "properties": {
+          "status": { "type": "string" },
+          "message": { "type": "string" }
+        }
+      },
+      "HealthResponse": {
+        "type": "object",
+        "required": ["status", "model_name", "detector_backend", "database"],
+        "properties": {
+          "status": { "type": "string" },
+          "model_name": { "type": "string" },
+          "detector_backend": { "type": "string" },
+          "database": { "type": "string" }
+        }
+      },
+      "StreamStartRequest": {
+        "type": "object",
+        "required": ["rtsp_url", "webhook_url"],
+        "properties": {
+          "rtsp_url": { "type": "string", "description": "RTSP stream URL" },
+          "interval_seconds": {
+            "type": "number",
+            "default": 2.0,
+            "description": "Seconds between frame captures"
+          },
+          "webhook_url": {
+            "type": "string",
+            "description": "URL to POST recognition results to"
+          },
+          "stream_id": {
+            "oneOf": [
+              { "type": "string" },
+              { "type": "null" }
+            ],
+            "description": "Optional custom stream ID; auto-generated if omitted"
+          }
+        }
+      },
+      "StreamStartResponse": {
+        "type": "object",
+        "required": ["stream_id", "status", "rtsp_url", "interval_seconds", "webhook_url"],
+        "properties": {
+          "stream_id": { "type": "string" },
+          "status": { "type": "string" },
+          "rtsp_url": { "type": "string" },
+          "interval_seconds": { "type": "number" },
+          "webhook_url": { "type": "string" }
+        }
+      },
+      "StreamInfo": {
+        "type": "object",
+        "required": ["stream_id", "rtsp_url", "status", "interval_seconds", "webhook_url", "frames_processed"],
+        "properties": {
+          "stream_id": { "type": "string" },
+          "rtsp_url": { "type": "string" },
+          "status": {
+            "type": "string",
+            "enum": ["running", "stopped", "error"]
+          },
+          "interval_seconds": { "type": "number" },
+          "webhook_url": { "type": "string" },
+          "frames_processed": { "type": "integer" },
+          "started_at": {
+            "oneOf": [
+              { "type": "string", "format": "date-time" },
+              { "type": "null" }
+            ]
+          },
+          "last_error": {
+            "oneOf": [
+              { "type": "string" },
+              { "type": "null" }
+            ]
+          }
+        }
+      },
+      "StreamStatusResponse": {
+        "type": "object",
+        "required": ["streams"],
+        "properties": {
+          "streams": {
+            "type": "array",
+            "items": { "$ref": "#/components/schemas/StreamInfo" }
+          }
+        }
+      },
+      "StreamStopResponse": {
+        "type": "object",
+        "required": ["stream_id", "status"],
+        "properties": {
+          "stream_id": { "type": "string" },
+          "status": { "type": "string" }
+        }
+      }
+    }
+  }
+}
