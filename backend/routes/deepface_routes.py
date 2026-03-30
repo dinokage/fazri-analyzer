@@ -680,51 +680,104 @@ async def probe_onvif(
 def _onvif_probe(ip: str, port: int, username: str, password: str, use_https: bool = False) -> Dict[str, Any]:
     """
     Blocking ONVIF discovery using the onvif-zeep library.
-    Fetches device info and all media profile stream URIs.
-    Pass use_https=True for NVRs that enforce HTTPS on the ONVIF management port.
+
+    Strategy:
+    1. Try the requested protocol (HTTP or HTTPS).
+    2. If a connection-level error occurs (reset, refused, SSL), automatically
+       retry with the opposite protocol.
+    3. SSL certificate verification is always disabled — NVRs on LANs
+       universally use self-signed certificates.
     """
     try:
         from onvif import ONVIFCamera  # type: ignore
     except ImportError:
         raise RuntimeError("onvif-zeep package is not installed — run: pip install onvif-zeep")
 
-    # encrypt=True → HTTPS, encrypt=False → HTTP
-    cam = ONVIFCamera(ip, port, username, password, encrypt=use_https)
-    cam.update_xaddrs()
-
-    # Device info
-    device_svc = cam.create_devicemgmt_service()
-    info = device_svc.GetDeviceInformation()
-    vendor = getattr(info, "Manufacturer", "Unknown")
-    model = getattr(info, "Model", "Unknown")
-
-    # Media profiles → stream URIs
-    media_svc = cam.create_media_service()
-    profiles = media_svc.GetProfiles()
-
-    channels: List[Dict[str, Any]] = []
-    for profile in profiles:
+    last_error: Optional[Exception] = None
+    # Try requested protocol first, then fall back to the opposite
+    for https in (use_https, not use_https):
         try:
-            uri_req = media_svc.create_type("GetStreamUri")
-            uri_req.ProfileToken = profile.token
-            uri_req.StreamSetup = {
-                "Stream": "RTP-Unicast",
-                "Transport": {"Protocol": "RTSP"},
-            }
-            uri_resp = media_svc.GetStreamUri(uri_req)
-            rtsp_url = uri_resp.Uri
-            # Inject credentials into the RTSP URL if provided
-            if username and "://" in rtsp_url and "@" not in rtsp_url:
-                rtsp_url = rtsp_url.replace("rtsp://", f"rtsp://{username}:{password}@")
-            channels.append({
-                "id": profile.token,
-                "name": getattr(profile, "Name", profile.token),
-                "rtsp_url": rtsp_url,
-            })
-        except Exception:
+            result = _onvif_attempt(ip, port, username, password, https)
+            result["protocol"] = "https" if https else "http"
+            return result
+        except (OSError, ConnectionError) as exc:
+            last_error = exc
+            logger.info(
+                "ONVIF %s attempt failed for %s:%d — retrying with %s: %s",
+                "HTTPS" if https else "HTTP", ip, port,
+                "HTTP" if https else "HTTPS", exc,
+            )
             continue
+        except Exception as exc:
+            # Non-connection errors (auth failure, bad XML, etc.) — don't retry
+            raise exc
 
-    return {"vendor": vendor, "model": model, "channels": channels}
+    raise last_error or RuntimeError("ONVIF probe failed on both HTTP and HTTPS")
+
+
+def _onvif_attempt(ip: str, port: int, username: str, password: str, use_https: bool) -> Dict[str, Any]:
+    """
+    Single ONVIF connection attempt.
+    Patches requests.Session to disable SSL verification for the duration
+    of this call so self-signed NVR certificates are accepted.
+    """
+    import contextlib
+    import requests
+    import urllib3
+    from onvif import ONVIFCamera  # type: ignore
+
+    urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
+
+    # Temporarily patch requests.Session so every zeep-internal session
+    # created by onvif-zeep uses verify=False.
+    original_init = requests.Session.__init__
+
+    def _patched_init(self, *args, **kwargs):
+        original_init(self, *args, **kwargs)
+        self.verify = False
+
+    requests.Session.__init__ = _patched_init  # type: ignore[method-assign]
+    try:
+        cam = ONVIFCamera(ip, port, username, password, encrypt=use_https)
+        cam.update_xaddrs()
+
+        # Device info
+        device_svc = cam.create_devicemgmt_service()
+        info = device_svc.GetDeviceInformation()
+        vendor = getattr(info, "Manufacturer", "Unknown")
+        model = getattr(info, "Model", "Unknown")
+
+        # Media profiles → stream URIs
+        media_svc = cam.create_media_service()
+        profiles = media_svc.GetProfiles()
+
+        channels: List[Dict[str, Any]] = []
+        for profile in profiles:
+            try:
+                uri_req = media_svc.create_type("GetStreamUri")
+                uri_req.ProfileToken = profile.token
+                uri_req.StreamSetup = {
+                    "Stream": "RTP-Unicast",
+                    "Transport": {"Protocol": "RTSP"},
+                }
+                uri_resp = media_svc.GetStreamUri(uri_req)
+                rtsp_url = uri_resp.Uri
+                # Inject percent-encoded credentials into the RTSP URL if not already present
+                if username and "://" in rtsp_url and "@" not in rtsp_url:
+                    enc_user = requests.utils.quote(username, safe="")
+                    enc_pass = requests.utils.quote(password, safe="")
+                    rtsp_url = rtsp_url.replace("rtsp://", f"rtsp://{enc_user}:{enc_pass}@")
+                channels.append({
+                    "id": profile.token,
+                    "name": getattr(profile, "Name", profile.token),
+                    "rtsp_url": rtsp_url,
+                })
+            except Exception:
+                continue
+
+        return {"vendor": vendor, "model": model, "channels": channels}
+    finally:
+        requests.Session.__init__ = original_init  # type: ignore[method-assign]
 
 
 # ============================================================================

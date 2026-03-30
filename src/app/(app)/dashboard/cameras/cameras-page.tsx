@@ -224,6 +224,7 @@ export default function CamerasPageContent() {
   const [nvrDiscovery, setNvrDiscovery] = useState<NvrDiscoveryState>('idle');
   const [nvrVendor, setNvrVendor] = useState('');
   const [nvrModel, setNvrModel] = useState('');
+  const [nvrProtocol, setNvrProtocol] = useState('');
   const [nvrChannels, setNvrChannels] = useState<OnvifChannel[]>([]);
   const [nvrSelectedChannel, setNvrSelectedChannel] = useState('');
   const [nvrFallbackVendor, setNvrFallbackVendor] = useState('hikvision');
@@ -311,6 +312,7 @@ export default function CamerasPageContent() {
     setNvrDiscovery('idle');
     setNvrVendor('');
     setNvrModel('');
+    setNvrProtocol('');
     setNvrChannels([]);
     setNvrSelectedChannel('');
     setNvrFallbackVendor('hikvision');
@@ -334,6 +336,7 @@ export default function CamerasPageContent() {
       } else {
         setNvrVendor(result.vendor ?? '');
         setNvrModel(result.model ?? '');
+        setNvrProtocol((result as Record<string, string>).protocol ?? '');
         setNvrChannels(result.channels ?? []);
         setNvrSelectedChannel(result.channels?.[0]?.id ?? '');
         setNvrDiscovery('success');
@@ -636,8 +639,8 @@ export default function CamerasPageContent() {
                 </div>
                 <div className="flex items-center justify-between rounded-lg border border-gray-800 bg-[#1a1a24] px-3 py-2">
                   <div>
-                    <p className="text-sm text-white">Use HTTPS</p>
-                    <p className="text-xs text-gray-500">Enable for NVRs that enforce HTTPS on the ONVIF port</p>
+                    <p className="text-sm text-white">Prefer HTTPS</p>
+                    <p className="text-xs text-gray-500">Try HTTPS first — auto-retries with HTTP if it fails. Self-signed certs are accepted.</p>
                   </div>
                   <Toggle value={nvrForm.useHttps} onChange={(v) => setNvrForm((f) => ({ ...f, useHttps: v }))} />
                 </div>
@@ -682,6 +685,9 @@ export default function CamerasPageContent() {
                       <CheckCircle2 className="h-4 w-4 text-green-400 flex-shrink-0" />
                       <p className="text-sm text-green-300 font-medium">
                         Discovered: {nvrVendor} {nvrModel}
+                      {nvrProtocol && (
+                        <span className="ml-2 text-xs text-green-500 font-mono uppercase">{nvrProtocol}</span>
+                      )}
                       </p>
                     </div>
                     {nvrChannels.length > 0 && (
