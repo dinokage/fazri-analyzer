@@ -370,18 +370,18 @@ pipeline {
 
         // ─────────────────────────────────────────────────────────────────────
         stage('Sentry Release') {
-            when { expression { env.BUILD_BACKEND == 'true' || env.BUILD_AUTH == 'true' || env.BUILD_DEEPFACE == 'true' } }
-            steps {
-                sh """
-                    if command -v sentry-cli > /dev/null 2>&1; then
-                        sentry-cli update 2>/dev/null || true
-                    else
-                        curl -sL https://sentry.io/get-cli/ | bash
-                    fi
-                """
-                script {
-                    if (env.BUILD_BACKEND == 'true') {
+            parallel {
+
+                stage('Sentry Release Backend') {
+                    when { expression { env.BUILD_BACKEND == 'true' } }
+                    steps {
                         sh """
+                            if command -v sentry-cli > /dev/null 2>&1; then
+                                sentry-cli update 2>/dev/null || true
+                            else
+                                curl -sL https://sentry.io/get-cli/ | bash
+                            fi
+
                             RELEASE_VERSION="fazri-analyzer-backend@${env.GIT_COMMIT}"
 
                             sentry-cli releases new "\$RELEASE_VERSION" \
@@ -400,8 +400,18 @@ pipeline {
                             echo "✓ Sentry release (backend): \$RELEASE_VERSION (${DEPLOY_ENV})"
                         """
                     }
-                    if (env.BUILD_AUTH == 'true') {
+                }
+
+                stage('Sentry Release Auth') {
+                    when { expression { env.BUILD_AUTH == 'true' } }
+                    steps {
                         sh """
+                            if command -v sentry-cli > /dev/null 2>&1; then
+                                sentry-cli update 2>/dev/null || true
+                            else
+                                curl -sL https://sentry.io/get-cli/ | bash
+                            fi
+
                             RELEASE_VERSION="fazri-analyzer-auth@${env.GIT_COMMIT}"
 
                             sentry-cli releases new "\$RELEASE_VERSION" \
@@ -420,8 +430,18 @@ pipeline {
                             echo "✓ Sentry release (auth): \$RELEASE_VERSION (${DEPLOY_ENV})"
                         """
                     }
-                    if (env.BUILD_DEEPFACE == 'true') {
+                }
+
+                stage('Sentry Release DeepFace') {
+                    when { expression { env.BUILD_DEEPFACE == 'true' } }
+                    steps {
                         sh """
+                            if command -v sentry-cli > /dev/null 2>&1; then
+                                sentry-cli update 2>/dev/null || true
+                            else
+                                curl -sL https://sentry.io/get-cli/ | bash
+                            fi
+
                             RELEASE_VERSION="fazri-deepface-server@${env.GIT_COMMIT}"
 
                             sentry-cli releases new "\$RELEASE_VERSION" \
@@ -441,6 +461,7 @@ pipeline {
                         """
                     }
                 }
+
             }
         }
 
