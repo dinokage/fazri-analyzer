@@ -9,8 +9,7 @@ pydantic-settings==2.7.1
 # DeepFace + ML stack
 deepface==0.0.99
 tensorflow==2.19.0              # swap for tensorflow-cpu if no GPU; 2.18 has ml_dtypes packaging bug on aarch64
-tf-keras                        # required by retina-face with TF 2.16+
-retina-face==0.0.17             # retinaface detector backend
+tf-keras                        # required by DeepFace with TF 2.16+
 opencv-python-headless==4.11.0.86   # headless — no GUI in server context
 
 # InsightFace — required for Buffalo_L recognition model

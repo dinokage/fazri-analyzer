@@ -4,7 +4,7 @@ services:
     container_name: postgres_db
     environment:
       POSTGRES_USER: ${POSTGRES_USER:-postgres}
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-[REDACTED]}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
       POSTGRES_DB: ${POSTGRES_DB:-ethos_iitg}
     ports:
       - "5432:5432"
@@ -22,7 +22,7 @@ services:
     image: neo4j:5
     container_name: neo4j_db
     environment:
-      NEO4J_AUTH: "${NEO4J_USER:-neo4j}/${NEO4J_PASSWORD:-[REDACTED]}"
+      NEO4J_AUTH: "${NEO4J_USER:-neo4j}/${NEO4J_PASSWORD}"
       NEO4J_dbms_memory_pagecache_size: 512M
       NEO4J_dbms_memory_heap_initial__size: 1G
       NEO4J_dbms_memory_heap_max__size: 2G
@@ -34,7 +34,7 @@ services:
     networks:
       - fazri-network
     healthcheck:
-      test: ["CMD-SHELL", "cypher-shell -u ${NEO4J_USER:-neo4j} -p ${NEO4J_PASSWORD:-[REDACTED]} 'RETURN 1' || exit 1"]
+      test: ["CMD-SHELL", "cypher-shell -u ${NEO4J_USER:-neo4j} -p ${NEO4J_PASSWORD} 'RETURN 1' || exit 1"]
       interval: 10s
       timeout: 5s
       retries: 5
@@ -54,55 +54,76 @@ services:
       timeout: 5s
       retries: 5
 
-  app:
-    build:
-      context: .
-      dockerfile: Dockerfile
-      target: development
-    container_name: fazri_api
-    env_file:
-      - .env
-    ports:
-      - "8000:8000"
-    volumes:
-      - ./:/app
-      - app_data:/app/augmented
-      - app_logs:/app/logs
-      # Mount GCP service account credentials for Vertex AI
-      - ./credentials/service-account.json:/app/credentials/service-account.json:ro
-    environment:
-      - PYTHONUNBUFFERED=1
-    depends_on:
-      db:
-        condition: service_healthy
-      neo4j:
-        condition: service_healthy
-      redis:
-        condition: service_healthy
-    networks:
-      - fazri-network
-    restart: unless-stopped
-    healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
-      interval: 30s
-      timeout: 10s
-      retries: 3
-      start_period: 40s
+  # app:
+  #   build:
+  #     context: .
+  #     dockerfile: Dockerfile
+  #     target: development
+  #   container_name: fazri_api
+  #   env_file:
+  #     - .env
+  #   ports:
+  #     - "8000:8000"
+  #   volumes:
+  #     - ./:/app
+  #     - app_data:/app/augmented
+  #     - app_logs:/app/logs
+  #     # Mount GCP service account credentials for Vertex AI
+  #     - ./credentials/service-account.json:/app/credentials/service-account.json:ro
+  #   environment:
+  #     - PYTHONUNBUFFERED=1
+  #   depends_on:
+  #     db:
+  #       condition: service_healthy
+  #     neo4j:
+  #       condition: service_healthy
+  #     redis:
+  #       condition: service_healthy
+  #   networks:
+  #     - fazri-network
+  #   restart: unless-stopped
+  #   healthcheck:
+  #     test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+  #     interval: 30s
+  #     timeout: 10s
+  #     retries: 3
+  #     start_period: 40s
 
   pgadmin:
     image: dpage/pgadmin4
     container_name: pgadmin
     environment:
       PGADMIN_DEFAULT_EMAIL: ${PGADMIN_EMAIL:-admin@fazri.com}
-      PGADMIN_DEFAULT_PASSWORD: ${PGADMIN_PASSWORD:-admin123}
+      PGADMIN_DEFAULT_PASSWORD: ${PGADMIN_PASSWORD}
     ports:
-      - "8080:80"
+      - "8089:80"
     depends_on:
       - db
     volumes:
       - pgadmin_data:/var/lib/pgadmin
     networks:
       - fazri-network
+
+  pgvector:
+    image: pgvector/pgvector:pg17
+    container_name: deepface-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${DEEPFACE_POSTGRES_USER:-deepface}
+      POSTGRES_PASSWORD: ${DEEPFACE_POSTGRES_PASSWORD:-deepface}
+      POSTGRES_DB: ${DEEPFACE_POSTGRES_DB:-deepface}
+    ports:
+      - "5433:5432"
+    volumes:
+      - pgvector_data:/var/lib/postgresql/data
+    networks:
+      - fazri-network
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${DEEPFACE_POSTGRES_USER:-deepface} -d ${DEEPFACE_POSTGRES_DB:-deepface}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
 
 networks:
   fazri-network:
@@ -115,4 +136,5 @@ volumes:
   redis_data:
   app_data:
   app_logs:
+  pgvector_data:
     
