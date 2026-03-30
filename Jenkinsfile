@@ -35,6 +35,11 @@ pipeline {
         SENTRY_DSN        = credentials('fazri-sentry-backend-dsn')
         SENTRY_AUTH_TOKEN = credentials('fazri-sentry-auth-token')
 
+        // ── DeepFace credentials ──────────────────────────────────────────────
+        DEEPFACE_SERVER_URL     = credentials('fazri-deepface-server-url')
+        DEEPFACE_WEBHOOK_SECRET = credentials('fazri-deepface-webhook-secret')
+        DEEPFACE_POSTGRES_URI   = credentials('fazri-deepface-postgres-uri')
+
         // ── Auth service credentials ──────────────────────────────────────────
         AUTH_DATABASE_URL    = credentials('fazri-auth-database-url')
         BETTER_AUTH_SECRET   = credentials('fazri-better-auth-secret')
@@ -219,6 +224,14 @@ pipeline {
                                     -e SENTRY_ENVIRONMENT=${DEPLOY_ENV} \
                                     -e SENTRY_TRACES_SAMPLE_RATE=0.1 \
                                     -e SENTRY_ENABLED=true \
+                                    -e DEEPFACE_SERVER_URL="${DEEPFACE_SERVER_URL}" \
+                                    -e DEEPFACE_WEBHOOK_SECRET="${DEEPFACE_WEBHOOK_SECRET}" \
+                                    -e DEEPFACE_CONFIDENCE_THRESHOLD="0.40" \
+                                    -e DEEPFACE_LOW_CONFIDENCE_DISTANCE="0.35" \
+                                    -e DEEPFACE_IMPOSSIBLE_TRAVEL_MINUTES="5" \
+                                    -e DEEPFACE_BATCH_SYNC_INTERVAL_SECONDS="300" \
+                                    -e DEEPFACE_POSTGRES_URI="${DEEPFACE_POSTGRES_URI}" \
+                                    -e DEEPFACE_ENABLED=true \
                                     -v app_data_${DEPLOY_ENV}:/app/augmented \
                                     -v app_ml_models_${DEPLOY_ENV}:/app/ml_models \
                                     -v app_logs_${DEPLOY_ENV}:/app/logs \
