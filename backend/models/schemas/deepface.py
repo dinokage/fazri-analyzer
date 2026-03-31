@@ -28,10 +28,12 @@ class FaceMatch(BaseModel):
     A single face-recognition match result.
     img_name is the label set at registration time — in fazri-analyzer this
     equals the entity's entity_id.
+    The sentinel value "UNKNOWN_FACE" indicates a face was detected but had
+    no match in the pgvector database.
     """
-    img_name: str = Field(..., description="Label used at registration — maps to entity_id")
+    img_name: str = Field(..., description="Label used at registration — maps to entity_id. 'UNKNOWN_FACE' = not in database")
     distance: float = Field(..., description="0.0 = identical; >threshold = no match")
-    confidence: float = Field(..., description="Percent confidence (0-100)")
+    confidence: float = Field(0.0, description="Face detector probability (0-100); 0.0 for unknown faces")
     threshold: float = Field(..., description="Distance threshold used for this model")
     facial_area: Optional[FacialArea] = None
 

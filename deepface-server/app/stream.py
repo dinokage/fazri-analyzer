@@ -198,28 +198,32 @@ class StreamProcessor:
             logger.debug("Stream %s search error: %s", self.stream_id, exc)
             return
 
-        # Collect matches across all detected faces
+        # Collect matches across all detected faces.
+        # dfs is a list with one DataFrame per detected face in the frame.
+        # An empty DataFrame means the face was detected but has no match in
+        # the pgvector database — i.e. an unknown face. We must still notify
+        # the backend so it can fire the "alert_on_unknown_face" rule.
         matches = []
         for df in dfs:
             if df.empty:
+                # Face detected but not registered — send sentinel entry so
+                # the backend can run the unknown_entity anomaly rule.
+                matches.append({
+                    "img_name": "UNKNOWN_FACE",
+                    "distance": 1.0,
+                    "confidence": 0.0,
+                    "threshold": 0.40,
+                    "facial_area": {"x": 0, "y": 0, "w": 0, "h": 0},
+                })
                 continue
             for _, row in df.iterrows():
                 distance = row.get("distance")
                 threshold = row.get("threshold")
-                # Compute recognition confidence from distance/threshold.
-                # DeepFace's "confidence" column is the face detector probability,
-                # not how well the face matched the registered identity.
-                recognition_confidence = (
-                    round((1 - distance / threshold) * 100, 2)
-                    if distance is not None and threshold
-                    else None
-                )
                 matches.append({
                     "img_name": row.get("img_name"),
                     "distance": distance,
+                    "confidence": row.get("confidence", 0.0),  # detector prob from DeepFace
                     "threshold": threshold,
-                    "detector_confidence": row.get("confidence"),
-                    "recognition_confidence": recognition_confidence,
                     "facial_area": {
                         "x": row.get("target_x"),
                         "y": row.get("target_y"),
