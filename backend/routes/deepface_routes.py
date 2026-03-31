@@ -471,9 +471,16 @@ async def create_stream(
             detail=f"Stream with stream_id='{body.stream_id}' already exists",
         )
 
-    # Build the webhook URL pointing back at ourselves
+    # Build the webhook URL pointing back at ourselves.
+    # Behind a reverse proxy, request.base_url uses the internal http:// scheme.
+    # Honour X-Forwarded-Proto so the registered URL uses the public scheme (https).
     base = str(request.base_url).rstrip("/")
+    forwarded_proto = request.headers.get("x-forwarded-proto")
+    if forwarded_proto:
+        # Replace the scheme with whatever the proxy saw (e.g. http → https)
+        base = base.replace(f"{request.url.scheme}://", f"{forwarded_proto}://", 1)
     webhook_url = f"{base}/api/v1/deepface/webhook"
+    logger.info("Deepface webhook callback URL: %s", webhook_url)
 
     # Tell DeepFace server to start monitoring
     deepface_client = get_deepface_client()

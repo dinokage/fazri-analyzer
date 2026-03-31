@@ -312,7 +312,7 @@ class StreamProcessor:
             "matches": matches,
         }
         try:
-            async with httpx.AsyncClient(timeout=5.0) as client:
+            async with httpx.AsyncClient(timeout=5.0, follow_redirects=True) as client:
                 resp = await client.post(self.webhook_url, json=payload)
                 logger.debug(
                     "Stream %s webhook → %s [%d]",
