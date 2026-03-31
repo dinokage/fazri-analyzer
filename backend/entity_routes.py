@@ -77,7 +77,7 @@ async def fuzzy_search_by_name(
                     text(
                         "SELECT entity_id, name, role, department, face_id "
                         'FROM "user" '
-                        "WHERE name ILIKE :pattern "
+                        "WHERE name ILIKE :pattern OR entity_id ILIKE :pattern "
                         "ORDER BY name LIMIT 20"
                     ),
                     {"pattern": f"%{name}%"},
@@ -103,9 +103,10 @@ async def fuzzy_search_by_name(
     # ── 2. Query staff_profiles (non-mock, with entity_id) ────────────────────
     from models.db.alerts import StaffProfile
 
+    from sqlalchemy import or_
     staff_list = (
         db.query(StaffProfile)
-        .filter(StaffProfile.name.ilike(f"%{name}%"))
+        .filter(or_(StaffProfile.name.ilike(f"%{name}%"), StaffProfile.entity_id.ilike(f"%{name}%")))
         .filter(StaffProfile.is_mock_user == False)
         .filter(StaffProfile.entity_id.isnot(None))
         .order_by(StaffProfile.name)
