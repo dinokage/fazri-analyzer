@@ -876,6 +876,24 @@ export const apiClient = {
     return handleResponse(response);
   },
 
+  async fuzzySearchByName(name: string, threshold = 0.7) {
+    const params = new URLSearchParams({ name, threshold: threshold.toString() });
+    const response = await fetch(`${API_BASE_URL}/api/v1/entities/fuzzy-search?${params}`, {
+      headers: await getAuthHeaders(),
+    });
+    const data = await handleResponse(response);
+    // Backend returns { matches: [{ entity: {...}, similarity }] }
+    // Map to flat EntityResult[] with `type` instead of `entity_type`
+    const results = (data.matches ?? []).map((m: { entity: Record<string, unknown>; similarity: number }) => ({
+      entity_id: m.entity.entity_id,
+      name: m.entity.name,
+      type: m.entity.entity_type,
+      department: m.entity.department,
+      face_id: m.entity.face_id,
+    }));
+    return { results };
+  },
+
   async registerFace(entityId: string, file: File) {
     // Do NOT use getAuthHeaders() here — it always sets Content-Type: application/json,
     // which prevents the browser from setting the multipart/form-data boundary that

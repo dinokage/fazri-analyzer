@@ -84,7 +84,7 @@ class DeepFaceClient:
             DeepFace server JSON response (e.g. {"result": "success", ...}).
         """
         files = {
-            "img": (f"{entity_id}.jpg", image_data, content_type),
+            "file": (f"{entity_id}.jpg", image_data, content_type),
         }
         data = {"img_name": entity_id}
 

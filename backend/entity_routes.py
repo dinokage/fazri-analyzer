@@ -2,6 +2,7 @@
 from fastapi import APIRouter, HTTPException, Query, Depends
 from typing import Optional, List
 from pydantic import BaseModel
+from sqlalchemy.orm import Session
 
 from services.entity_resolver import get_resolver
 from services.confidence_scorer import ConfidenceScorer
@@ -9,6 +10,7 @@ from models.entity import Entity
 from auth.dependencies import get_current_user, require_staff
 from auth.models import AuthenticatedUser, UserRole
 from auth.exceptions import PermissionDeniedError
+from database.connection import get_db
 
 router = APIRouter(prefix="/api/v1/entities", tags=["entities"])
 
@@ -56,22 +58,39 @@ async def search_entity(
 async def fuzzy_search_by_name(
     name: str = Query(..., description="Name to search"),
     threshold: float = Query(0.85, ge=0.0, le=1.0),
-    current_user: AuthenticatedUser = Depends(require_staff())
+    current_user: AuthenticatedUser = Depends(require_staff()),
+    db: Session = Depends(get_db),
 ):
-    """Fuzzy name search (STAFF+ only)"""
-    resolver = get_resolver()
-    matches = resolver.resolve_by_fuzzy_name(name, threshold)
-    
+    """Fuzzy name search against staff_profiles (STAFF+ only)"""
+    from models.db.alerts import StaffProfile
+
+    staff_list = (
+        db.query(StaffProfile)
+        .filter(StaffProfile.name.ilike(f"%{name}%"))
+        .order_by(StaffProfile.name)
+        .limit(20)
+        .all()
+    )
+
+    matches = [
+        {
+            "entity": {
+                "entity_id": s.entity_id or str(s.id),
+                "name": s.name,
+                "entity_type": s.role.value if s.role else "staff",
+                "department": s.department,
+                "face_id": None,
+            },
+            "similarity": 1.0,
+        }
+        for s in staff_list
+        if s.name
+    ]
+
     return {
         "query": name,
         "threshold": threshold,
-        "matches": [
-            {
-                "entity": match[0],
-                "similarity": match[1]
-            }
-            for match in matches[:10]  # Top 10
-        ]
+        "matches": matches,
     }
 
 @router.get("/{entity_id}")
