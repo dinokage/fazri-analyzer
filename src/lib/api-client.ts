@@ -831,6 +831,50 @@ export const apiClient = {
     return handleResponse(response);
   },
 
+  // ===== OUTGOING WEBHOOK ENDPOINTS =====
+
+  async listWebhooks() {
+    const response = await fetch(`${API_BASE_URL}/api/v1/webhooks`, {
+      headers: await getAuthHeaders(),
+    });
+    return handleResponse(response);
+  },
+
+  async createWebhook(url: string, events: string[]) {
+    const response = await fetch(`${API_BASE_URL}/api/v1/webhooks`, {
+      method: 'POST',
+      headers: await getAuthHeaders(),
+      body: JSON.stringify({ url, events }),
+    });
+    return handleResponse(response);
+  },
+
+  async updateWebhook(id: string, data: { url?: string; events?: string[]; active?: boolean }) {
+    const response = await fetch(`${API_BASE_URL}/api/v1/webhooks/${encodeURIComponent(id)}`, {
+      method: 'PUT',
+      headers: await getAuthHeaders(),
+      body: JSON.stringify(data),
+    });
+    return handleResponse(response);
+  },
+
+  async deleteWebhook(id: string) {
+    const response = await fetch(`${API_BASE_URL}/api/v1/webhooks/${encodeURIComponent(id)}`, {
+      method: 'DELETE',
+      headers: await getAuthHeaders(),
+    });
+    if (response.status === 204) return;
+    return handleResponse(response);
+  },
+
+  async testWebhook(id: string): Promise<{ success: boolean; status?: number; error?: string }> {
+    const response = await fetch(`${API_BASE_URL}/api/v1/webhooks/${encodeURIComponent(id)}/test`, {
+      method: 'POST',
+      headers: await getAuthHeaders(),
+    });
+    return handleResponse(response);
+  },
+
   async registerFace(entityId: string, file: File) {
     // Do NOT use getAuthHeaders() here — it always sets Content-Type: application/json,
     // which prevents the browser from setting the multipart/form-data boundary that

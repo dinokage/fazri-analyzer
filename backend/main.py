@@ -8,7 +8,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 
 import entity_routes, graph_routes, spatial_routes, anomaly_routes, chat_routes
-from routes import alert_router, staff_router, notification_router, demo_router
+from routes import alert_router, staff_router, notification_router, demo_router, webhook_router
 from routes.gitlab_routes import router as gitlab_router
 from config import settings
 from auth.dependencies import get_current_user
@@ -261,6 +261,7 @@ if settings.ALERT_SYSTEM_ENABLED:
     app.include_router(staff_router)
     app.include_router(notification_router)
     app.include_router(demo_router)
+    app.include_router(webhook_router)
     logger.info("Alert system routes registered")
 
 # Include DeepFace integration routes

@@ -415,6 +415,21 @@ async def deepface_webhook(
     cam_stream.last_event_at = datetime.now(timezone.utc)
     db.commit()
 
+    # Dispatch outgoing webhook if any faces were detected
+    if processed > 0:
+        try:
+            from services.webhook_service import WebhookService
+            WebhookService.dispatch_event("FACE_DETECTED", {
+                "stream_id": payload.stream_id,
+                "zone_id": zone_id,
+                "faces_found": payload.faces_found,
+                "frames_processed": payload.frames_processed,
+                "alerts_created": alerts_created,
+                "timestamp": payload.timestamp.isoformat() if payload.timestamp else "",
+            })
+        except Exception as exc:
+            logger.warning("Failed to dispatch FACE_DETECTED webhook: %s", exc)
+
     return WebhookProcessedResponse(
         status="ok",
         processed=processed,
