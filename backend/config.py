@@ -77,6 +77,7 @@ class Settings(BaseSettings):
     # Alert System Feature Flags
     ALERT_SYSTEM_ENABLED: bool = True
     DEMO_MODE_ENABLED: bool = True
+    ALERT_COOLDOWN_SECONDS: int = 60  # Suppress duplicate alerts for same face/stream within this window
 
     # Assignment Configuration
     ALERT_MAX_CONCURRENT_PER_STAFF: int = 3  # Max alerts per staff member

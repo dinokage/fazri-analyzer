@@ -109,6 +109,64 @@ def _verify_webhook_signature(raw_body: bytes, signature_header: Optional[str]) 
         )
 
 
+# ── Alert cooldown (Redis) ─────────────────────────────────────────────────
+# Prevents duplicate alerts when the same face appears in consecutive frames.
+# Uses Redis SET NX EX for atomic "create if absent" with auto-expiry.
+
+_alert_redis: Any = None
+
+
+def _get_alert_redis():
+    global _alert_redis
+    if _alert_redis is None:
+        try:
+            import redis as _redis_lib
+            _alert_redis = _redis_lib.Redis(
+                host=settings.REDIS_HOST,
+                port=settings.REDIS_PORT,
+                db=settings.REDIS_DB,
+                decode_responses=True,
+                socket_connect_timeout=1,
+            )
+            _alert_redis.ping()
+        except Exception as exc:
+            logger.warning("Alert cooldown Redis unavailable: %s — duplicates may occur", exc)
+            _alert_redis = None
+    return _alert_redis
+
+
+def _cooldown_key(anomaly_type: str, stream_id: str, entity_key: str) -> str:
+    return f"fazri:alert_cd:{anomaly_type}:{stream_id}:{entity_key}"
+
+
+def _is_alert_suppressed(anomaly_type: str, stream_id: str, entity_key: str) -> bool:
+    r = _get_alert_redis()
+    if not r:
+        return False
+    try:
+        return r.exists(_cooldown_key(anomaly_type, stream_id, entity_key)) == 1
+    except Exception:
+        return False
+
+
+def _set_alert_cooldown(anomaly_type: str, stream_id: str, entity_key: str) -> None:
+    r = _get_alert_redis()
+    if not r:
+        return
+    try:
+        r.set(
+            _cooldown_key(anomaly_type, stream_id, entity_key),
+            "1",
+            ex=settings.ALERT_COOLDOWN_SECONDS,
+            nx=True,
+        )
+    except Exception:
+        pass
+
+
+# ============================================================================
+
+
 def _create_alert_from_anomaly(
     anomaly: Dict[str, Any],
     entity: Optional[Dict[str, Any]],
@@ -391,23 +449,38 @@ async def deepface_webhook(
         )
 
         if anomaly and settings.ALERT_SYSTEM_ENABLED:
-            try:
-                _create_alert_from_anomaly(
-                    anomaly=anomaly,
-                    entity=entity,
-                    zone_id=zone_id,
-                    match_data=match_dict,
-                    payload=payload,
-                    db=db,
+            anomaly_type = anomaly.get("anomaly_type", "unknown")
+            # Known entity → entity_id; Unknown face → tracker_id (from
+            # deepface-server embedding tracker); fallback to stream-level key.
+            entity_key = (
+                entity.get("entity_id", "unknown") if entity
+                else match.tracker_id or f"stream:{payload.stream_id}"
+            )
+
+            if _is_alert_suppressed(anomaly_type, payload.stream_id, entity_key):
+                logger.debug(
+                    "Alert suppressed (cooldown): %s stream=%s key=%s",
+                    anomaly_type, payload.stream_id, entity_key,
                 )
-                alerts_created += 1
-            except Exception as exc:
-                logger.error(
-                    "Failed to create alert for anomaly %s: %s",
-                    anomaly.get("anomaly_type"),
-                    exc,
-                    exc_info=True,
-                )
+            else:
+                try:
+                    _create_alert_from_anomaly(
+                        anomaly=anomaly,
+                        entity=entity,
+                        zone_id=zone_id,
+                        match_data=match_dict,
+                        payload=payload,
+                        db=db,
+                    )
+                    _set_alert_cooldown(anomaly_type, payload.stream_id, entity_key)
+                    alerts_created += 1
+                except Exception as exc:
+                    logger.error(
+                        "Failed to create alert for anomaly %s: %s",
+                        anomaly.get("anomaly_type"),
+                        exc,
+                        exc_info=True,
+                    )
 
         processed += 1
 

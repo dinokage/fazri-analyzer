@@ -26,6 +26,10 @@ class Settings(BaseSettings):
         "postgresql://deepface:deepface@localhost:5432/deepface"
     )
 
+    # Face tracking — used to assign stable IDs to unknown faces across frames
+    face_track_similarity: float = 0.60  # cosine similarity threshold for "same face"
+    face_track_ttl: int = 120            # seconds to remember a tracked face after last seen
+
     # Webhook signing — must match DEEPFACE_WEBHOOK_SECRET on the backend
     deepface_webhook_secret: str = ""
 

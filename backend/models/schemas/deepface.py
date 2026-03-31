@@ -36,6 +36,7 @@ class FaceMatch(BaseModel):
     confidence: float = Field(0.0, description="Face detector probability (0-100); 0.0 for unknown faces")
     threshold: float = Field(..., description="Distance threshold used for this model")
     facial_area: Optional[FacialArea] = None
+    tracker_id: Optional[str] = Field(None, description="Stable ID for tracking unknown faces across frames (assigned by deepface-server)")
 
 
 class WebhookPayload(BaseModel):

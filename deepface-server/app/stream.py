@@ -13,6 +13,7 @@ from __future__ import annotations
 import asyncio
 import base64
 import logging
+import time
 import uuid
 from datetime import datetime, timezone
 from typing import Dict, List, Optional
@@ -77,6 +78,9 @@ class StreamProcessor:
         self.started_at: Optional[datetime] = None
         self.last_error: Optional[str] = None
         self._task: Optional[asyncio.Task] = None
+        # Per-stream face tracker: maps tracker_id → {embedding, last_seen}
+        # Used to assign stable IDs to unknown faces across consecutive frames.
+        self._face_tracker: Dict[str, Dict] = {}
 
     @property
     def status(self) -> str:
@@ -173,6 +177,47 @@ class StreamProcessor:
         logger.info("Stream %s: connected to %s", self.stream_id, self.rtsp_url)
         return cap
 
+    def _resolve_tracker_id(self, embedding: list) -> str:
+        """Match an embedding against tracked unknown faces via cosine similarity.
+
+        Returns an existing tracker_id if the face is recognised, or generates
+        a new one.  Stale entries (older than face_track_ttl) are pruned each call.
+        """
+        now = time.monotonic()
+
+        # Prune stale entries
+        ttl = settings.face_track_ttl
+        self._face_tracker = {
+            tid: data for tid, data in self._face_tracker.items()
+            if now - data["last_seen"] < ttl
+        }
+
+        # Cosine similarity against all tracked embeddings
+        emb = np.array(embedding, dtype=np.float32)
+        emb_norm = emb / (np.linalg.norm(emb) + 1e-10)
+
+        best_tid, best_sim = None, 0.0
+        for tid, data in self._face_tracker.items():
+            stored = np.array(data["embedding"], dtype=np.float32)
+            stored_norm = stored / (np.linalg.norm(stored) + 1e-10)
+            sim = float(np.dot(emb_norm, stored_norm))
+            if sim > best_sim:
+                best_sim = sim
+                best_tid = tid
+
+        if best_tid and best_sim >= settings.face_track_similarity:
+            self._face_tracker[best_tid]["last_seen"] = now
+            return best_tid
+
+        # New face — assign a fresh tracker_id
+        new_tid = str(uuid.uuid4())[:12]
+        self._face_tracker[new_tid] = {"embedding": embedding, "last_seen": now}
+        logger.debug(
+            "Stream %s: new unknown face tracked as %s (similarity to best existing: %.3f)",
+            self.stream_id, new_tid, best_sim,
+        )
+        return new_tid
+
     async def _process_frame(self, loop: asyncio.AbstractEventLoop, frame: np.ndarray) -> None:
         from deepface import DeepFace
         from deepface.modules.exceptions import EmptyDatasource, FaceNotDetected
@@ -214,13 +259,14 @@ class StreamProcessor:
         # Collect matches across all detected faces.
         # dfs is a list with one DataFrame per detected face in the frame.
         # An empty DataFrame means the face was detected but has no match in
-        # the pgvector database — i.e. an unknown face. We must still notify
-        # the backend so it can fire the "alert_on_unknown_face" rule.
+        # the pgvector database — i.e. an unknown face.  We track the index
+        # so we can later resolve a stable tracker_id via embeddings.
         matches = []
-        for df in dfs:
+        unknown_match_indices: List[tuple] = []  # (dfs_index, matches_index)
+
+        for i, df in enumerate(dfs):
             if df.empty:
-                # Face detected but not registered — send sentinel entry so
-                # the backend can run the unknown_entity anomaly rule.
+                unknown_match_indices.append((i, len(matches)))
                 matches.append({
                     "img_name": "UNKNOWN_FACE",
                     "distance": 1.0,
@@ -230,13 +276,11 @@ class StreamProcessor:
                 })
                 continue
             for _, row in df.iterrows():
-                distance = row.get("distance")
-                threshold = row.get("threshold")
                 matches.append({
                     "img_name": row.get("img_name"),
-                    "distance": distance,
-                    "confidence": row.get("confidence", 0.0),  # detector prob from DeepFace
-                    "threshold": threshold,
+                    "distance": row.get("distance"),
+                    "confidence": row.get("confidence", 0.0),
+                    "threshold": row.get("threshold"),
                     "facial_area": {
                         "x": row.get("target_x"),
                         "y": row.get("target_y"),
@@ -247,6 +291,40 @@ class StreamProcessor:
 
         if not matches:
             return
+
+        # For unknown faces, compute embeddings via represent() to assign
+        # stable tracker_ids.  represent() uses the same detector on the
+        # same image, so results are 1:1 ordered with the search() DataFrames.
+        if unknown_match_indices:
+            try:
+                face_objs = await loop.run_in_executor(
+                    None,
+                    lambda: DeepFace.represent(
+                        img_path=data_uri,
+                        model_name=settings.model_name,
+                        detector_backend=settings.detector_backend,
+                        enforce_detection=False,
+                        align=True,
+                        normalization=settings.normalization,
+                        l2_normalize=settings.l2_normalize,
+                    ),
+                )
+                for dfs_idx, match_idx in unknown_match_indices:
+                    if dfs_idx < len(face_objs):
+                        fobj = face_objs[dfs_idx]
+                        embedding = fobj.get("embedding", [])
+                        area = fobj.get("facial_area", {})
+                        if embedding:
+                            tracker_id = self._resolve_tracker_id(embedding)
+                            matches[match_idx]["tracker_id"] = tracker_id
+                        matches[match_idx]["facial_area"] = {
+                            "x": area.get("x", 0),
+                            "y": area.get("y", 0),
+                            "w": area.get("w", 0),
+                            "h": area.get("h", 0),
+                        }
+            except Exception as exc:
+                logger.debug("Stream %s: represent() for tracking failed: %s", self.stream_id, exc)
 
         await self._post_webhook(matches)
 
@@ -280,9 +358,35 @@ class StreamProcessor:
         if not faces:
             return
 
+        # Get embeddings for tracker_id assignment.
+        # represent() is used instead of extract_faces() because it returns
+        # the face embedding alongside coordinates.
+        face_objs: list = []
+        try:
+            from deepface import DeepFace as _DF
+            face_objs = await loop.run_in_executor(
+                None,
+                lambda: _DF.represent(
+                    img_path=data_uri,
+                    model_name=settings.model_name,
+                    detector_backend=settings.detector_backend,
+                    enforce_detection=False,
+                    align=True,
+                    normalization=settings.normalization,
+                    l2_normalize=settings.l2_normalize,
+                ),
+            )
+        except Exception as exc:
+            logger.debug("Stream %s: represent() for empty-db tracking failed: %s", self.stream_id, exc)
+
         matches = []
-        for face in faces:
+        for i, face in enumerate(faces):
             area = face.get("facial_area", {})
+            tracker_id = None
+            if i < len(face_objs):
+                embedding = face_objs[i].get("embedding", [])
+                if embedding:
+                    tracker_id = self._resolve_tracker_id(embedding)
             matches.append({
                 "img_name": "UNKNOWN_FACE",
                 "distance": 1.0,
@@ -294,6 +398,7 @@ class StreamProcessor:
                     "w": area.get("w", 0),
                     "h": area.get("h", 0),
                 },
+                "tracker_id": tracker_id,
             })
 
         logger.info(
