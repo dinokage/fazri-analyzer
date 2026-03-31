@@ -157,7 +157,11 @@ class StreamProcessor:
     async def _open_capture(self, loop: asyncio.AbstractEventLoop) -> cv2.VideoCapture:
         def _open():
             cv2.setLogLevel(0)  # suppress H264 decode warnings from FFmpeg
-            cap = cv2.VideoCapture(self.rtsp_url, cv2.CAP_FFMPEG)
+            # Use TCP transport to reduce packet loss / H264 decode errors
+            url = self.rtsp_url
+            if "?" not in url:
+                url += "?rtsp_transport=tcp"
+            cap = cv2.VideoCapture(url, cv2.CAP_FFMPEG)
             cap.set(cv2.CAP_PROP_BUFFERSIZE, 1)
             return cap
 
@@ -195,7 +199,7 @@ class StreamProcessor:
         except (FaceNotDetected, EmptyDatasource):
             return
         except Exception as exc:
-            logger.debug("Stream %s search error: %s", self.stream_id, exc)
+            logger.warning("Stream %s DeepFace error (skipping frame): %s", self.stream_id, exc)
             return
 
         # Collect matches across all detected faces.
