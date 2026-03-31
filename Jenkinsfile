@@ -47,6 +47,9 @@ pipeline {
         AUTH_DATABASE_URL    = credentials('fazri-auth-database-url')
         BETTER_AUTH_SECRET   = credentials('fazri-better-auth-secret')
         AUTH_TRUSTED_ORIGINS = credentials('fazri-auth-trusted-origins')
+
+        // ── Notification credentials ──────────────────────────────────────────
+        DISCORD_WEBHOOK_URL  = credentials('fazri-discord-webhook-url')
     }
 
     stages {
@@ -237,6 +240,7 @@ pipeline {
                                     -e DEEPFACE_BATCH_SYNC_INTERVAL_SECONDS="300" \
                                     -e DEEPFACE_POSTGRES_URI="${DEEPFACE_POSTGRES_URI}" \
                                     -e DEEPFACE_ENABLED=true \
+                                    -e DISCORD_WEBHOOK_URL="${DISCORD_WEBHOOK_URL}" \
                                     -v app_data_${DEPLOY_ENV}:/app/augmented \
                                     -v app_ml_models_${DEPLOY_ENV}:/app/ml_models \
                                     -v app_logs_${DEPLOY_ENV}:/app/logs \
