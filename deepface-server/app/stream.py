@@ -303,6 +303,10 @@ class StreamProcessor:
         await self._post_webhook(matches)
 
     async def _post_webhook(self, matches: list) -> None:
+        import hashlib
+        import hmac
+        import json as _json
+
         payload = {
             "stream_id": self.stream_id,
             "rtsp_url": self.rtsp_url,
@@ -311,9 +315,16 @@ class StreamProcessor:
             "faces_found": len(matches),
             "matches": matches,
         }
+        body = _json.dumps(payload).encode()
+
+        headers = {"Content-Type": "application/json"}
+        if settings.deepface_webhook_secret:
+            sig = hmac.new(settings.deepface_webhook_secret.encode(), body, hashlib.sha256).hexdigest()
+            headers["X-DeepFace-Signature"] = f"sha256={sig}"
+
         try:
             async with httpx.AsyncClient(timeout=5.0, follow_redirects=True) as client:
-                resp = await client.post(self.webhook_url, json=payload)
+                resp = await client.post(self.webhook_url, content=body, headers=headers)
                 logger.debug(
                     "Stream %s webhook → %s [%d]",
                     self.stream_id, self.webhook_url, resp.status_code,

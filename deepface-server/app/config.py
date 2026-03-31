@@ -26,6 +26,9 @@ class Settings(BaseSettings):
         "postgresql://deepface:deepface@localhost:5432/deepface"
     )
 
+    # Webhook signing — must match DEEPFACE_WEBHOOK_SECRET on the backend
+    deepface_webhook_secret: str = ""
+
     # Sentry
     sentry_dsn: str = ""
     sentry_environment: str = "development"
