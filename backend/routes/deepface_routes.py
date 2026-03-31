@@ -455,11 +455,13 @@ async def deepface_webhook(
 
         if anomaly and settings.ALERT_SYSTEM_ENABLED:
             anomaly_type = anomaly.get("anomaly_type", "unknown")
-            # Known entity → entity_id; Unknown face → tracker_id (from
-            # deepface-server embedding tracker); fallback to stream-level key.
+            # Known entity → entity_id for per-person cooldown.
+            # Unknown face → stream-level key. Per-face tracker_ids are
+            # unreliable because search() and represent() don't guarantee
+            # the same face ordering, causing unstable IDs.
             entity_key = (
                 entity.get("entity_id", "unknown") if entity
-                else match.tracker_id or f"stream:{payload.stream_id}"
+                else f"unknown:{payload.stream_id}"
             )
 
             if _is_alert_suppressed(anomaly_type, payload.stream_id, entity_key):
