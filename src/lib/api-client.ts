@@ -795,6 +795,24 @@ export const apiClient = {
     return URL.createObjectURL(blob);
   },
 
+  async getStreamDetections(streamId: string): Promise<{
+    detections: Array<{
+      img_name: string;
+      entity_name: string | null;
+      confidence: number;
+      distance: number;
+      facial_area: { x: number; y: number; w: number; h: number } | null;
+      is_unknown: boolean;
+    }>;
+    cached: boolean;
+  }> {
+    const response = await fetch(
+      `${API_BASE_URL}/api/v1/deepface/streams/${encodeURIComponent(streamId)}/detections`,
+      { headers: await getAuthHeaders() },
+    );
+    return handleResponse(response);
+  },
+
   async probeOnvif(data: {
     ip: string;
     port?: number;

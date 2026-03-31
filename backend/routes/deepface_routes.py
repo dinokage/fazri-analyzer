@@ -407,6 +407,7 @@ async def deepface_webhook(
     graph_svc = get_cctv_graph_service()
     alerts_created = 0
     processed = 0
+    detection_overlays: List[Dict[str, Any]] = []  # collected for Redis cache
 
     for match in payload.matches:
         entity_id = match.img_name
@@ -414,6 +415,16 @@ async def deepface_webhook(
 
         # Resolve entity from Neo4j
         entity = graph_svc.get_entity_by_entity_id(entity_id)
+
+        # Collect detection data for frontend bounding box overlays
+        detection_overlays.append({
+            "img_name": match.img_name,
+            "entity_name": entity.get("name") if entity else None,
+            "confidence": match.confidence,
+            "distance": match.distance,
+            "facial_area": match.facial_area.model_dump() if match.facial_area else None,
+            "is_unknown": match.img_name == "UNKNOWN_FACE",
+        })
 
         # Write detection event to Neo4j
         if entity is not None:
@@ -490,6 +501,22 @@ async def deepface_webhook(
                     )
 
         processed += 1
+
+    # Cache latest detections in Redis for frontend bounding box overlays.
+    # TTL=10s — slightly longer than detection interval so the cache stays
+    # fresh while the stream is active, and auto-expires when it stops.
+    if detection_overlays:
+        r = _get_alert_redis()
+        if r:
+            try:
+                import json as _json
+                r.set(
+                    f"fazri:detections:{payload.stream_id}",
+                    _json.dumps(detection_overlays),
+                    ex=10,
+                )
+            except Exception:
+                pass  # best-effort cache — preview works without it
 
     # Update last_event_at on the camera stream record
     cam_stream.last_event_at = datetime.now(timezone.utc)
@@ -723,6 +750,39 @@ async def get_stream_snapshot(
         )
 
     return StreamingResponse(io.BytesIO(jpeg_bytes), media_type="image/jpeg")
+
+
+# ============================================================================
+# Detection overlays (for frontend bounding boxes)
+# ============================================================================
+
+
+@router.get(
+    "/streams/{stream_id}/detections",
+    summary="Latest face detections for a stream (cached in Redis)",
+)
+async def get_stream_detections(
+    stream_id: str,
+    current_user: AuthenticatedUser = Depends(require_staff()),
+) -> Dict[str, Any]:
+    """
+    Returns the most recent face detection results for the given stream,
+    including bounding boxes and entity names.  Data is cached in Redis by
+    the webhook handler with a 10-second TTL — it's only present while the
+    stream is actively producing detections.
+    """
+    import json as _json
+
+    r = _get_alert_redis()
+    if not r:
+        return {"detections": [], "cached": False}
+    try:
+        raw = r.get(f"fazri:detections:{stream_id}")
+    except Exception:
+        return {"detections": [], "cached": False}
+    if not raw:
+        return {"detections": [], "cached": False}
+    return {"detections": _json.loads(raw), "cached": True}
 
 
 # ============================================================================

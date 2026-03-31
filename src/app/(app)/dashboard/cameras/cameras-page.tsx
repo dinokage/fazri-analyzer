@@ -221,6 +221,19 @@ export default function CamerasPageContent() {
   const autoRefreshRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const prevBlobUrlRef = useRef<string | null>(null);
 
+  // Face detection overlays
+  type Detection = {
+    img_name: string;
+    entity_name: string | null;
+    confidence: number;
+    distance: number;
+    facial_area: { x: number; y: number; w: number; h: number } | null;
+    is_unknown: boolean;
+  };
+  const [detections, setDetections] = useState<Detection[]>([]);
+  const imgRef = useRef<HTMLImageElement>(null);
+  const [imgDimensions, setImgDimensions] = useState<{ naturalWidth: number; naturalHeight: number } | null>(null);
+
   // NVR wizard state
   const [nvrForm, setNvrForm] = useState(EMPTY_NVR);
   const [nvrDiscovery, setNvrDiscovery] = useState<NvrDiscoveryState>('idle');
@@ -255,13 +268,18 @@ export default function CamerasPageContent() {
   const fetchSnapshot = useCallback(async (stream: CameraStream) => {
     setSnapshotLoading(true);
     try {
-      const blobUrl = await apiClient.getCameraSnapshot(stream.stream_id);
+      const [blobUrl, detectionsResp] = await Promise.all([
+        apiClient.getCameraSnapshot(stream.stream_id),
+        apiClient.getStreamDetections(stream.stream_id).catch(() => ({ detections: [], cached: false })),
+      ]);
       // Revoke the previous object URL to avoid memory leaks
       if (prevBlobUrlRef.current) URL.revokeObjectURL(prevBlobUrlRef.current);
       prevBlobUrlRef.current = blobUrl;
       setSnapshotBlobUrl(blobUrl);
+      setDetections(detectionsResp.detections);
     } catch {
       setSnapshotBlobUrl(null);
+      setDetections([]);
     } finally {
       setSnapshotLoading(false);
     }
@@ -277,6 +295,8 @@ export default function CamerasPageContent() {
         prevBlobUrlRef.current = null;
       }
       setSnapshotBlobUrl(null);
+      setDetections([]);
+      setImgDimensions(null);
     }
   }, [previewStream, fetchSnapshot]);
 
@@ -516,11 +536,52 @@ export default function CamerasPageContent() {
                 </div>
               )}
               {snapshotBlobUrl ? (
-                <img
-                  src={snapshotBlobUrl}
-                  alt="Camera snapshot"
-                  className="w-full h-full object-contain"
-                />
+                <div className="relative w-full h-full">
+                  <img
+                    ref={imgRef}
+                    src={snapshotBlobUrl}
+                    alt="Camera snapshot"
+                    className="w-full h-full object-contain"
+                    onLoad={() => {
+                      if (imgRef.current) {
+                        setImgDimensions({
+                          naturalWidth: imgRef.current.naturalWidth,
+                          naturalHeight: imgRef.current.naturalHeight,
+                        });
+                      }
+                    }}
+                  />
+                  {/* Face bounding box overlays */}
+                  {imgDimensions && detections.map((det, i) => {
+                    if (!det.facial_area) return null;
+                    const { x, y, w, h } = det.facial_area;
+                    const left = (x / imgDimensions.naturalWidth) * 100;
+                    const top = (y / imgDimensions.naturalHeight) * 100;
+                    const width = (w / imgDimensions.naturalWidth) * 100;
+                    const height = (h / imgDimensions.naturalHeight) * 100;
+                    return (
+                      <div
+                        key={i}
+                        className="absolute border-2 pointer-events-none"
+                        style={{
+                          left: `${left}%`, top: `${top}%`,
+                          width: `${width}%`, height: `${height}%`,
+                          borderColor: det.is_unknown ? '#ef4444' : '#22c55e',
+                        }}
+                      >
+                        <span
+                          className="absolute -top-5 left-0 text-[10px] leading-tight px-1 py-0.5 rounded whitespace-nowrap"
+                          style={{
+                            backgroundColor: det.is_unknown ? '#ef4444' : '#22c55e',
+                            color: 'white',
+                          }}
+                        >
+                          {det.is_unknown ? 'Unknown' : (det.entity_name || det.img_name)}
+                        </span>
+                      </div>
+                    );
+                  })}
+                </div>
               ) : !snapshotLoading ? (
                 <div className="flex flex-col items-center justify-center text-gray-600">
                   <ServerCrash className="h-10 w-10 mb-2" />
