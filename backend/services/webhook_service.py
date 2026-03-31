@@ -30,7 +30,6 @@ WEBHOOK_EVENTS = [
     "ALERT_ACKNOWLEDGED",
     "ALERT_RESOLVED",
     "ALERT_ESCALATED",
-    "FACE_DETECTED",
 ]
 
 _event_config: Dict[str, Dict[str, str]] = {
@@ -39,7 +38,6 @@ _event_config: Dict[str, Dict[str, str]] = {
     "ALERT_ACKNOWLEDGED": {"color": "#3b82f6", "label": "Alert Acknowledged", "emoji": "✅"},
     "ALERT_RESOLVED":     {"color": "#22c55e", "label": "Alert Resolved",     "emoji": "🔒"},
     "ALERT_ESCALATED":    {"color": "#a855f7", "label": "Alert Escalated",    "emoji": "⬆️"},
-    "FACE_DETECTED":      {"color": "#06b6d4", "label": "Face Detected",      "emoji": "👁️"},
 }
 
 

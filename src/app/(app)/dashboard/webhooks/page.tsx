@@ -29,7 +29,6 @@ const ALL_EVENTS = [
   "ALERT_ACKNOWLEDGED",
   "ALERT_RESOLVED",
   "ALERT_ESCALATED",
-  "FACE_DETECTED",
 ] as const;
 type WebhookEvent = (typeof ALL_EVENTS)[number];
 
@@ -39,7 +38,6 @@ const eventLabels: Record<WebhookEvent, string> = {
   ALERT_ACKNOWLEDGED: "Acknowledged",
   ALERT_RESOLVED: "Alert Resolved",
   ALERT_ESCALATED: "Alert Escalated",
-  FACE_DETECTED: "Face Detected",
 };
 
 const eventColors: Record<WebhookEvent, string> = {
@@ -48,7 +46,6 @@ const eventColors: Record<WebhookEvent, string> = {
   ALERT_ACKNOWLEDGED: "bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400",
   ALERT_RESOLVED: "bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400",
   ALERT_ESCALATED: "bg-purple-100 text-purple-700 dark:bg-purple-900/30 dark:text-purple-400",
-  FACE_DETECTED: "bg-cyan-100 text-cyan-700 dark:bg-cyan-900/30 dark:text-cyan-400",
 };
 
 const DISCORD_PATTERN = /^https:\/\/(discord\.com|discordapp\.com)\/api\/webhooks\//;
@@ -688,7 +685,7 @@ export default function WebhooksPage() {
                       </p>
                       <p>
                         <span className="text-neutral-400">X-Webhook-Event:</span>{" "}
-                        ALERT_CREATED | ALERT_ASSIGNED | ALERT_ACKNOWLEDGED | ALERT_RESOLVED | ALERT_ESCALATED | FACE_DETECTED
+                        ALERT_CREATED | ALERT_ASSIGNED | ALERT_ACKNOWLEDGED | ALERT_RESOLVED | ALERT_ESCALATED
                       </p>
                     </div>
                   </div>
