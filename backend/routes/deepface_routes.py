@@ -495,23 +495,6 @@ async def deepface_webhook(
     cam_stream.last_event_at = datetime.now(timezone.utc)
     db.commit()
 
-    # Dispatch FACE_DETECTED outgoing webhook only when alerts were created.
-    # Without this guard, the event fires every 2-3 seconds (once per frame)
-    # and spams any connected webhook endpoint (Discord, Slack, etc.).
-    if alerts_created > 0:
-        try:
-            from services.webhook_service import WebhookService
-            WebhookService.dispatch_event("FACE_DETECTED", {
-                "stream_id": payload.stream_id,
-                "zone_id": zone_id,
-                "faces_found": payload.faces_found,
-                "frames_processed": payload.frames_processed,
-                "alerts_created": alerts_created,
-                "timestamp": payload.timestamp.isoformat() if payload.timestamp else "",
-            })
-        except Exception as exc:
-            logger.warning("Failed to dispatch FACE_DETECTED webhook: %s", exc)
-
     return WebhookProcessedResponse(
         status="ok",
         processed=processed,
