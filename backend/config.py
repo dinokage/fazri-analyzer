@@ -32,6 +32,7 @@ class Settings(BaseSettings):
     # JWT Configuration (for better-auth integration)
     BETTER_AUTH_SECRET: str = ""  # REQUIRED: Must match auth service BETTER_AUTH_SECRET
     AUTH_SERVICE_URL: str = ""    # REQUIRED: Public URL of the auth service VPS (e.g. https://auth.fazri.com)
+    AUTH_DATABASE_URL: str = ""   # Direct connection to auth service PostgreSQL (for cross-service queries)
 
     # File Paths
     DATA_DIR: str = "/app/augmented"

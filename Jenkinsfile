@@ -228,6 +228,7 @@ pipeline {
                                     -e GITLAB_TOKEN="${GITLAB_TOKEN}" \
                                     -e GITLAB_PROJECT_ID="${GITLAB_PROJECT_ID}" \
                                     -e AUTH_SERVICE_URL="${AUTH_SERVICE_URL}" \
+                                    -e AUTH_DATABASE_URL="${AUTH_DATABASE_URL}" \
                                     -e SENTRY_DSN="${SENTRY_DSN}" \
                                     -e SENTRY_ENVIRONMENT=${DEPLOY_ENV} \
                                     -e SENTRY_TRACES_SAMPLE_RATE=0.1 \

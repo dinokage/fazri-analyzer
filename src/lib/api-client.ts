@@ -269,19 +269,6 @@ export const apiClient = {
     return handleResponse(response);
   },
 
-  async fuzzySearchByName(name: string, threshold = 0.85) {
-    const params = new URLSearchParams({
-      name,
-      threshold: threshold.toString(),
-    });
-
-    const response = await fetch(
-      `${API_BASE_URL}/api/v1/entities/fuzzy-search?${params}`,
-      { headers: await getAuthHeaders() }
-    );
-    return handleResponse(response);
-  },
-
   async getAnomaliesByEntity(entityId: string, startDate?: string, endDate?: string) {
     const params = new URLSearchParams();
     if (startDate) params.append('start_date', startDate);

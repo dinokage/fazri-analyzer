@@ -61,36 +61,77 @@ async def fuzzy_search_by_name(
     current_user: AuthenticatedUser = Depends(require_staff()),
     db: Session = Depends(get_db),
 ):
-    """Fuzzy name search against staff_profiles (STAFF+ only)"""
+    """Fuzzy name search across auth users and staff_profiles (STAFF+ only)"""
+    from sqlalchemy import create_engine, text
+    from config import settings
+
+    seen_entity_ids: set = set()
+    matches = []
+
+    # ── 1. Query auth service user table ──────────────────────────────────────
+    if settings.AUTH_DATABASE_URL:
+        try:
+            auth_engine = create_engine(settings.AUTH_DATABASE_URL, pool_pre_ping=True)
+            with auth_engine.connect() as conn:
+                rows = conn.execute(
+                    text(
+                        "SELECT entity_id, name, role, department, face_id "
+                        'FROM "user" '
+                        "WHERE name ILIKE :pattern "
+                        "ORDER BY name LIMIT 20"
+                    ),
+                    {"pattern": f"%{name}%"},
+                ).fetchall()
+            for row in rows:
+                if not row.entity_id:
+                    continue
+                seen_entity_ids.add(row.entity_id)
+                matches.append({
+                    "entity": {
+                        "entity_id": row.entity_id,
+                        "name": row.name,
+                        "entity_type": row.role.lower() if row.role else "student",
+                        "department": row.department,
+                        "face_id": row.face_id,
+                    },
+                    "similarity": 1.0,
+                })
+        except Exception as exc:
+            import logging
+            logging.getLogger(__name__).warning("Auth DB fuzzy-search failed: %s", exc)
+
+    # ── 2. Query staff_profiles (non-mock, with entity_id) ────────────────────
     from models.db.alerts import StaffProfile
 
     staff_list = (
         db.query(StaffProfile)
         .filter(StaffProfile.name.ilike(f"%{name}%"))
+        .filter(StaffProfile.is_mock_user == False)
+        .filter(StaffProfile.entity_id.isnot(None))
         .order_by(StaffProfile.name)
         .limit(20)
         .all()
     )
-
-    matches = [
-        {
+    for s in staff_list:
+        if not s.name or s.entity_id in seen_entity_ids:
+            continue
+        matches.append({
             "entity": {
-                "entity_id": s.entity_id or str(s.id),
+                "entity_id": s.entity_id,
                 "name": s.name,
                 "entity_type": s.role.value if s.role else "staff",
                 "department": s.department,
                 "face_id": None,
             },
             "similarity": 1.0,
-        }
-        for s in staff_list
-        if s.name
-    ]
+        })
+
+    matches.sort(key=lambda m: m["entity"]["name"])
 
     return {
         "query": name,
         "threshold": threshold,
-        "matches": matches,
+        "matches": matches[:20],
     }
 
 @router.get("/{entity_id}")
