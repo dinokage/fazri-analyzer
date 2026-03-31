@@ -757,6 +757,7 @@ export const apiClient = {
         headers: await getAuthHeaders(),
       }
     );
+    if (response.status === 204) return;
     return handleResponse(response);
   },
 
