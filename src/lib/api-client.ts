@@ -793,8 +793,18 @@ export const apiClient = {
     return handleResponse(response);
   },
 
-  getCameraSnapshotUrl(streamId: string): string {
-    return `${API_BASE_URL}/api/v1/deepface/streams/${encodeURIComponent(streamId)}/snapshot`;
+  async getCameraSnapshot(streamId: string): Promise<string> {
+    // <img src> cannot send Authorization headers, so we fetch the JPEG
+    // through apiClient (which attaches the Bearer token) and convert it
+    // to a blob object URL for use in <img src>.
+    const headers = await getAuthHeaders();
+    const response = await fetch(
+      `${API_BASE_URL}/api/v1/deepface/streams/${encodeURIComponent(streamId)}/snapshot`,
+      { headers },
+    );
+    if (!response.ok) throw new ApiError(`Snapshot failed: ${response.status}`, response.status);
+    const blob = await response.blob();
+    return URL.createObjectURL(blob);
   },
 
   async probeOnvif(data: {

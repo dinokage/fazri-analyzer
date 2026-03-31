@@ -215,9 +215,11 @@ export default function CamerasPageContent() {
 
   // Preview modal
   const [previewStream, setPreviewStream] = useState<CameraStream | null>(null);
-  const [snapshotTs, setSnapshotTs] = useState(Date.now());
+  const [snapshotBlobUrl, setSnapshotBlobUrl] = useState<string | null>(null);
+  const [snapshotLoading, setSnapshotLoading] = useState(false);
   const [autoRefresh, setAutoRefresh] = useState(false);
   const autoRefreshRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const prevBlobUrlRef = useRef<string | null>(null);
 
   // NVR wizard state
   const [nvrForm, setNvrForm] = useState(EMPTY_NVR);
@@ -248,16 +250,46 @@ export default function CamerasPageContent() {
 
   useEffect(() => { loadStreams(); }, [loadStreams]);
 
+  // ─── Snapshot fetching (auth-aware) ─────────────────────────────────────────
+
+  const fetchSnapshot = useCallback(async (stream: CameraStream) => {
+    setSnapshotLoading(true);
+    try {
+      const blobUrl = await apiClient.getCameraSnapshot(stream.stream_id);
+      // Revoke the previous object URL to avoid memory leaks
+      if (prevBlobUrlRef.current) URL.revokeObjectURL(prevBlobUrlRef.current);
+      prevBlobUrlRef.current = blobUrl;
+      setSnapshotBlobUrl(blobUrl);
+    } catch {
+      setSnapshotBlobUrl(null);
+    } finally {
+      setSnapshotLoading(false);
+    }
+  }, []);
+
+  // Fetch snapshot when preview opens, and clean up blob URL when it closes
+  useEffect(() => {
+    if (previewStream) {
+      fetchSnapshot(previewStream);
+    } else {
+      if (prevBlobUrlRef.current) {
+        URL.revokeObjectURL(prevBlobUrlRef.current);
+        prevBlobUrlRef.current = null;
+      }
+      setSnapshotBlobUrl(null);
+    }
+  }, [previewStream, fetchSnapshot]);
+
   // ─── Auto-refresh snapshot ──────────────────────────────────────────────────
 
   useEffect(() => {
-    if (autoRefresh) {
-      autoRefreshRef.current = setInterval(() => setSnapshotTs(Date.now()), 5000);
+    if (autoRefresh && previewStream) {
+      autoRefreshRef.current = setInterval(() => fetchSnapshot(previewStream), 5000);
     } else {
       if (autoRefreshRef.current) clearInterval(autoRefreshRef.current);
     }
     return () => { if (autoRefreshRef.current) clearInterval(autoRefreshRef.current); };
-  }, [autoRefresh]);
+  }, [autoRefresh, previewStream, fetchSnapshot]);
 
   // ─── Access guard ───────────────────────────────────────────────────────────
 
@@ -363,12 +395,6 @@ export default function CamerasPageContent() {
     return `${Math.floor(diff / 3600)}h ago`;
   };
 
-  // ─── Snapshot URL ────────────────────────────────────────────────────────────
-
-  const snapshotUrl = previewStream
-    ? `${apiClient.getCameraSnapshotUrl(previewStream.stream_id)}?t=${snapshotTs}`
-    : '';
-
   // ─── Render ──────────────────────────────────────────────────────────────────
 
   return (
@@ -442,7 +468,7 @@ export default function CamerasPageContent() {
                   <td className="px-4 py-3 text-right">
                     <div className="flex items-center justify-end gap-1">
                       <button
-                        onClick={() => { setPreviewStream(stream); setSnapshotTs(Date.now()); setAutoRefresh(false); }}
+                        onClick={() => { setPreviewStream(stream); setAutoRefresh(false); }}
                         className="p-1.5 rounded text-gray-500 hover:text-blue-400 hover:bg-blue-900/20 transition-colors"
                         type="button"
                         title="Preview stream"
@@ -484,23 +510,24 @@ export default function CamerasPageContent() {
           <div className="space-y-3 py-2">
             {/* Snapshot image */}
             <div className="relative bg-black rounded-lg overflow-hidden aspect-video flex items-center justify-center border border-gray-800">
-              {snapshotUrl ? (
+              {snapshotLoading && (
+                <div className="absolute inset-0 flex items-center justify-center bg-black/60 z-10">
+                  <RefreshCw className="h-6 w-6 text-gray-400 animate-spin" />
+                </div>
+              )}
+              {snapshotBlobUrl ? (
                 <img
-                  key={snapshotTs}
-                  src={snapshotUrl}
+                  src={snapshotBlobUrl}
                   alt="Camera snapshot"
                   className="w-full h-full object-contain"
-                  onError={(e) => {
-                    (e.target as HTMLImageElement).style.display = 'none';
-                    (e.target as HTMLImageElement).nextElementSibling?.classList.remove('hidden');
-                  }}
                 />
+              ) : !snapshotLoading ? (
+                <div className="flex flex-col items-center justify-center text-gray-600">
+                  <ServerCrash className="h-10 w-10 mb-2" />
+                  <p className="text-sm">Could not load snapshot</p>
+                  <p className="text-xs">Camera may be offline or unreachable</p>
+                </div>
               ) : null}
-              <div className="hidden absolute inset-0 flex flex-col items-center justify-center text-gray-600">
-                <ServerCrash className="h-10 w-10 mb-2" />
-                <p className="text-sm">Could not load snapshot</p>
-                <p className="text-xs">Camera may be offline or unreachable</p>
-              </div>
             </div>
 
             {/* Controls */}
@@ -508,10 +535,11 @@ export default function CamerasPageContent() {
               <Button
                 variant="outline"
                 size="sm"
-                onClick={() => setSnapshotTs(Date.now())}
+                onClick={() => previewStream && fetchSnapshot(previewStream)}
+                disabled={snapshotLoading}
                 className="border-gray-700 gap-1.5"
               >
-                <RefreshCw className="h-3.5 w-3.5" />
+                <RefreshCw className={`h-3.5 w-3.5 ${snapshotLoading ? 'animate-spin' : ''}`} />
                 Refresh
               </Button>
               <button

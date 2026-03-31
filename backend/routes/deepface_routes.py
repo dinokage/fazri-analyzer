@@ -250,11 +250,21 @@ def _grab_rtsp_frame(rtsp_url: str, timeout_seconds: float = 5.0) -> bytes:
     Blocking helper: open the RTSP stream, grab one frame, return it as JPEG bytes.
     Raises RuntimeError if a frame cannot be captured within the timeout.
     Intended to be run in a thread executor so it does not block the event loop.
+
+    CAP_PROP_OPEN_TIMEOUT_MSEC limits the initial RTSP TCP/SDP handshake so a
+    dead camera does not stall the thread indefinitely before cap.read() is called.
+    CAP_PROP_READ_TIMEOUT_MSEC limits each individual read() call after connection.
     """
-    cap = cv2.VideoCapture(rtsp_url)
+    timeout_ms = int(timeout_seconds * 1000)
+    cap = cv2.VideoCapture()
+    cap.set(cv2.CAP_PROP_OPEN_TIMEOUT_MSEC, timeout_ms)
+    cap.set(cv2.CAP_PROP_READ_TIMEOUT_MSEC, timeout_ms)
+    cap.open(rtsp_url, cv2.CAP_FFMPEG)
     cap.set(cv2.CAP_PROP_BUFFERSIZE, 1)
     deadline = time.monotonic() + timeout_seconds
     try:
+        if not cap.isOpened():
+            raise RuntimeError("Could not open RTSP stream — camera may be offline or URL incorrect")
         while time.monotonic() < deadline:
             ret, frame = cap.read()
             if ret and frame is not None:
