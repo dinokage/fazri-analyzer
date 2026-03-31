@@ -156,12 +156,14 @@ class StreamProcessor:
 
     async def _open_capture(self, loop: asyncio.AbstractEventLoop) -> cv2.VideoCapture:
         def _open():
+            import os
             cv2.setLogLevel(0)  # suppress H264 decode warnings from FFmpeg
-            # Use TCP transport to reduce packet loss / H264 decode errors
-            url = self.rtsp_url
-            if "?" not in url:
-                url += "?rtsp_transport=tcp"
-            cap = cv2.VideoCapture(url, cv2.CAP_FFMPEG)
+            # Force TCP transport so OpenCV's FFmpeg backend doesn't use UDP.
+            # UDP drops/reorders packets over Tailscale, causing H264 decode errors.
+            # OPENCV_FFMPEG_CAPTURE_OPTIONS is the correct way — URL query params
+            # are not honoured by OpenCV's FFmpeg backend.
+            os.environ["OPENCV_FFMPEG_CAPTURE_OPTIONS"] = "rtsp_transport;tcp"
+            cap = cv2.VideoCapture(self.rtsp_url, cv2.CAP_FFMPEG)
             cap.set(cv2.CAP_PROP_BUFFERSIZE, 1)
             return cap
 
