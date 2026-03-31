@@ -199,7 +199,14 @@ class StreamProcessor:
         except (FaceNotDetected, EmptyDatasource):
             return
         except Exception as exc:
-            logger.warning("Stream %s DeepFace error (skipping frame): %s", self.stream_id, exc)
+            err = str(exc)
+            # "No embeddings found in the database" means pgvector is empty.
+            # DeepFace raises a plain Exception (not EmptyDatasource) for this.
+            # Fall back to face detection only so we can still alert on unknown faces.
+            if "No embeddings found in the database" in err:
+                await self._handle_empty_database(loop, data_uri)
+            else:
+                logger.warning("Stream %s DeepFace error (skipping frame): %s", self.stream_id, exc)
             return
 
         # Collect matches across all detected faces.
@@ -239,6 +246,58 @@ class StreamProcessor:
         if not matches:
             return
 
+        await self._post_webhook(matches)
+
+    async def _handle_empty_database(
+        self, loop: asyncio.AbstractEventLoop, data_uri: str
+    ) -> None:
+        """
+        Called when pgvector has no registered embeddings.
+        Runs face detection only (no search) so we can still post UNKNOWN_FACE
+        entries and trigger the alert_on_unknown_face rule on the backend.
+        """
+        from deepface import DeepFace
+        from deepface.modules.exceptions import FaceNotDetected
+
+        try:
+            faces = await loop.run_in_executor(
+                None,
+                lambda: DeepFace.extract_faces(
+                    img_path=data_uri,
+                    detector_backend=settings.detector_backend,
+                    enforce_detection=True,
+                    align=True,
+                ),
+            )
+        except FaceNotDetected:
+            return  # No face in frame — nothing to report
+        except Exception as exc:
+            logger.debug("Stream %s face detection error: %s", self.stream_id, exc)
+            return
+
+        if not faces:
+            return
+
+        matches = []
+        for face in faces:
+            area = face.get("facial_area", {})
+            matches.append({
+                "img_name": "UNKNOWN_FACE",
+                "distance": 1.0,
+                "confidence": round(face.get("confidence", 0.0) * 100, 2),
+                "threshold": 0.40,
+                "facial_area": {
+                    "x": area.get("x", 0),
+                    "y": area.get("y", 0),
+                    "w": area.get("w", 0),
+                    "h": area.get("h", 0),
+                },
+            })
+
+        logger.info(
+            "Stream %s: database empty, detected %d unknown face(s)",
+            self.stream_id, len(matches),
+        )
         await self._post_webhook(matches)
 
     async def _post_webhook(self, matches: list) -> None:
