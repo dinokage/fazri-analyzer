@@ -83,7 +83,6 @@ pipeline {
                         env.BACKEND_CONTAINER   = 'fazri-api'
                         env.AUTH_CONTAINER      = 'fazri-auth'
                         env.DEEPFACE_CONTAINER  = 'deepface-server'
-                        env.GO2RTC_CONTAINER    = 'go2rtc'
                         env.BACKEND_PORT        = '8000'
                         env.AUTH_PORT           = '4002'
                     } else {
@@ -191,7 +190,7 @@ pipeline {
                 }
 
                 stage('Build go2rtc Image') {
-                    when { expression { env.BUILD_GO2RTC == 'true' } }
+                    when { expression { env.BUILD_GO2RTC == 'true' && env.BRANCH_NAME != 'master' } }
                     steps {
                         echo "Building go2rtc relay image..."
                         sh '''
@@ -404,7 +403,7 @@ pipeline {
                 }
 
                 stage('go2rtc Relay') {
-                    when { expression { env.BUILD_GO2RTC == 'true' } }
+                    when { expression { env.BUILD_GO2RTC == 'true' && env.BRANCH_NAME != 'master' } }
                     steps {
                         sh '''
                             echo "Removing existing go2rtc container..."
