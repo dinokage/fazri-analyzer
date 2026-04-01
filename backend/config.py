@@ -144,8 +144,8 @@ class Settings(BaseSettings):
     DEEPFACE_SERVER_URL: str = "http://deepface-server:8000"
     # HMAC-SHA256 secret for webhook signature validation; empty = skip (dev only)
     DEEPFACE_WEBHOOK_SECRET: str = ""
-    # Face distance threshold: 0.0 = identical, >0.55 = no match (Buffalo_L cosine default)
-    DEEPFACE_CONFIDENCE_THRESHOLD: float = 0.55
+    # Face distance threshold: 0.0 = identical, >0.60 = no match (tuned for RTSP quality)
+    DEEPFACE_CONFIDENCE_THRESHOLD: float = 0.60
     # Distance above which to flag a "low confidence" anomaly even if within threshold
     DEEPFACE_LOW_CONFIDENCE_DISTANCE: float = 0.45
     # How long in minutes before a second detection in a different zone is "impossible travel"

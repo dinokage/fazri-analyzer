@@ -14,12 +14,14 @@ class Settings(BaseSettings):
 
     # DeepFace ML config
     model_name: str = "Buffalo_L"
-    detector_backend: str = "mtcnn"
+    detector_backend: str = "yolov8n"  # better multi-face + side-profile detection than mtcnn
     distance_metric: str = "cosine"
-    cosine_threshold: float = 0.55   # Buffalo_L default; raise for RTSP cameras with lower quality
+    cosine_threshold: float = 0.60   # slightly lenient for RTSP camera quality; tune via env var
     enforce_detection: bool = True
+    expand_percentage: int = 10      # include ~10% padding around detected faces for better embeddings
     l2_normalize: bool = False
     normalization: str = "raw"        # Buffalo_L needs [0,255] input; "raw" restores from [0,1]
+    jpeg_quality: int = 95           # higher quality for better face detail on distant faces
 
     # PostgreSQL / pgvector
     deepface_postgres_uri: str = (

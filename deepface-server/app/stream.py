@@ -223,7 +223,7 @@ class StreamProcessor:
         from deepface.modules.exceptions import EmptyDatasource, FaceNotDetected
 
         # Encode frame as JPEG data-URI
-        _, buffer = cv2.imencode(".jpg", frame, [cv2.IMWRITE_JPEG_QUALITY, 85])
+        _, buffer = cv2.imencode(".jpg", frame, [cv2.IMWRITE_JPEG_QUALITY, settings.jpeg_quality])
         data_uri = "data:image/jpeg;base64," + base64.b64encode(buffer).decode()
 
         # Run DeepFace search in thread executor.
@@ -240,6 +240,7 @@ class StreamProcessor:
                     distance_metric=settings.distance_metric,
                     enforce_detection=False,  # frames won't always contain a face
                     align=True,
+                    expand_percentage=settings.expand_percentage,
                     normalization=settings.normalization,
                     l2_normalize=settings.l2_normalize,
                     similarity_search=True,   # skip internal threshold filter
@@ -334,6 +335,7 @@ class StreamProcessor:
                         detector_backend=settings.detector_backend,
                         enforce_detection=False,
                         align=True,
+                        expand_percentage=settings.expand_percentage,
                         normalization=settings.normalization,
                         l2_normalize=settings.l2_normalize,
                     ),
@@ -401,6 +403,7 @@ class StreamProcessor:
                     detector_backend=settings.detector_backend,
                     enforce_detection=False,
                     align=True,
+                    expand_percentage=settings.expand_percentage,
                     normalization=settings.normalization,
                     l2_normalize=settings.l2_normalize,
                 ),
