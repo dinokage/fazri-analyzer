@@ -16,7 +16,7 @@ rtsp:
 webrtc:
   listen: ":8555"
   ice_servers:
-    - urls: ["stun:stun1.l.google.com:19302"]
+    - urls: ["stun:stun1.l.google.com:19302"] 
 
 # ── Logging ────────────────────────────────────────────────────────────────
 log:
