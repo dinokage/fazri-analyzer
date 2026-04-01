@@ -17,19 +17,22 @@ WORKDIR /app
 COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
-# Pre-download model weights into the image so startup is instant.
-COPY prebake_weights.py .
-RUN python prebake_weights.py
-
-# Copy application code
-COPY app/ ./app/
-
-# Create unprivileged user and hand over ownership
+# Create unprivileged user with a home directory before prebake so that
+# InsightFace bakes the model weights into /home/appuser/.insightface
+# (instead of /root/.insightface, which is unreachable at runtime).
 RUN groupadd --gid 1000 appuser \
-    && useradd --uid 1000 --gid appuser --no-create-home appuser \
+    && useradd --uid 1000 --gid appuser --create-home appuser \
     && chown -R appuser:appuser /app
 
 USER appuser
+
+# Pre-download model weights into the image so startup is instant.
+# Runs as appuser → models land in /home/appuser/.insightface/models/
+COPY --chown=appuser:appuser prebake_weights.py .
+RUN python prebake_weights.py
+
+# Copy application code
+COPY --chown=appuser:appuser app/ ./app/
 
 EXPOSE 8000
 
