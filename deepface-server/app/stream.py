@@ -284,35 +284,37 @@ class StreamProcessor:
                 })
                 continue
 
-            # Apply our own threshold: best match (k=1) must be within threshold
+            # Apply our own threshold: best match (k=1) must be within threshold.
+            # Pandas returns numpy types (int64, float64) which are not JSON
+            # serializable — cast everything to native Python types.
             best_row = df.iloc[0] if len(df) > 0 else None
-            if best_row is None or best_row.get("distance", 1.0) > threshold:
+            if best_row is None or float(best_row.get("distance", 1.0)) > threshold:
                 # Face detected but no match within our threshold → unknown
                 unknown_match_indices.append((i, len(matches)))
                 matches.append({
                     "img_name": "UNKNOWN_FACE",
-                    "distance": best_row.get("distance", 1.0) if best_row is not None else 1.0,
-                    "confidence": best_row.get("confidence", 0.0) if best_row is not None else 0.0,
+                    "distance": float(best_row.get("distance", 1.0)) if best_row is not None else 1.0,
+                    "confidence": float(best_row.get("confidence", 0.0)) if best_row is not None else 0.0,
                     "threshold": threshold,
                     "facial_area": {
-                        "x": best_row.get("target_x", 0) if best_row is not None else 0,
-                        "y": best_row.get("target_y", 0) if best_row is not None else 0,
-                        "w": best_row.get("target_w", 0) if best_row is not None else 0,
-                        "h": best_row.get("target_h", 0) if best_row is not None else 0,
+                        "x": int(best_row.get("target_x", 0) or 0) if best_row is not None else 0,
+                        "y": int(best_row.get("target_y", 0) or 0) if best_row is not None else 0,
+                        "w": int(best_row.get("target_w", 0) or 0) if best_row is not None else 0,
+                        "h": int(best_row.get("target_h", 0) or 0) if best_row is not None else 0,
                     },
                 })
                 continue
 
             matches.append({
-                "img_name": best_row.get("img_name"),
-                "distance": best_row.get("distance"),
-                "confidence": best_row.get("confidence", 0.0),
+                "img_name": str(best_row.get("img_name")),
+                "distance": float(best_row.get("distance")),
+                "confidence": float(best_row.get("confidence", 0.0)),
                 "threshold": threshold,
                 "facial_area": {
-                    "x": best_row.get("target_x"),
-                    "y": best_row.get("target_y"),
-                    "w": best_row.get("target_w"),
-                    "h": best_row.get("target_h"),
+                    "x": int(best_row.get("target_x") or 0),
+                    "y": int(best_row.get("target_y") or 0),
+                    "w": int(best_row.get("target_w") or 0),
+                    "h": int(best_row.get("target_h") or 0),
                 },
             })
 
