@@ -137,6 +137,46 @@ async def lifespan(app: FastAPI):
         except Exception as e:
             logger.error(f"Failed to initialize alert system: {e}")
 
+    # Re-register all active camera streams with go2rtc.
+    # go2rtc stores streams in memory only — they are lost on restart.
+    if settings.GO2RTC_ENABLED:
+        try:
+            import httpx
+            from database.connection import get_db as _get_db
+            from models.db.camera_streams import CameraStream, CameraStreamStatus
+            from routes.deepface_routes import _go2rtc_register_url
+
+            db_gen = _get_db()
+            db = next(db_gen)
+            try:
+                active_streams = (
+                    db.query(CameraStream)
+                    .filter(CameraStream.status == CameraStreamStatus.ACTIVE)
+                    .all()
+                )
+                async with httpx.AsyncClient(timeout=5) as client:
+                    for stream in active_streams:
+                        try:
+                            resp = await client.put(
+                                _go2rtc_register_url(stream.stream_id, stream.rtsp_url)
+                            )
+                            if resp.status_code == 200:
+                                logger.info("go2rtc re-registered stream: %s", stream.stream_id)
+                            else:
+                                logger.warning(
+                                    "go2rtc re-registration failed for %s: %d",
+                                    stream.stream_id, resp.status_code,
+                                )
+                        except Exception as exc:
+                            logger.warning("go2rtc re-registration error for %s: %s", stream.stream_id, exc)
+            finally:
+                try:
+                    next(db_gen)
+                except StopIteration:
+                    pass
+        except Exception as exc:
+            logger.warning("go2rtc startup sync failed: %s", exc)
+
     # Start DeepFace batch sync background task if enabled
     _batch_sync_task = None
     if settings.DEEPFACE_ENABLED and settings.DEEPFACE_BATCH_SYNC_INTERVAL_SECONDS > 0:

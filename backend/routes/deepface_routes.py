@@ -590,23 +590,23 @@ async def create_stream(
     webhook_url = f"{base}/api/v1/deepface/webhook"
     logger.info("Deepface webhook callback URL: %s", webhook_url)
 
-    # Register RTSP source with go2rtc relay (if enabled).
-    # go2rtc sits between the camera and all consumers, providing
-    # RTSP re-publish + HLS + WebRTC + JPEG snapshots from a single decode.
-    relay_rtsp_url = body.rtsp_url  # fallback: direct to camera
+    # Pre-register the stream with go2rtc so the relay is ready for live view /
+    # snapshot requests.  DeepFace always connects directly to the camera —
+    # go2rtc is only used for browser WebRTC and JPEG snapshots.
     if settings.GO2RTC_ENABLED:
         try:
             async with httpx.AsyncClient(timeout=5) as rtc_client:
                 resp = await rtc_client.put(_go2rtc_register_url(body.stream_id, body.rtsp_url))
                 if resp.status_code == 200:
-                    relay_rtsp_url = f"{settings.GO2RTC_RTSP_URL}/{body.stream_id}"
                     logger.info("go2rtc stream registered: %s → %s", body.stream_id, body.rtsp_url)
                 else:
                     logger.warning("go2rtc stream registration failed (%d): %s", resp.status_code, resp.text)
         except Exception as exc:
-            logger.warning("go2rtc unreachable — DeepFace will connect directly to camera: %s", exc)
+            logger.warning("go2rtc unreachable during stream creation: %s", exc)
 
-    # Tell DeepFace server to start monitoring (via relay if available)
+    # Tell DeepFace server to start monitoring (always direct to camera —
+    # the go2rtc relay is unreliable as a DeepFace source because go2rtc
+    # uses lazy RTSP connection and may not be ready when DeepFace starts).
     deepface_client = get_deepface_client()
     deepface_stream_id: Optional[str] = None
     error_msg: Optional[str] = None
@@ -615,7 +615,7 @@ async def create_stream(
     try:
         df_response = await deepface_client.start_stream(
             stream_id=body.stream_id,
-            rtsp_url=relay_rtsp_url,
+            rtsp_url=body.rtsp_url,  # always direct camera URL
             webhook_url=webhook_url,
         )
         deepface_stream_id = df_response.get("stream_id", body.stream_id)
