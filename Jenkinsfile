@@ -411,6 +411,13 @@ pipeline {
                             docker rm -f ${GO2RTC_CONTAINER} 2>/dev/null || true
 
                             echo "Starting go2rtc relay container..."
+                            # Resolve the server public IP so go2rtc can advertise
+                            # the correct ICE candidate to browsers (Docker internal
+                            # IP 172.20.x.x is unreachable from the internet).
+                            GO2RTC_HOST=$(curl -s --max-time 5 http://checkip.amazonaws.com \
+                                || curl -s --max-time 5 https://ifconfig.me \
+                                || ip route get 1.1.1.1 | awk '{print $7; exit}')
+                            echo "go2rtc ICE host: ${GO2RTC_HOST}"
                             docker run -d \
                                 --name ${GO2RTC_CONTAINER} \
                                 --restart unless-stopped \
@@ -419,6 +426,7 @@ pipeline {
                                 -p 8554:8554 \
                                 -p 8555:8555/tcp \
                                 -p 8555:8555/udp \
+                                -e GO2RTC_HOST="${GO2RTC_HOST}" \
                                 ${GO2RTC_IMAGE}:${IMAGE_TAG}
 
                             if ! docker ps --format '{{.Names}}' | grep -q "^${GO2RTC_CONTAINER}$"; then

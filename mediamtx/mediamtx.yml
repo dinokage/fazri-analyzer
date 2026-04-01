@@ -15,8 +15,14 @@ rtsp:
 # Sub-200ms latency live view for browser
 webrtc:
   listen: ":8555"
+  # Without an explicit candidate the ICE offer contains only the Docker
+  # internal IP (172.20.x.x) which the browser cannot reach.
+  # Set GO2RTC_HOST to the server's public IP at container startup so
+  # go2rtc advertises the correct host:8555 UDP address to browsers.
+  candidates:
+    - ${GO2RTC_HOST}:8555
   ice_servers:
-    - urls: ["stun:stun1.l.google.com:19302"] 
+    - urls: ["stun:stun1.l.google.com:19302"]
 
 # ── Logging ────────────────────────────────────────────────────────────────
 log:
