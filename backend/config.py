@@ -156,6 +156,16 @@ class Settings(BaseSettings):
     DEEPFACE_POSTGRES_URI: str = "postgresql://deepface:deepface@deepface-postgres:5432/deepface"
 
     # =========================================================================
+    # MediaMTX RTSP Relay
+    # =========================================================================
+
+    MEDIAMTX_API_URL: str = "http://mediamtx-relay:9997"
+    MEDIAMTX_RTSP_URL: str = "rtsp://mediamtx-relay:8554"
+    MEDIAMTX_HLS_URL: str = "http://mediamtx-relay:8888"
+    MEDIAMTX_WEBRTC_URL: str = "http://mediamtx-relay:8889"
+    MEDIAMTX_ENABLED: bool = True
+
+    # =========================================================================
     # Discord Webhook
     # =========================================================================
     # Incoming webhook URL for unknown-face alert notifications.

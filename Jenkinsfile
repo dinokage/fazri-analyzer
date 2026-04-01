@@ -12,6 +12,7 @@ pipeline {
         BACKEND_IMAGE   = 'fazri-analyzer-backend'
         AUTH_IMAGE      = 'fazri-analyzer-auth'
         DEEPFACE_IMAGE  = 'fazri-deepface-server'
+        MEDIAMTX_IMAGE  = 'fazri-mediamtx-relay'
         NETWORK_NAME    = 'backend_fazri-network'
         DOCKER_BUILDKIT = '1'
 
@@ -78,19 +79,21 @@ pipeline {
             steps {
                 script {
                     if (env.BRANCH_NAME == 'master') {
-                        env.DEPLOY_ENV         = 'production'
-                        env.BACKEND_CONTAINER  = 'fazri-api'
-                        env.AUTH_CONTAINER     = 'fazri-auth'
-                        env.DEEPFACE_CONTAINER = 'deepface-server'
-                        env.BACKEND_PORT       = '8000'
-                        env.AUTH_PORT          = '4002'
+                        env.DEPLOY_ENV          = 'production'
+                        env.BACKEND_CONTAINER   = 'fazri-api'
+                        env.AUTH_CONTAINER      = 'fazri-auth'
+                        env.DEEPFACE_CONTAINER  = 'deepface-server'
+                        env.MEDIAMTX_CONTAINER  = 'mediamtx-relay'
+                        env.BACKEND_PORT        = '8000'
+                        env.AUTH_PORT           = '4002'
                     } else {
-                        env.DEPLOY_ENV         = 'staging'
-                        env.BACKEND_CONTAINER  = 'fazri-api-staging'
-                        env.AUTH_CONTAINER     = 'fazri-auth-staging'
-                        env.DEEPFACE_CONTAINER = 'deepface-server-staging'
-                        env.BACKEND_PORT       = '8001'
-                        env.AUTH_PORT          = '4003'
+                        env.DEPLOY_ENV          = 'staging'
+                        env.BACKEND_CONTAINER   = 'fazri-api-staging'
+                        env.AUTH_CONTAINER      = 'fazri-auth-staging'
+                        env.DEEPFACE_CONTAINER  = 'deepface-server-staging'
+                        env.MEDIAMTX_CONTAINER  = 'mediamtx-relay-staging'
+                        env.BACKEND_PORT        = '8001'
+                        env.AUTH_PORT           = '4003'
                     }
                     def sanitizedBranch = env.BRANCH_NAME.replaceAll('[^a-zA-Z0-9]', '-').toLowerCase()
                     def shortSha        = env.GIT_COMMIT?.take(7) ?: 'unknown'
@@ -125,6 +128,10 @@ pipeline {
                                           isFirstRun) ? 'true' : 'false'
 
                     env.BUILD_DEEPFACE = (changedFiles.contains('deepface-server/')  ||
+                                          changedFiles.contains('Jenkinsfile')        ||
+                                          isFirstRun) ? 'true' : 'false'
+
+                    env.BUILD_MEDIAMTX = (changedFiles.contains('mediamtx/')          ||
                                           changedFiles.contains('Jenkinsfile')        ||
                                           isFirstRun) ? 'true' : 'false'
 
@@ -179,6 +186,19 @@ pipeline {
                                 -t ${DEEPFACE_IMAGE}:${IMAGE_TAG} \
                                 $([ "${BRANCH_NAME}" = "master" ] && echo "-t ${DEEPFACE_IMAGE}:latest" || echo "") \
                                 deepface-server/
+                        '''
+                    }
+                }
+
+                stage('Build MediaMTX Image') {
+                    when { expression { env.BUILD_MEDIAMTX == 'true' } }
+                    steps {
+                        echo "Building MediaMTX relay image..."
+                        sh '''
+                            docker build -f mediamtx/Dockerfile \
+                                -t ${MEDIAMTX_IMAGE}:${IMAGE_TAG} \
+                                $([ "${BRANCH_NAME}" = "master" ] && echo "-t ${MEDIAMTX_IMAGE}:latest" || echo "") \
+                                mediamtx/
                         '''
                     }
                 }
@@ -242,6 +262,11 @@ pipeline {
                                     -e DEEPFACE_POSTGRES_URI="${DEEPFACE_POSTGRES_URI}" \
                                     -e DEEPFACE_ENABLED=true \
                                     -e DISCORD_WEBHOOK_URL="${DISCORD_WEBHOOK_URL}" \
+                                    -e MEDIAMTX_API_URL="http://${MEDIAMTX_CONTAINER}:9997" \
+                                    -e MEDIAMTX_RTSP_URL="rtsp://${MEDIAMTX_CONTAINER}:8554" \
+                                    -e MEDIAMTX_HLS_URL="http://${MEDIAMTX_CONTAINER}:8888" \
+                                    -e MEDIAMTX_WEBRTC_URL="http://${MEDIAMTX_CONTAINER}:8889" \
+                                    -e MEDIAMTX_ENABLED=true \
                                     -v app_data_${DEPLOY_ENV}:/app/augmented \
                                     -v app_ml_models_${DEPLOY_ENV}:/app/ml_models \
                                     -v app_logs_${DEPLOY_ENV}:/app/logs \
@@ -375,6 +400,51 @@ pipeline {
                             done
                             echo "✗ DeepFace server health check failed after 90s"
                             docker logs ${DEEPFACE_CONTAINER} --tail=50
+                            exit 1
+                        '''
+                    }
+                }
+
+                stage('MediaMTX Relay') {
+                    when { expression { env.BUILD_MEDIAMTX == 'true' } }
+                    steps {
+                        sh '''
+                            echo "Removing existing MediaMTX container..."
+                            docker rm -f ${MEDIAMTX_CONTAINER} 2>/dev/null || true
+
+                            echo "Starting MediaMTX relay container..."
+                            docker run -d \
+                                --name ${MEDIAMTX_CONTAINER} \
+                                --restart unless-stopped \
+                                --network ${NETWORK_NAME} \
+                                -p 8554:8554 \
+                                -p 8888:8888 \
+                                -p 8889:8889 \
+                                -p 9997:9997 \
+                                ${MEDIAMTX_IMAGE}:${IMAGE_TAG}
+
+                            if ! docker ps --format '{{.Names}}' | grep -q "^${MEDIAMTX_CONTAINER}$"; then
+                                echo "✗ MediaMTX container failed to start"
+                                docker logs ${MEDIAMTX_CONTAINER} 2>&1 || true
+                                exit 1
+                            fi
+
+                            echo "✓ MediaMTX relay deployed"
+                        '''
+                        echo "Waiting for MediaMTX API to be healthy..."
+                        sh '''
+                            sleep 3
+                            for i in $(seq 1 6); do
+                                if docker exec ${MEDIAMTX_CONTAINER} \
+                                    wget -qO- http://localhost:9997/v3/info > /dev/null 2>&1; then
+                                    echo "✓ MediaMTX API is healthy"
+                                    exit 0
+                                fi
+                                echo "Attempt ${i}/6 — waiting..."
+                                sleep 3
+                            done
+                            echo "✗ MediaMTX health check failed after 18s"
+                            docker logs ${MEDIAMTX_CONTAINER} --tail=30
                             exit 1
                         '''
                     }

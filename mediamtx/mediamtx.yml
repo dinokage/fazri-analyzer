@@ -1,0 +1,42 @@
+# MediaMTX configuration for Fazri Analyzer RTSP relay
+# Docs: https://github.com/bluenviron/mediamtx
+
+# ── HTTP API (path management) ─────────────────────────────────────────────
+api: yes
+apiAddress: :9997
+
+# ── RTSP server ────────────────────────────────────────────────────────────
+# DeepFace and backend snapshot connect here to consume re-published streams
+rtsp: yes
+rtspAddress: :8554
+protocols: [tcp]
+rtspEncryption: "no"
+
+# ── HLS output ─────────────────────────────────────────────────────────────
+# Browser live view via <video> tag
+hls: yes
+hlsAddress: :8888
+hlsVariant: lowLatency
+hlsSegmentDuration: 1s
+hlsPartDuration: 200ms
+hlsSegmentMaxSize: 5M
+hlsAlwaysRemux: no          # only mux when a reader connects (saves CPU)
+hlsAllowOrigin: "*"
+
+# ── WebRTC ─────────────────────────────────────────────────────────────────
+# Sub-200ms latency live view (WHEP standard)
+webrtc: yes
+webrtcAddress: :8889
+webrtcAllowOrigin: "*"
+
+# ── Paths ──────────────────────────────────────────────────────────────────
+# Paths are added dynamically via the API when cameras are registered.
+# The backend calls POST /v3/config/paths/add/{stream_id} with the source URL.
+# sourceOnDemand: true means MediaMTX only connects to the camera when
+# a consumer (DeepFace, HLS viewer, etc.) actually requests the stream.
+pathDefaults:
+  sourceOnDemand: yes
+  sourceOnDemandStartTimeout: 10s
+  sourceOnDemandCloseAfter: 30s
+
+paths: {}

@@ -574,7 +574,26 @@ async def create_stream(
     webhook_url = f"{base}/api/v1/deepface/webhook"
     logger.info("Deepface webhook callback URL: %s", webhook_url)
 
-    # Tell DeepFace server to start monitoring
+    # Register RTSP source with MediaMTX relay (if enabled).
+    # MediaMTX sits between the camera and all consumers, decoding once
+    # and fan-out via RTSP re-publish + HLS + WebRTC.
+    relay_rtsp_url = body.rtsp_url  # fallback: direct to camera
+    if settings.MEDIAMTX_ENABLED:
+        try:
+            async with httpx.AsyncClient(timeout=5) as mtx_client:
+                resp = await mtx_client.post(
+                    f"{settings.MEDIAMTX_API_URL}/v3/config/paths/add/{body.stream_id}",
+                    json={"source": body.rtsp_url, "sourceOnDemand": True},
+                )
+                if resp.status_code == 200:
+                    relay_rtsp_url = f"{settings.MEDIAMTX_RTSP_URL}/{body.stream_id}"
+                    logger.info("MediaMTX path registered: %s → %s", body.stream_id, body.rtsp_url)
+                else:
+                    logger.warning("MediaMTX path registration failed (%d): %s", resp.status_code, resp.text)
+        except Exception as exc:
+            logger.warning("MediaMTX unreachable — DeepFace will connect directly to camera: %s", exc)
+
+    # Tell DeepFace server to start monitoring (via relay if available)
     deepface_client = get_deepface_client()
     deepface_stream_id: Optional[str] = None
     error_msg: Optional[str] = None
@@ -583,14 +602,13 @@ async def create_stream(
     try:
         df_response = await deepface_client.start_stream(
             stream_id=body.stream_id,
-            rtsp_url=body.rtsp_url,
+            rtsp_url=relay_rtsp_url,
             webhook_url=webhook_url,
         )
         deepface_stream_id = df_response.get("stream_id", body.stream_id)
         logger.info(
-            "DeepFace stream started: stream_id=%s deepface_stream_id=%s",
-            body.stream_id,
-            deepface_stream_id,
+            "DeepFace stream started: stream_id=%s deepface_stream_id=%s rtsp=%s",
+            body.stream_id, deepface_stream_id, relay_rtsp_url,
         )
     except Exception as exc:
         logger.error("Failed to start DeepFace stream %s: %s", body.stream_id, exc)
@@ -702,9 +720,19 @@ async def delete_stream(
         except Exception as exc:
             logger.warning(
                 "Could not stop DeepFace stream %s (continuing with DB delete): %s",
-                stream_id,
-                exc,
+                stream_id, exc,
             )
+
+    # Remove MediaMTX relay path
+    if settings.MEDIAMTX_ENABLED:
+        try:
+            async with httpx.AsyncClient(timeout=5) as mtx_client:
+                await mtx_client.delete(
+                    f"{settings.MEDIAMTX_API_URL}/v3/config/paths/delete/{stream_id}",
+                )
+                logger.info("MediaMTX path removed: %s", stream_id)
+        except Exception as exc:
+            logger.warning("Could not remove MediaMTX path %s: %s", stream_id, exc)
 
     db.delete(cam_stream)
     db.commit()
@@ -737,10 +765,18 @@ async def get_stream_snapshot(
     if cam_stream is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=f"Stream '{stream_id}' not found")
 
+    # Use MediaMTX relay if available (local network, fast handshake).
+    # Falls back to camera's direct RTSP URL if relay is disabled.
+    rtsp_url = (
+        f"{settings.MEDIAMTX_RTSP_URL}/{stream_id}"
+        if settings.MEDIAMTX_ENABLED
+        else cam_stream.rtsp_url
+    )
+
     loop = asyncio.get_event_loop()
     try:
         jpeg_bytes = await asyncio.wait_for(
-            loop.run_in_executor(None, _grab_rtsp_frame, cam_stream.rtsp_url),
+            loop.run_in_executor(None, _grab_rtsp_frame, rtsp_url),
             timeout=8.0,
         )
     except (asyncio.TimeoutError, RuntimeError) as exc:
@@ -750,6 +786,35 @@ async def get_stream_snapshot(
         )
 
     return StreamingResponse(io.BytesIO(jpeg_bytes), media_type="image/jpeg")
+
+
+# ============================================================================
+# Stream URLs (for frontend live view)
+# ============================================================================
+
+
+@router.get(
+    "/streams/{stream_id}/urls",
+    summary="Get streaming URLs for a camera (HLS, WebRTC)",
+)
+async def get_stream_urls(
+    stream_id: str,
+    db: Session = Depends(get_db),
+    current_user: AuthenticatedUser = Depends(require_staff()),
+) -> Dict[str, Any]:
+    """Return HLS and WebRTC URLs for the given stream via MediaMTX relay."""
+    cam_stream = db.query(CameraStream).filter(CameraStream.stream_id == stream_id).first()
+    if cam_stream is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=f"Stream '{stream_id}' not found")
+
+    if not settings.MEDIAMTX_ENABLED:
+        return {"hls": None, "webrtc": None, "enabled": False}
+
+    return {
+        "hls": f"{settings.MEDIAMTX_HLS_URL}/{stream_id}/",
+        "webrtc": f"{settings.MEDIAMTX_WEBRTC_URL}/{stream_id}/",
+        "enabled": True,
+    }
 
 
 # ============================================================================
