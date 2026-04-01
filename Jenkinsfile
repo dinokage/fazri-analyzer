@@ -408,6 +408,7 @@ pipeline {
                     steps {
                         sh '''
                             echo "Removing existing go2rtc container..."
+                            docker stop ${GO2RTC_CONTAINER} 2>/dev/null || true
                             docker rm -f ${GO2RTC_CONTAINER} 2>/dev/null || true
 
                             echo "Starting go2rtc relay container..."
