@@ -9,6 +9,7 @@ class Settings(BaseSettings):
 
     # InsightFace — detection + recognition
     det_size: int = 640             # SCRFD detection input size (640 = good balance of speed/accuracy)
+    det_thresh: float = 0.6         # SCRFD detection confidence threshold (0.5=default, raise to reduce false positives)
     cosine_threshold: float = 0.55  # cosine distance — L2-normalized embeddings are more stable than DeepFace's
 
     # PostgreSQL / pgvector

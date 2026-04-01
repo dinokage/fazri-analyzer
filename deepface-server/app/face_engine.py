@@ -37,10 +37,10 @@ def load_engine() -> FaceAnalysis:
         name="buffalo_l",
         providers=["CPUExecutionProvider"],
     )
-    _engine.prepare(ctx_id=-1, det_size=det_size)
+    _engine.prepare(ctx_id=-1, det_size=det_size, det_thresh=settings.det_thresh)
     logger.info(
-        "InsightFace engine loaded: buffalo_l (SCRFD + ArcFace), det_size=%s, CPU mode",
-        det_size,
+        "InsightFace engine loaded: buffalo_l (SCRFD + ArcFace), det_size=%s, det_thresh=%.2f, CPU mode",
+        det_size, settings.det_thresh,
     )
     return _engine
 
@@ -65,7 +65,17 @@ def detect_and_embed(frame: np.ndarray) -> List[Dict[str, Any]]:
 
     results = []
     for face in faces:
+        # Skip detections with no embedding (shouldn't happen, but defensive)
+        if face.normed_embedding is None:
+            continue
         x1, y1, x2, y2 = face.bbox.astype(int).tolist()
+        # Clamp bbox to frame boundaries
+        h, w = frame.shape[:2]
+        x1, y1 = max(0, x1), max(0, y1)
+        x2, y2 = min(w, x2), min(h, y2)
+        # Skip tiny detections (likely false positives)
+        if (x2 - x1) < 20 or (y2 - y1) < 20:
+            continue
         results.append({
             "bbox": [x1, y1, x2, y2],
             "embedding": face.normed_embedding,
