@@ -621,7 +621,7 @@ async def create_stream(
         deepface_stream_id = df_response.get("stream_id", body.stream_id)
         logger.info(
             "DeepFace stream started: stream_id=%s deepface_stream_id=%s rtsp=%s",
-            body.stream_id, deepface_stream_id, relay_rtsp_url,
+            body.stream_id, deepface_stream_id, body.rtsp_url,
         )
     except Exception as exc:
         logger.error("Failed to start DeepFace stream %s: %s", body.stream_id, exc)
