@@ -868,7 +868,7 @@ async def webrtc_offer(
         # Longer timeout: go2rtc may need several seconds to connect to the RTSP camera
         async with httpx.AsyncClient(timeout=20) as client:
             resp = await client.post(
-                f"{settings.GO2RTC_API_URL}/api/webrtc?src={stream_id}",
+                f"{settings.GO2RTC_API_URL}/api/webrtc?src={quote(f'{stream_id}#video=h264', safe='')}",
                 content=body,
                 headers={"Content-Type": content_type},
             )
@@ -895,7 +895,7 @@ async def webrtc_offer(
                 for attempt in range(5):
                     await asyncio.sleep(1.5)
                     resp = await client.post(
-                        f"{settings.GO2RTC_API_URL}/api/webrtc?src={stream_id}",
+                        f"{settings.GO2RTC_API_URL}/api/webrtc?src={quote(f'{stream_id}#video=h264', safe='')}",
                         content=body,
                         headers={"Content-Type": content_type},
                     )
