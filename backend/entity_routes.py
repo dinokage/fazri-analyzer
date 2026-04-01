@@ -122,9 +122,12 @@ async def fuzzy_search_by_name(
                     {"pattern": f"%{name}%"},
                 ).fetchall()
             for row in rows:
-                if not row.entity_id or not row.name:
+                if not row.entity_id:
                     continue
-                similarity = _name_similarity(name, row.name)
+                similarity = max(
+                    _name_similarity(name, row.name) if row.name else 0.0,
+                    _name_similarity(name, row.entity_id),
+                )
                 if similarity < threshold:
                     continue
                 seen_entity_ids.add(row.entity_id)
@@ -157,7 +160,10 @@ async def fuzzy_search_by_name(
     for s in staff_list:
         if not s.name or s.entity_id in seen_entity_ids:
             continue
-        similarity = _name_similarity(name, s.name)
+        similarity = max(
+            _name_similarity(name, s.name),
+            _name_similarity(name, s.entity_id),
+        )
         if similarity < threshold:
             continue
         matches.append({

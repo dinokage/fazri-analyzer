@@ -156,7 +156,7 @@ export default function FaceEnrollmentPageContent() {
               value={query}
               onChange={(e) => setQuery(e.target.value)}
               onKeyDown={(e) => e.key === 'Enter' && handleSearch()}
-              placeholder="Search by name..."
+              placeholder="Search by name or entity ID..."
               className="bg-[#1a1a24] border-gray-700 text-white placeholder:text-gray-500 flex-1"
             />
             <Button
