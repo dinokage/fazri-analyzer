@@ -144,7 +144,7 @@ async def lifespan(app: FastAPI):
             import httpx
             from database.connection import get_db as _get_db
             from models.db.camera_streams import CameraStream, CameraStreamStatus
-            from routes.deepface_routes import _go2rtc_register_url
+            from routes.deepface_routes import _go2rtc_register_urls
 
             db_gen = _get_db()
             db = next(db_gen)
@@ -157,16 +157,17 @@ async def lifespan(app: FastAPI):
                 async with httpx.AsyncClient(timeout=5) as client:
                     for stream in active_streams:
                         try:
-                            resp = await client.put(
-                                _go2rtc_register_url(stream.stream_id, stream.rtsp_url)
-                            )
-                            if resp.status_code == 200:
-                                logger.info("go2rtc re-registered stream: %s", stream.stream_id)
-                            else:
-                                logger.warning(
-                                    "go2rtc re-registration failed for %s: %d",
-                                    stream.stream_id, resp.status_code,
-                                )
+                            ok = True
+                            for reg_url in _go2rtc_register_urls(stream.stream_id, stream.rtsp_url):
+                                resp = await client.put(reg_url)
+                                if resp.status_code == 200:
+                                    logger.info("go2rtc re-registered: %s", reg_url.split("name=")[1].split("&")[0])
+                                else:
+                                    logger.warning(
+                                        "go2rtc re-registration failed %s: %d",
+                                        reg_url.split("name=")[1].split("&")[0], resp.status_code,
+                                    )
+                                    ok = False
                         except Exception as exc:
                             logger.warning("go2rtc re-registration error for %s: %s", stream.stream_id, exc)
             finally:

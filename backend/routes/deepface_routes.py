@@ -171,24 +171,47 @@ def _set_alert_cooldown(anomaly_type: str, stream_id: str, entity_key: str) -> N
         logger.error("Cooldown set FAILED for key=%s: %s", key, exc)
 
 
-def _go2rtc_register_url(stream_id: str, rtsp_url: str) -> str:
-    """Build go2rtc stream registration URL with dual sources.
+def _go2rtc_native_id(stream_id: str) -> str:
+    """Internal go2rtc stream name for the native H.265 RTSP source."""
+    return f"{stream_id}-native"
 
-    go2rtc API: PUT /api/streams?name={stream_name}&src={source1}&src={source2}
 
-    Two sources per stream (Dahua/CP Plus pattern from go2rtc docs):
-      1. Native RTSP — go2rtc's own RTSP client handles H.265 B-frames
-         far better than FFmpeg's RTSP decoder, avoiding RPS/POC errors.
-      2. ffmpeg:{stream_id}#video=h264 — FFmpeg reads from go2rtc's internal
-         stream (not from the camera directly) and transcodes to H.264 for
-         browser WebRTC compatibility. Chrome cannot decode H.265 via WebRTC.
+def _go2rtc_register_urls(stream_id: str, rtsp_url: str) -> list:
+    """Return the two PUT URLs needed to register a camera in go2rtc.
+
+    go2rtc serialises multi-source streams as a YAML list. In list items,
+    `ffmpeg:name#video=h264` has its `#` stripped as a YAML comment, causing
+    a 400. Using two separate single-source streams avoids this: each PUT
+    serialises as a scalar string (no list), so `#` is kept verbatim.
+
+    Stream 1 — {stream_id}-native:  go2rtc native RTSP client → handles H.265
+                                     B-frames without FFmpeg RPS/POC errors.
+    Stream 2 — {stream_id}:          ffmpeg:{stream_id}-native#video=h264 →
+                                     FFmpeg reads from go2rtc's internal stream
+                                     and outputs H.264 for browser WebRTC.
     """
-    return (
-        f"{settings.GO2RTC_API_URL}/api/streams"
-        f"?name={quote(stream_id, safe='')}"
-        f"&src={quote(rtsp_url, safe='')}"
-        f"&src={quote(f'ffmpeg:{stream_id}#video=h264', safe='')}"
-    )
+    native_id = _go2rtc_native_id(stream_id)
+    return [
+        (
+            f"{settings.GO2RTC_API_URL}/api/streams"
+            f"?name={quote(native_id, safe='')}"
+            f"&src={quote(rtsp_url, safe='')}"
+        ),
+        (
+            f"{settings.GO2RTC_API_URL}/api/streams"
+            f"?name={quote(stream_id, safe='')}"
+            f"&src={quote(f'ffmpeg:{native_id}#video=h264', safe='')}"
+        ),
+    ]
+
+
+def _go2rtc_register_url(stream_id: str, rtsp_url: str) -> str:
+    """Kept for import compatibility with main.py startup sync.
+
+    Returns only the native-RTSP registration URL.  Callers that need
+    the full two-stream setup should use _go2rtc_register_urls() directly.
+    """
+    return _go2rtc_register_urls(stream_id, rtsp_url)[0]
 
 
 # ============================================================================
@@ -602,11 +625,12 @@ async def create_stream(
     if settings.GO2RTC_ENABLED:
         try:
             async with httpx.AsyncClient(timeout=5) as rtc_client:
-                resp = await rtc_client.put(_go2rtc_register_url(body.stream_id, body.rtsp_url))
-                if resp.status_code == 200:
-                    logger.info("go2rtc stream registered: %s → %s", body.stream_id, body.rtsp_url)
-                else:
-                    logger.warning("go2rtc stream registration failed (%d): %s", resp.status_code, resp.text)
+                for reg_url in _go2rtc_register_urls(body.stream_id, body.rtsp_url):
+                    resp = await rtc_client.put(reg_url)
+                    if resp.status_code == 200:
+                        logger.info("go2rtc stream registered: %s", reg_url.split("name=")[1].split("&")[0])
+                    else:
+                        logger.warning("go2rtc stream registration failed (%d): %s", resp.status_code, resp.text)
         except Exception as exc:
             logger.warning("go2rtc unreachable during stream creation: %s", exc)
 
@@ -742,14 +766,15 @@ async def delete_stream(
                 stream_id, exc,
             )
 
-    # Remove go2rtc relay stream
+    # Remove go2rtc relay streams (both H.264 and native)
     if settings.GO2RTC_ENABLED:
         try:
             async with httpx.AsyncClient(timeout=5) as rtc_client:
-                await rtc_client.delete(
-                    f"{settings.GO2RTC_API_URL}/api/streams?src={quote(stream_id, safe='')}",
-                )
-                logger.info("go2rtc stream removed: %s", stream_id)
+                for sid in [stream_id, _go2rtc_native_id(stream_id)]:
+                    await rtc_client.delete(
+                        f"{settings.GO2RTC_API_URL}/api/streams?src={quote(sid, safe='')}",
+                    )
+                logger.info("go2rtc streams removed: %s, %s", stream_id, _go2rtc_native_id(stream_id))
         except Exception as exc:
             logger.warning("Could not remove go2rtc stream %s: %s", stream_id, exc)
 
@@ -797,7 +822,8 @@ async def get_stream_snapshot(
                 # Auto-register with go2rtc if stream not found, then retry
                 if resp.status_code == 404:
                     logger.info("go2rtc stream not found for %s — auto-registering", stream_id)
-                    await rtc_client.put(_go2rtc_register_url(stream_id, cam_stream.rtsp_url))
+                    for reg_url in _go2rtc_register_urls(stream_id, cam_stream.rtsp_url):
+                        await rtc_client.put(reg_url)
                     resp = await rtc_client.get(
                         f"{settings.GO2RTC_API_URL}/api/frame.jpeg",
                         params={"src": stream_id},
@@ -868,9 +894,14 @@ async def webrtc_offer(
             # it to establish the lazy RTSP connection before retrying WHEP.
             if resp.status_code == 404:
                 logger.info("go2rtc stream not found for %s — auto-registering from DB", stream_id)
-                reg = await client.put(_go2rtc_register_url(stream_id, cam_stream.rtsp_url))
-                if reg.status_code >= 400:
-                    logger.error("go2rtc stream registration failed %s: %s %s", stream_id, reg.status_code, reg.text[:200])
+                reg_failed = False
+                for reg_url in _go2rtc_register_urls(stream_id, cam_stream.rtsp_url):
+                    reg = await client.put(reg_url)
+                    if reg.status_code >= 400:
+                        logger.error("go2rtc registration failed %s: %d %s", reg_url, reg.status_code, reg.text[:200])
+                        reg_failed = True
+                        break
+                if reg_failed:
                     raise HTTPException(
                         status_code=status.HTTP_502_BAD_GATEWAY,
                         detail=f"Failed to register stream in go2rtc: {reg.status_code}",
