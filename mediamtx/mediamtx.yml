@@ -20,10 +20,10 @@ webrtc:
 
 # ── Logging ────────────────────────────────────────────────────────────────
 log:
-  level: info
+  level: debug
 
 # ── Streams ────────────────────────────────────────────────────────────────
 # Streams are added dynamically via the API when cameras are registered.
-# PUT /api/streams?src={stream_id}&name={rtsp_url}
+# PUT /api/streams?name={stream_id}&src=ffmpeg:{rtsp_url}#video=h264
 # go2rtc connects to the camera on-demand (when a consumer requests).
 streams: {}
