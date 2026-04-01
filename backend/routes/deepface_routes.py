@@ -174,14 +174,18 @@ def _set_alert_cooldown(anomaly_type: str, stream_id: str, entity_key: str) -> N
 def _go2rtc_register_url(stream_id: str, rtsp_url: str) -> str:
     """Build go2rtc stream registration URL.
 
-    Both src and name must be percent-encoded so the RTSP URL's & and ?
-    characters don't split the HTTP query string. go2rtc decodes them
-    internally.
+    The RTSP URL contains & and ? which would split the HTTP query string.
+    We encode only the characters that break query-string parsing while
+    keeping the RTSP URL otherwise readable for go2rtc:
+      & → %26  (would start a new query param)
+      # → %23  (would start a fragment)
+    Characters like @, :, /, ? are safe within a query param value.
     """
+    safe_name = rtsp_url.replace("&", "%26").replace("#", "%23")
     return (
         f"{settings.GO2RTC_API_URL}/api/streams"
         f"?src={quote(stream_id, safe='')}"
-        f"&name={quote(rtsp_url, safe='')}"
+        f"&name={safe_name}"
     )
 
 
@@ -860,11 +864,7 @@ async def webrtc_offer(
             # If go2rtc doesn't know this stream, register it and retry
             if resp.status_code == 404:
                 logger.info("go2rtc stream not found for %s — auto-registering from DB", stream_id)
-                # go2rtc API: PUT /api/streams?{stream_name}={rtsp_url}
-                reg = await client.put(
-                    f"{settings.GO2RTC_API_URL}/api/streams",
-                    params={stream_id: cam_stream.rtsp_url},
-                )
+                reg = await client.put(_go2rtc_register_url(stream_id, cam_stream.rtsp_url))
                 if reg.status_code >= 400:
                     logger.error("go2rtc stream registration failed %s: %s %s", stream_id, reg.status_code, reg.text[:200])
                     raise HTTPException(
