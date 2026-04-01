@@ -1,7 +1,9 @@
 from __future__ import annotations
 
+import asyncio
 import logging
 from typing import Optional
+from urllib.parse import urlparse, urlunparse
 
 import cv2
 import numpy as np
@@ -29,6 +31,15 @@ from app.schemas import (
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
+
+
+def _redact_rtsp_url(url: str) -> str:
+    """Strip userinfo (username:password@) from an RTSP URL."""
+    parsed = urlparse(url)
+    if parsed.username or parsed.password:
+        redacted = parsed._replace(netloc=f"{parsed.hostname}:{parsed.port}" if parsed.port else parsed.hostname)
+        return urlunparse(redacted)
+    return url
 
 
 # ── Error helpers ─────────────────────────────────────────────────────────────
@@ -95,7 +106,7 @@ def _bool(val, default: bool = True) -> bool:
 async def health():
     from app.pgvector_service import get_pgvector_service
     pgv = get_pgvector_service()
-    count = pgv.count_all()
+    count = await asyncio.to_thread(pgv.count_all)
     db_host = settings.deepface_postgres_uri.split("@")[-1]
     return HealthResponse(
         status="ok",
@@ -113,7 +124,7 @@ async def detect(request: Request, file: Optional[UploadFile] = File(default=Non
     from app.face_engine import detect_and_embed
 
     frame, _extra = await _resolve_image(request, file)
-    faces = detect_and_embed(frame)
+    faces = await asyncio.to_thread(detect_and_embed, frame)
 
     faces_out = []
     for f in faces:
@@ -137,7 +148,7 @@ async def represent(request: Request, file: Optional[UploadFile] = File(default=
     from app.face_engine import detect_and_embed
 
     frame, _extra = await _resolve_image(request, file)
-    faces = detect_and_embed(frame)
+    faces = await asyncio.to_thread(detect_and_embed, frame)
 
     if not faces:
         raise _422("No face detected in the image.")
@@ -169,12 +180,13 @@ async def register(request: Request, file: Optional[UploadFile] = File(default=N
     if not name:
         raise _422("'img_name' is required for registration.")
 
-    face = embed_single(frame)
+    face = await asyncio.to_thread(embed_single, frame)
     if face is None:
         raise _422("No face detected in the uploaded image.")
 
     pgv = get_pgvector_service()
-    row_id = pgv.register(
+    row_id = await asyncio.to_thread(
+        pgv.register,
         identity_name=str(name),
         embedding=face["embedding"],
         det_score=face["det_score"],
@@ -196,7 +208,7 @@ async def search(request: Request, file: Optional[UploadFile] = File(default=Non
     threshold = float(extra.get("threshold", settings.cosine_threshold))
     k = int(extra.get("k", 5))
 
-    faces = detect_and_embed(frame)
+    faces = await asyncio.to_thread(detect_and_embed, frame)
     if not faces:
         raise _422("No face detected in the image.")
 
@@ -204,7 +216,7 @@ async def search(request: Request, file: Optional[UploadFile] = File(default=Non
     results_out = []
 
     for face in faces:
-        matches = pgv.search(face["embedding"], threshold=threshold, limit=k)
+        matches = await asyncio.to_thread(pgv.search, face["embedding"], threshold, k)
         x1, y1, x2, y2 = face["bbox"]
         results_out.append(
             SearchFaceResult(
@@ -259,7 +271,7 @@ async def stream_start(body: StreamStartRequest):
     return StreamStartResponse(
         stream_id=processor.stream_id,
         status=processor.status,
-        rtsp_url=processor.rtsp_url,
+        rtsp_url=_redact_rtsp_url(processor.rtsp_url),
         interval_seconds=processor.interval_seconds,
         webhook_url=processor.webhook_url,
     )
@@ -290,7 +302,7 @@ async def stream_status():
     streams = [
         StreamInfo(
             stream_id=p.stream_id,
-            rtsp_url=p.rtsp_url,
+            rtsp_url=_redact_rtsp_url(p.rtsp_url),
             status=p.status,
             interval_seconds=p.interval_seconds,
             webhook_url=p.webhook_url,

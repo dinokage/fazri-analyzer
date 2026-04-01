@@ -14,6 +14,19 @@ from database.connection import get_db
 
 router = APIRouter(prefix="/api/v1/entities", tags=["entities"])
 
+# Module-level shared engine for auth database queries (lazy singleton)
+_auth_engine = None
+
+
+def _get_auth_engine():
+    global _auth_engine
+    if _auth_engine is None:
+        from sqlalchemy import create_engine
+        from config import settings
+        if settings.AUTH_DATABASE_URL:
+            _auth_engine = create_engine(settings.AUTH_DATABASE_URL, pool_pre_ping=True)
+    return _auth_engine
+
 class EntitySearchRequest(BaseModel):
     identifier_type: str
     identifier_value: str
@@ -62,16 +75,16 @@ async def fuzzy_search_by_name(
     db: Session = Depends(get_db),
 ):
     """Fuzzy name search across auth users and staff_profiles (STAFF+ only)"""
-    from sqlalchemy import create_engine, text
+    from sqlalchemy import text
     from config import settings
 
     seen_entity_ids: set = set()
     matches = []
 
     # ── 1. Query auth service user table ──────────────────────────────────────
-    if settings.AUTH_DATABASE_URL:
+    auth_engine = _get_auth_engine()
+    if auth_engine is not None:
         try:
-            auth_engine = create_engine(settings.AUTH_DATABASE_URL, pool_pre_ping=True)
             with auth_engine.connect() as conn:
                 rows = conn.execute(
                     text(

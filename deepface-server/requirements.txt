@@ -1,7 +1,7 @@
 # Web framework
 fastapi==0.115.12
 uvicorn[standard]==0.34.0
-python-multipart==0.0.20        # required for UploadFile / Form support
+python-multipart==0.0.22        # required for UploadFile / Form support
 
 # Settings
 pydantic-settings==2.7.1
@@ -13,7 +13,7 @@ albumentations
 
 # Image processing
 opencv-python-headless==4.11.0.86   # headless — no GUI in server context
-Pillow==11.1.0
+Pillow>=12.1.1
 numpy==1.26.4
 
 # Database — pgvector for embedding storage and HNSW-indexed cosine search

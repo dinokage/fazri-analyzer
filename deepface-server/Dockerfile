@@ -24,6 +24,13 @@ RUN python prebake_weights.py
 # Copy application code
 COPY app/ ./app/
 
+# Create unprivileged user and hand over ownership
+RUN groupadd --gid 1000 appuser \
+    && useradd --uid 1000 --gid appuser --no-create-home appuser \
+    && chown -R appuser:appuser /app
+
+USER appuser
+
 EXPOSE 8000
 
 CMD ["python", "-m", "uvicorn", "app.main:app", \

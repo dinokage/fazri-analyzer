@@ -3,8 +3,10 @@ Outgoing webhook management routes.
 Admins can register HTTP endpoints that receive real-time event notifications.
 """
 
+import ipaddress
 import logging
 import re
+import socket
 from typing import Any, Dict, List, Optional
 from uuid import UUID
 
@@ -21,13 +23,6 @@ logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/api/v1/webhooks", tags=["Webhooks"])
 
-_SSRF_BLOCKED = re.compile(
-    r"^(localhost|127\.\d+\.\d+\.\d+|10\.\d+\.\d+\.\d+|"
-    r"192\.168\.\d+\.\d+|172\.(1[6-9]|2[0-9]|3[01])\.\d+\.\d+|"
-    r"169\.254\.169\.254|::1)$",
-    re.IGNORECASE,
-)
-
 
 def _validate_webhook_url(url: str) -> str:
     from urllib.parse import urlparse
@@ -35,8 +30,27 @@ def _validate_webhook_url(url: str) -> str:
     if parsed.scheme not in ("http", "https"):
         raise ValueError("URL must use http or https")
     host = parsed.hostname or ""
-    if _SSRF_BLOCKED.match(host):
-        raise ValueError("URL points to a private/internal address")
+    if not host:
+        raise ValueError("URL must include a hostname")
+
+    # Resolve hostname and reject any private/non-public addresses
+    try:
+        addrinfos = socket.getaddrinfo(host, None, proto=socket.IPPROTO_TCP)
+    except socket.gaierror:
+        raise ValueError(f"Cannot resolve hostname: {host}")
+
+    for family, _, _, _, sockaddr in addrinfos:
+        ip = ipaddress.ip_address(sockaddr[0])
+        if (
+            ip.is_private
+            or ip.is_loopback
+            or ip.is_link_local
+            or ip.is_unspecified
+            or ip.is_multicast
+            or ip.is_reserved
+        ):
+            raise ValueError("URL resolves to a private/internal address")
+
     return url
 
 

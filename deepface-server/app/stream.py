@@ -21,9 +21,20 @@ import cv2
 import httpx
 import numpy as np
 
+from urllib.parse import urlparse, urlunparse
+
 from app.config import settings
 
 logger = logging.getLogger(__name__)
+
+
+def _redact_rtsp_url(url: str) -> str:
+    """Strip userinfo (username:password@) from an RTSP URL for safe logging."""
+    parsed = urlparse(url)
+    if parsed.username or parsed.password:
+        redacted = parsed._replace(netloc=f"{parsed.hostname}:{parsed.port}" if parsed.port else parsed.hostname)
+        return urlunparse(redacted)
+    return url
 
 # Global registry: stream_id → StreamProcessor
 _streams: Dict[str, "StreamProcessor"] = {}
@@ -47,8 +58,8 @@ async def start_stream(
     if sid in _streams:
         raise ValueError(f"Stream '{sid}' is already running.")
     processor = StreamProcessor(sid, rtsp_url, interval_seconds, webhook_url)
-    _streams[sid] = processor
     await processor.start()
+    _streams[sid] = processor
     return processor
 
 
@@ -90,7 +101,7 @@ class StreamProcessor:
         self.running = True
         self.started_at = datetime.now(timezone.utc)
         self._task = asyncio.create_task(self._loop(), name=f"stream-{self.stream_id}")
-        logger.info("Stream %s started: %s (every %.1fs)", self.stream_id, self.rtsp_url, self.interval_seconds)
+        logger.info("Stream %s started: %s (every %.1fs)", self.stream_id, _redact_rtsp_url(self.rtsp_url), self.interval_seconds)
 
     async def stop(self) -> None:
         self.running = False
@@ -162,8 +173,8 @@ class StreamProcessor:
 
         cap = await loop.run_in_executor(None, _open)
         if not cap.isOpened():
-            raise ConnectionError(f"Cannot open RTSP stream: {self.rtsp_url}")
-        logger.info("Stream %s: connected to %s", self.stream_id, self.rtsp_url)
+            raise ConnectionError(f"Cannot open RTSP stream: {_redact_rtsp_url(self.rtsp_url)}")
+        logger.info("Stream %s: connected to %s", self.stream_id, _redact_rtsp_url(self.rtsp_url))
         return cap
 
     # ── Face tracker ───────────────────────────────────────────────────────────
@@ -267,7 +278,7 @@ class StreamProcessor:
 
         payload = {
             "stream_id": self.stream_id,
-            "rtsp_url": self.rtsp_url,
+            "rtsp_url": _redact_rtsp_url(self.rtsp_url),
             "timestamp": datetime.now(timezone.utc).isoformat(),
             "frames_processed": self.frames_processed,
             "faces_found": len(matches),

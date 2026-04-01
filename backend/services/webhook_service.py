@@ -209,12 +209,17 @@ class WebhookService:
     @staticmethod
     def dispatch_event(event: str, data: Dict[str, Any]) -> None:
         """Fire-and-forget webhook dispatch. Safe to call from sync context."""
+        import threading
+
         try:
             loop = asyncio.get_running_loop()
             loop.create_task(WebhookService._dispatch_async(event, data))
         except RuntimeError:
-            # No running loop — use asyncio.run (e.g. in tests)
-            asyncio.run(WebhookService._dispatch_async(event, data))
+            # No running loop — fire-and-forget in a background thread
+            threading.Thread(
+                target=lambda: asyncio.run(WebhookService._dispatch_async(event, data)),
+                daemon=True,
+            ).start()
 
     # ------------------------------------------------------------------
     # Test

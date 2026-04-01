@@ -104,7 +104,7 @@ class DeepFaceClient:
         Returns:
             List of match dicts, each containing img_name, distance, confidence, threshold.
         """
-        files = {"img": ("query.jpg", image_data, content_type)}
+        files = {"file": ("query.jpg", image_data, content_type)}
 
         logger.debug("Searching faces")
         response = await self._client.post("/search", files=files)
@@ -124,7 +124,7 @@ class DeepFaceClient:
         Returns:
             List of detection dicts with facial_area, confidence, etc.
         """
-        files = {"img": ("detect.jpg", image_data, content_type)}
+        files = {"file": ("detect.jpg", image_data, content_type)}
 
         response = await self._client.post("/detect", files=files)
         response.raise_for_status()

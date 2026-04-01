@@ -757,7 +757,7 @@ async def delete_stream(
         try:
             async with httpx.AsyncClient(timeout=5) as rtc_client:
                 await rtc_client.delete(
-                    f"{settings.GO2RTC_API_URL}/api/streams?src={quote(stream_id, safe='')}",
+                    f"{settings.GO2RTC_API_URL}/api/streams?name={quote(stream_id, safe='')}",
                 )
                 logger.info("go2rtc stream removed: %s", stream_id)
         except Exception as exc:
@@ -1143,23 +1143,30 @@ async def get_entity_registration_status(
     Returns registered=False (not an error) if the DeepFace DB is unreachable or
     the table does not exist yet — frontend should handle this gracefully.
     """
-    try:
+    def _fetch_face_registration_sync(eid: str) -> dict:
         conn = psycopg2.connect(settings.DEEPFACE_POSTGRES_URI)
-        with conn:
-            with conn.cursor() as cur:
-                cur.execute(
-                    "SELECT COUNT(*), MIN(created_at) FROM face_embeddings WHERE img_name = %s",
-                    (entity_id,),
-                )
-                row = cur.fetchone()
-                count = int(row[0]) if row else 0
-                registered_at = row[1].isoformat() if (row and row[1]) else None
-        return {
-            "entity_id": entity_id,
-            "registered": count > 0,
-            "face_count": count,
-            "registered_at": registered_at,
-        }
+        try:
+            with conn:
+                with conn.cursor() as cur:
+                    cur.execute(
+                        "SELECT COUNT(*), MIN(created_at) FROM face_embeddings WHERE img_name = %s",
+                        (eid,),
+                    )
+                    row = cur.fetchone()
+                    count = int(row[0]) if row else 0
+                    registered_at = row[1].isoformat() if (row and row[1]) else None
+            return {
+                "entity_id": eid,
+                "registered": count > 0,
+                "face_count": count,
+                "registered_at": registered_at,
+            }
+        finally:
+            conn.close()
+
+    try:
+        loop = asyncio.get_running_loop()
+        return await loop.run_in_executor(None, _fetch_face_registration_sync, entity_id)
     except Exception as exc:
         logger.warning(
             "Face registration status query failed for entity_id=%s: %s", entity_id, exc

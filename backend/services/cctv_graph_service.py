@@ -165,14 +165,19 @@ class CctvGraphService:
         query = """
             MATCH (e:Entity {entity_id: $entity_id})
             MATCH (z:Zone {zone_id: $zone_id})
-            CREATE (e)-[:DETECTED_IN {
-                timestamp:   datetime($timestamp),
-                frame_id:    $frame_id,
-                face_id:     $face_id,
-                location_id: $zone_id,
-                stream_id:   $stream_id,
-                source:      "deepface_rtsp"
-            }]->(z)
+            MERGE (e)-[r:DETECTED_IN {frame_id: $frame_id}]->(z)
+            ON CREATE SET
+                r.timestamp   = datetime($timestamp),
+                r.face_id     = $face_id,
+                r.location_id = $zone_id,
+                r.stream_id   = $stream_id,
+                r.source      = "deepface_rtsp"
+            ON MATCH SET
+                r.timestamp   = datetime($timestamp),
+                r.face_id     = $face_id,
+                r.location_id = $zone_id,
+                r.stream_id   = $stream_id,
+                r.source      = "deepface_rtsp"
         """
         params = {
             "entity_id": entity_id,
@@ -225,13 +230,18 @@ class CctvGraphService:
 
         query = """
             MATCH (z:Zone {zone_id: $zone_id})
-            CREATE (ev:UnknownFaceEvent {
-                frame_id:  $frame_id,
-                zone_id:   $zone_id,
-                stream_id: $stream_id,
-                timestamp: datetime($timestamp),
-                source:    "deepface_rtsp"
-            })-[:DETECTED_IN]->(z)
+            MERGE (ev:UnknownFaceEvent {frame_id: $frame_id})
+            ON CREATE SET
+                ev.zone_id   = $zone_id,
+                ev.stream_id = $stream_id,
+                ev.timestamp = datetime($timestamp),
+                ev.source    = "deepface_rtsp"
+            ON MATCH SET
+                ev.zone_id   = $zone_id,
+                ev.stream_id = $stream_id,
+                ev.timestamp = datetime($timestamp),
+                ev.source    = "deepface_rtsp"
+            MERGE (ev)-[:DETECTED_IN]->(z)
         """
         params = {
             "zone_id": zone_id,
