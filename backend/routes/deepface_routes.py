@@ -777,6 +777,17 @@ async def get_stream_snapshot(
                     f"{settings.GO2RTC_API_URL}/api/frame.jpeg",
                     params={"src": stream_id},
                 )
+                # Auto-register with go2rtc if stream not found, then retry
+                if resp.status_code == 404:
+                    logger.info("go2rtc stream not found for %s — auto-registering", stream_id)
+                    await rtc_client.put(
+                        f"{settings.GO2RTC_API_URL}/api/streams",
+                        params={"src": stream_id, "name": cam_stream.rtsp_url},
+                    )
+                    resp = await rtc_client.get(
+                        f"{settings.GO2RTC_API_URL}/api/frame.jpeg",
+                        params={"src": stream_id},
+                    )
                 resp.raise_for_status()
                 return StreamingResponse(io.BytesIO(resp.content), media_type="image/jpeg")
         except Exception as exc:
@@ -835,6 +846,26 @@ async def webrtc_offer(
             f"{settings.GO2RTC_API_URL}/api/webrtc?src={stream_id}",
             content=body,
             headers={"Content-Type": content_type},
+        )
+
+        # If go2rtc doesn't know this stream, register it and retry
+        if resp.status_code == 404:
+            logger.info("go2rtc stream not found for %s — auto-registering from DB", stream_id)
+            await client.put(
+                f"{settings.GO2RTC_API_URL}/api/streams",
+                params={"src": stream_id, "name": cam_stream.rtsp_url},
+            )
+            # Retry the WebRTC offer after registration
+            resp = await client.post(
+                f"{settings.GO2RTC_API_URL}/api/webrtc?src={stream_id}",
+                content=body,
+                headers={"Content-Type": content_type},
+            )
+
+    if resp.status_code >= 400:
+        raise HTTPException(
+            status_code=status.HTTP_502_BAD_GATEWAY,
+            detail=f"go2rtc WebRTC signaling failed: {resp.status_code} {resp.text[:200]}",
         )
 
     return Response(
