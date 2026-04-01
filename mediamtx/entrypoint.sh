@@ -2,6 +2,8 @@
 # Substitute environment variables in the config template before starting go2rtc.
 # GO2RTC_HOST must be set to the server's public IP so WebRTC ICE candidates
 # point to a reachable address (the Docker internal IP is not browser-accessible).
+# Exit immediately on any error so go2rtc is never started with a broken config.
+set -e
 if [ -z "$GO2RTC_HOST" ]; then
   echo "ERROR: GO2RTC_HOST is not set or empty. Cannot generate valid ICE candidates." >&2
   exit 1

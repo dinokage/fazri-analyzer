@@ -110,10 +110,18 @@ class DeepFaceClient:
         response = await self._client.post("/search", files=files)
         response.raise_for_status()
         payload = response.json()
-        # DeepFace may return {"results": [...]} or a bare list depending on version
+        # DeepFace returns {"results": [{"matches": [...]}]} — flatten to a single match list.
+        # Fall back to bare list or top-level "matches" for compatibility.
         if isinstance(payload, list):
             return payload
-        return payload.get("results", payload.get("matches", []))
+        results = payload.get("results", None)
+        if results is not None:
+            flat: List[Dict[str, Any]] = []
+            for r in results:
+                if isinstance(r, dict):
+                    flat.extend(r.get("matches", []))
+            return flat
+        return payload.get("matches", [])
 
     async def detect_faces(
         self, image_data: bytes, content_type: str = "image/jpeg"
@@ -131,7 +139,8 @@ class DeepFaceClient:
         payload = response.json()
         if isinstance(payload, list):
             return payload
-        return payload.get("detections", [])
+        # Server returns {"faces_detected": int, "faces": [...]}
+        return payload.get("faces", payload.get("detections", []))
 
     # ------------------------------------------------------------------
     # Stream management

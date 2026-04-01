@@ -1,4 +1,6 @@
 # backend/app/api/entity_routes.py
+import difflib
+import logging
 from fastapi import APIRouter, HTTPException, Query, Depends
 from typing import Optional, List
 from pydantic import BaseModel
@@ -11,6 +13,30 @@ from auth.dependencies import get_current_user, require_staff
 from auth.models import AuthenticatedUser, UserRole
 from auth.exceptions import PermissionDeniedError
 from database.connection import get_db
+
+logger = logging.getLogger(__name__)
+
+
+def _name_similarity(query: str, candidate: str) -> float:
+    """Fuzzy similarity between a search query and a candidate name.
+
+    Takes the maximum of:
+    - Full sequence ratio (handles typos across full names)
+    - Best per-word ratio (handles partial searches like "john" in "John Smith")
+
+    Examples:
+        "john"  vs "John Smith" → word hit on "John"  → 1.0
+        "smith" vs "John Smith" → word hit on "Smith"  → 1.0
+        "jhn"   vs "John Smith" → word approx on "John" → ~0.86
+    """
+    q = query.lower()
+    n = candidate.lower()
+    full = difflib.SequenceMatcher(None, q, n).ratio()
+    word_best = max(
+        (difflib.SequenceMatcher(None, q, word).ratio() for word in n.split()),
+        default=0.0,
+    )
+    return max(full, word_best)
 
 router = APIRouter(prefix="/api/v1/entities", tags=["entities"])
 
@@ -96,7 +122,10 @@ async def fuzzy_search_by_name(
                     {"pattern": f"%{name}%"},
                 ).fetchall()
             for row in rows:
-                if not row.entity_id:
+                if not row.entity_id or not row.name:
+                    continue
+                similarity = _name_similarity(name, row.name)
+                if similarity < threshold:
                     continue
                 seen_entity_ids.add(row.entity_id)
                 matches.append({
@@ -107,11 +136,10 @@ async def fuzzy_search_by_name(
                         "department": row.department,
                         "face_id": row.face_id,
                     },
-                    "similarity": 1.0,
+                    "similarity": round(similarity, 4),
                 })
         except Exception as exc:
-            import logging
-            logging.getLogger(__name__).warning("Auth DB fuzzy-search failed: %s", exc)
+            logger.warning("Auth DB fuzzy-search failed: %s", exc)
 
     # ── 2. Query staff_profiles (non-mock, with entity_id) ────────────────────
     from models.db.alerts import StaffProfile
@@ -120,7 +148,7 @@ async def fuzzy_search_by_name(
     staff_list = (
         db.query(StaffProfile)
         .filter(or_(StaffProfile.name.ilike(f"%{name}%"), StaffProfile.entity_id.ilike(f"%{name}%")))
-        .filter(StaffProfile.is_mock_user == False)
+        .filter(StaffProfile.is_mock_user.is_(False))
         .filter(StaffProfile.entity_id.isnot(None))
         .order_by(StaffProfile.name)
         .limit(20)
@@ -128,6 +156,9 @@ async def fuzzy_search_by_name(
     )
     for s in staff_list:
         if not s.name or s.entity_id in seen_entity_ids:
+            continue
+        similarity = _name_similarity(name, s.name)
+        if similarity < threshold:
             continue
         matches.append({
             "entity": {
@@ -137,7 +168,7 @@ async def fuzzy_search_by_name(
                 "department": s.department,
                 "face_id": None,
             },
-            "similarity": 1.0,
+            "similarity": round(similarity, 4),
         })
 
     matches.sort(key=lambda m: m["entity"]["name"])

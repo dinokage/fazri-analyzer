@@ -82,7 +82,10 @@ async def _resolve_image(request: Request, file: Optional[UploadFile]) -> tuple[
         # Strip data-URI prefix if present
         if "," in b64:
             b64 = b64.split(",", 1)[1]
-        image_bytes = base64.b64decode(b64)
+        try:
+            image_bytes = base64.b64decode(b64)
+        except Exception:
+            raise _422("Invalid base64 image")
 
     # Decode to BGR numpy array (no JPEG re-encoding)
     arr = np.frombuffer(image_bytes, dtype=np.uint8)
@@ -267,6 +270,11 @@ async def stream_start(body: StreamStartRequest):
         )
     except ValueError as exc:
         raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(exc))
+    except ConnectionError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail=str(exc),
+        )
 
     return StreamStartResponse(
         stream_id=processor.stream_id,

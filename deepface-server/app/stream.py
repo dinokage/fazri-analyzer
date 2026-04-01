@@ -98,6 +98,13 @@ class StreamProcessor:
         return "running" if self.running else "stopped"
 
     async def start(self) -> None:
+        # Pre-validate: open and immediately release the capture to confirm
+        # the RTSP URL is reachable before registering the stream. A bad URL
+        # raises ConnectionError, which the caller can surface as a 422.
+        loop = asyncio.get_event_loop()
+        cap = await self._open_capture(loop)
+        await loop.run_in_executor(None, cap.release)
+
         self.running = True
         self.started_at = datetime.now(timezone.utc)
         self._task = asyncio.create_task(self._loop(), name=f"stream-{self.stream_id}")

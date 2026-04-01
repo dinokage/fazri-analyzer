@@ -6,10 +6,13 @@ Supports Discord, Slack, and generic HTTP endpoints with HMAC-SHA256 signing.
 import asyncio
 import hashlib
 import hmac
+import ipaddress
 import logging
 import re
 import secrets
+import socket
 from typing import Any, Dict, List, Optional
+from urllib.parse import urlparse
 
 import httpx
 from sqlalchemy.orm import Session
@@ -95,6 +98,11 @@ def _slack_payload(event: str, data: Dict[str, Any]) -> str:
     return json.dumps({"attachments": [{"color": cfg["color"], "blocks": blocks}]})
 
 
+# Strong reference set to prevent fire-and-forget tasks from being GC'd
+# before they complete. Tasks remove themselves via done-callback.
+_pending_tasks: set = set()
+
+
 class WebhookService:
     @staticmethod
     def _get_all_active(db: Session) -> List[OutgoingWebhook]:
@@ -169,6 +177,26 @@ class WebhookService:
     async def _send(webhook: OutgoingWebhook, event: str, data: Dict[str, Any]) -> None:
         import json
 
+        # SSRF guard: resolve hostname and reject non-public IPs.
+        # Third-party patterns (Discord, Slack) are always public; skip check.
+        if not _is_third_party(webhook.url):
+            parsed = urlparse(webhook.url)
+            hostname = parsed.hostname
+            if hostname:
+                try:
+                    infos = await asyncio.to_thread(socket.getaddrinfo, hostname, None)
+                    for info in infos:
+                        ip = ipaddress.ip_address(info[4][0])
+                        if not ip.is_global:
+                            logger.warning(
+                                "[Webhook] Blocked delivery to non-public address %s (host: %s) for %s",
+                                ip, hostname, event,
+                            )
+                            return
+                except Exception as exc:
+                    logger.warning("[Webhook] DNS resolution failed for host %s: %s", hostname, exc)
+                    return
+
         if _is_discord(webhook.url):
             body = _discord_payload(event, data)
         elif _is_slack(webhook.url):
@@ -182,13 +210,15 @@ class WebhookService:
             headers["X-Webhook-Signature"] = sig
             headers["X-Webhook-Event"] = event
 
+        _parsed = urlparse(webhook.url)
+        _safe_url = f"{_parsed.scheme}://{_parsed.hostname}"
         try:
             async with httpx.AsyncClient(timeout=10.0) as client:
                 resp = await client.post(webhook.url, content=body, headers=headers)
                 if not resp.is_success:
-                    logger.warning("[Webhook] %s returned %d for %s", webhook.url, resp.status_code, event)
+                    logger.warning("[Webhook] %s returned %d for %s", _safe_url, resp.status_code, event)
         except Exception as exc:
-            logger.error("[Webhook] Failed to deliver to %s: %s", webhook.url, exc)
+            logger.error("[Webhook] Failed to deliver to %s: %s", _safe_url, exc)
 
     @staticmethod
     async def _dispatch_async(event: str, data: Dict[str, Any]) -> None:
@@ -213,7 +243,9 @@ class WebhookService:
 
         try:
             loop = asyncio.get_running_loop()
-            loop.create_task(WebhookService._dispatch_async(event, data))
+            task = loop.create_task(WebhookService._dispatch_async(event, data))
+            _pending_tasks.add(task)
+            task.add_done_callback(_pending_tasks.discard)
         except RuntimeError:
             # No running loop — fire-and-forget in a background thread
             threading.Thread(

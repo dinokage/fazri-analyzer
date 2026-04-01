@@ -25,8 +25,8 @@ Usage:
 
 from __future__ import annotations
 
+import hashlib
 import logging
-import uuid
 from datetime import datetime, timezone
 from typing import Any, Dict, List, Optional
 
@@ -152,15 +152,19 @@ class CctvGraphService:
         CREATE is silently skipped because the MATCH will return no rows.
         Log a warning when the entity or zone cannot be found.
         """
-        if frame_id is None:
-            frame_id = f"{stream_id}-{uuid.uuid4().hex[:8]}"
-
         # Normalise timestamp to ISO-8601 string for Neo4j datetime()
         ts_str = (
             timestamp.astimezone(timezone.utc).isoformat()
             if timestamp.tzinfo
             else timestamp.isoformat() + "Z"
         )
+
+        if frame_id is None:
+            # Deterministic ID so retries MERGE onto the same relationship
+            # instead of creating duplicate edges.
+            frame_id = hashlib.md5(
+                f"{stream_id}:{entity_id}:{ts_str}".encode()
+            ).hexdigest()[:16]
 
         query = """
             MATCH (e:Entity {entity_id: $entity_id})
@@ -192,9 +196,11 @@ class CctvGraphService:
             result = session.run(query, params)
             summary = result.consume()
             if summary.counters.relationships_created == 0:
-                logger.warning(
-                    "create_detected_in: no relationship created — "
-                    "entity_id=%s or zone_id=%s not found in graph",
+                # 0 can mean the relationship already existed (idempotent MERGE)
+                # OR the entity/zone node was not found. Both are non-fatal.
+                logger.debug(
+                    "create_detected_in: relationship already existed or "
+                    "entity_id=%s / zone_id=%s not found in graph",
                     entity_id,
                     zone_id,
                 )
@@ -219,14 +225,16 @@ class CctvGraphService:
         Creates a lightweight UNKNOWN_FACE_DETECTED event node linked to the
         zone for audit purposes without touching entity nodes.
         """
-        if frame_id is None:
-            frame_id = f"{stream_id}-unknown-{uuid.uuid4().hex[:8]}"
-
         ts_str = (
             timestamp.astimezone(timezone.utc).isoformat()
             if timestamp.tzinfo
             else timestamp.isoformat() + "Z"
         )
+
+        if frame_id is None:
+            frame_id = hashlib.md5(
+                f"{stream_id}:unknown:{zone_id}:{ts_str}".encode()
+            ).hexdigest()[:16]
 
         query = """
             MATCH (z:Zone {zone_id: $zone_id})

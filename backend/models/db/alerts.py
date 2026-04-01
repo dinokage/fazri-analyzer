@@ -221,13 +221,13 @@ class Alert(Base):
 
     # Assignment
     assigned_to = Column(UUID(as_uuid=True), ForeignKey("staff_profiles.id"), nullable=True)
-    assigned_at = Column(DateTime, nullable=True)
+    assigned_at = Column(DateTime(timezone=True), nullable=True)
 
     # Acknowledgment
-    acknowledged_at = Column(DateTime, nullable=True)
+    acknowledged_at = Column(DateTime(timezone=True), nullable=True)
 
     # Resolution
-    resolved_at = Column(DateTime, nullable=True)
+    resolved_at = Column(DateTime(timezone=True), nullable=True)
     resolved_by = Column(UUID(as_uuid=True), ForeignKey("staff_profiles.id"), nullable=True)
     resolution_type = Column(Enum(ResolutionType), nullable=True)
     resolution_notes = Column(Text, nullable=True)
@@ -381,7 +381,7 @@ class NotificationQueue(Base):
     # Timestamps
     created_at = Column(DateTime(timezone=True), default=_utcnow)
     scheduled_at = Column(DateTime(timezone=True), default=_utcnow)  # For delayed notifications
-    processed_at = Column(DateTime, nullable=True)
+    processed_at = Column(DateTime(timezone=True), nullable=True)
 
     # Relationships
     alert = relationship("Alert", back_populates="notifications")

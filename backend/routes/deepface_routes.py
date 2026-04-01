@@ -143,32 +143,37 @@ def _cooldown_key(anomaly_type: str, stream_id: str, entity_key: str) -> str:
     return f"fazri:alert_cd:{anomaly_type}:{stream_id}:{entity_key}"
 
 
-def _is_alert_suppressed(anomaly_type: str, stream_id: str, entity_key: str) -> bool:
+def _set_alert_cooldown(anomaly_type: str, stream_id: str, entity_key: str) -> bool:
+    """Atomic NX gate. Returns True if the key was newly created (proceed with alert),
+    False if already existed (suppressed) or Redis is unavailable after an error.
+    When Redis is entirely unavailable, returns True so alerts are not silently dropped."""
     r = _get_alert_redis()
     if not r:
-        logger.warning("Cooldown check skipped — Redis unavailable")
-        return False
-    key = _cooldown_key(anomaly_type, stream_id, entity_key)
-    try:
-        exists = r.exists(key) == 1
-        logger.debug("Cooldown check: key=%s exists=%s", key, exists)
-        return exists
-    except Exception as exc:
-        logger.error("Cooldown check failed for key=%s: %s", key, exc)
-        return False
-
-
-def _set_alert_cooldown(anomaly_type: str, stream_id: str, entity_key: str) -> None:
-    r = _get_alert_redis()
-    if not r:
-        logger.warning("Cooldown set skipped — Redis unavailable")
-        return
+        logger.warning("Cooldown gate skipped — Redis unavailable, allowing alert")
+        return True
     key = _cooldown_key(anomaly_type, stream_id, entity_key)
     try:
         result = r.set(key, "1", ex=settings.ALERT_COOLDOWN_SECONDS, nx=True)
-        logger.debug("Cooldown set: key=%s ttl=%s result=%s", key, settings.ALERT_COOLDOWN_SECONDS, result)
+        # SET NX returns None when the key already existed; the bool(result) is True only when set
+        created = result is not None
+        logger.debug("Cooldown NX set: key=%s ttl=%s created=%s", key, settings.ALERT_COOLDOWN_SECONDS, created)
+        return created
     except Exception as exc:
         logger.error("Cooldown set FAILED for key=%s: %s", key, exc)
+        return True  # Allow on Redis error to avoid silently dropping alerts
+
+
+def _delete_alert_cooldown(anomaly_type: str, stream_id: str, entity_key: str) -> None:
+    """Delete the cooldown key so alert creation can be retried immediately."""
+    r = _get_alert_redis()
+    if not r:
+        return
+    key = _cooldown_key(anomaly_type, stream_id, entity_key)
+    try:
+        r.delete(key)
+        logger.debug("Cooldown key deleted for retry: key=%s", key)
+    except Exception as exc:
+        logger.error("Cooldown delete FAILED for key=%s: %s", key, exc)
 
 
 def _go2rtc_register_urls(stream_id: str, rtsp_url: str) -> list:
@@ -498,15 +503,17 @@ async def deepface_webhook(
         if anomaly and settings.ALERT_SYSTEM_ENABLED:
             anomaly_type = anomaly.get("anomaly_type", "unknown")
             # Known entity → entity_id for per-person cooldown.
-            # Unknown face → stream-level key. Per-face tracker_ids are
-            # unreliable because search() and represent() don't guarantee
-            # the same face ordering, causing unstable IDs.
-            entity_key = (
-                entity.get("entity_id", "unknown") if entity
-                else f"unknown:{payload.stream_id}"
-            )
+            # Unknown face → per-tracker key when tracker_id is available
+            # (stream.py assigns a stable tracker_id per unknown face via
+            # embedding similarity), falling back to stream-level key.
+            if entity:
+                entity_key = entity.get("entity_id", "unknown")
+            else:
+                entity_key = match_dict.get("tracker_id") or f"unknown:{payload.stream_id}"
 
-            if _is_alert_suppressed(anomaly_type, payload.stream_id, entity_key):
+            # _set_alert_cooldown is the sole atomic gate (SET NX).
+            # Returns True only when the key was freshly created — proceed.
+            if not _set_alert_cooldown(anomaly_type, payload.stream_id, entity_key):
                 logger.info(
                     "Alert suppressed (cooldown): %s stream=%s key=%s",
                     anomaly_type, payload.stream_id, entity_key,
@@ -521,9 +528,10 @@ async def deepface_webhook(
                         payload=payload,
                         db=db,
                     )
-                    _set_alert_cooldown(anomaly_type, payload.stream_id, entity_key)
                     alerts_created += 1
                 except Exception as exc:
+                    # Delete the cooldown key so the alert can be retried immediately.
+                    _delete_alert_cooldown(anomaly_type, payload.stream_id, entity_key)
                     logger.error(
                         "Failed to create alert for anomaly %s: %s",
                         anomaly.get("anomaly_type"),
@@ -635,9 +643,12 @@ async def create_stream(
             webhook_url=webhook_url,
         )
         deepface_stream_id = df_response.get("stream_id", body.stream_id)
+        from urllib.parse import urlparse, urlunparse
+        _p = urlparse(body.rtsp_url)
+        _safe_rtsp = urlunparse(_p._replace(netloc=f"{_p.hostname}:{_p.port}" if _p.port else (_p.hostname or "")))
         logger.info(
             "DeepFace stream started: stream_id=%s deepface_stream_id=%s rtsp=%s",
-            body.stream_id, deepface_stream_id, body.rtsp_url,
+            body.stream_id, deepface_stream_id, _safe_rtsp,
         )
     except Exception as exc:
         logger.error("Failed to start DeepFace stream %s: %s", body.stream_id, exc)
@@ -1054,66 +1065,59 @@ def _onvif_probe(ip: str, port: int, username: str, password: str, use_https: bo
 def _onvif_attempt(ip: str, port: int, username: str, password: str, use_https: bool) -> Dict[str, Any]:
     """
     Single ONVIF connection attempt.
-    Patches requests.Session to disable SSL verification for the duration
-    of this call so self-signed NVR certificates are accepted.
+    Uses a locally-scoped requests.Session with verify=False passed via
+    zeep.Transport so only this probe skips TLS verification; no global
+    monkey-patching of requests.Session.
     """
-    import contextlib
     import requests
     import urllib3
+    from zeep import Transport  # type: ignore
     from onvif import ONVIFCamera  # type: ignore
 
     urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 
-    # Temporarily patch requests.Session so every zeep-internal session
-    # created by onvif-zeep uses verify=False.
-    original_init = requests.Session.__init__
+    session = requests.Session()
+    session.verify = False
+    transport = Transport(session=session)
 
-    def _patched_init(self, *args, **kwargs):
-        original_init(self, *args, **kwargs)
-        self.verify = False
+    cam = ONVIFCamera(ip, port, username, password, encrypt=use_https, transport=transport)
+    cam.update_xaddrs()
 
-    requests.Session.__init__ = _patched_init  # type: ignore[method-assign]
-    try:
-        cam = ONVIFCamera(ip, port, username, password, encrypt=use_https)
-        cam.update_xaddrs()
+    # Device info
+    device_svc = cam.create_devicemgmt_service()
+    info = device_svc.GetDeviceInformation()
+    vendor = getattr(info, "Manufacturer", "Unknown")
+    model = getattr(info, "Model", "Unknown")
 
-        # Device info
-        device_svc = cam.create_devicemgmt_service()
-        info = device_svc.GetDeviceInformation()
-        vendor = getattr(info, "Manufacturer", "Unknown")
-        model = getattr(info, "Model", "Unknown")
+    # Media profiles → stream URIs
+    media_svc = cam.create_media_service()
+    profiles = media_svc.GetProfiles()
 
-        # Media profiles → stream URIs
-        media_svc = cam.create_media_service()
-        profiles = media_svc.GetProfiles()
+    channels: List[Dict[str, Any]] = []
+    for profile in profiles:
+        try:
+            uri_req = media_svc.create_type("GetStreamUri")
+            uri_req.ProfileToken = profile.token
+            uri_req.StreamSetup = {
+                "Stream": "RTP-Unicast",
+                "Transport": {"Protocol": "RTSP"},
+            }
+            uri_resp = media_svc.GetStreamUri(uri_req)
+            rtsp_url = uri_resp.Uri
+            # Inject percent-encoded credentials into the RTSP URL if not already present
+            if username and "://" in rtsp_url and "@" not in rtsp_url:
+                enc_user = requests.utils.quote(username, safe="")
+                enc_pass = requests.utils.quote(password, safe="")
+                rtsp_url = rtsp_url.replace("rtsp://", f"rtsp://{enc_user}:{enc_pass}@")
+            channels.append({
+                "id": profile.token,
+                "name": getattr(profile, "Name", profile.token),
+                "rtsp_url": rtsp_url,
+            })
+        except Exception:
+            continue
 
-        channels: List[Dict[str, Any]] = []
-        for profile in profiles:
-            try:
-                uri_req = media_svc.create_type("GetStreamUri")
-                uri_req.ProfileToken = profile.token
-                uri_req.StreamSetup = {
-                    "Stream": "RTP-Unicast",
-                    "Transport": {"Protocol": "RTSP"},
-                }
-                uri_resp = media_svc.GetStreamUri(uri_req)
-                rtsp_url = uri_resp.Uri
-                # Inject percent-encoded credentials into the RTSP URL if not already present
-                if username and "://" in rtsp_url and "@" not in rtsp_url:
-                    enc_user = requests.utils.quote(username, safe="")
-                    enc_pass = requests.utils.quote(password, safe="")
-                    rtsp_url = rtsp_url.replace("rtsp://", f"rtsp://{enc_user}:{enc_pass}@")
-                channels.append({
-                    "id": profile.token,
-                    "name": getattr(profile, "Name", profile.token),
-                    "rtsp_url": rtsp_url,
-                })
-            except Exception:
-                continue
-
-        return {"vendor": vendor, "model": model, "channels": channels}
-    finally:
-        requests.Session.__init__ = original_init  # type: ignore[method-assign]
+    return {"vendor": vendor, "model": model, "channels": channels}
 
 
 # ============================================================================

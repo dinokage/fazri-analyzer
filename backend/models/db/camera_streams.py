@@ -102,7 +102,7 @@ class CameraStream(Base):
     )
 
     # Timestamp of the most recent face-match event received from this stream
-    last_event_at = Column(DateTime, nullable=True)
+    last_event_at = Column(DateTime(timezone=True), nullable=True)
 
     # Stores the last error message when status == ERROR
     error_message = Column(Text, nullable=True)
