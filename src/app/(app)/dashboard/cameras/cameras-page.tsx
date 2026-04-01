@@ -286,7 +286,26 @@ export default function CamerasPageContent() {
   };
   const [detections, setDetections] = useState<Detection[]>([]);
   const imgRef = useRef<HTMLImageElement>(null);
+  const containerRef = useRef<HTMLDivElement>(null);
   const [imgDimensions, setImgDimensions] = useState<{ naturalWidth: number; naturalHeight: number } | null>(null);
+
+  // Compute the rendered image bounds within the object-contain container.
+  // object-contain scales + centers the image, which creates letterboxing.
+  // Overlays must be offset by the letterbox margins.
+  const getImageBounds = useCallback(() => {
+    if (!containerRef.current || !imgDimensions) return null;
+    const cw = containerRef.current.clientWidth;
+    const ch = containerRef.current.clientHeight;
+    const imgRatio = imgDimensions.naturalWidth / imgDimensions.naturalHeight;
+    const cRatio = cw / ch;
+    let rw: number, rh: number, ox: number, oy: number;
+    if (imgRatio > cRatio) {
+      rw = cw; rh = cw / imgRatio; ox = 0; oy = (ch - rh) / 2;
+    } else {
+      rh = ch; rw = ch * imgRatio; ox = (cw - rw) / 2; oy = 0;
+    }
+    return { renderW: rw, renderH: rh, offsetX: ox, offsetY: oy };
+  }, [imgDimensions]);
 
   // NVR wizard state
   const [nvrForm, setNvrForm] = useState(EMPTY_NVR);
@@ -722,7 +741,7 @@ export default function CamerasPageContent() {
                 </div>
               )}
               {snapshotBlobUrl ? (
-                <div className="relative w-full h-full">
+                <div ref={containerRef} className="relative w-full h-full">
                   <img
                     ref={imgRef}
                     src={snapshotBlobUrl}
@@ -737,32 +756,40 @@ export default function CamerasPageContent() {
                       }
                     }}
                   />
-                  {imgDimensions && detections.map((det, i) => {
-                    if (!det.facial_area) return null;
-                    const { x, y, w, h } = det.facial_area;
-                    const left = (x / imgDimensions.naturalWidth) * 100;
-                    const top = (y / imgDimensions.naturalHeight) * 100;
-                    const width = (w / imgDimensions.naturalWidth) * 100;
-                    const height = (h / imgDimensions.naturalHeight) * 100;
-                    return (
-                      <div
-                        key={i}
-                        className="absolute border-2 pointer-events-none"
-                        style={{
-                          left: `${left}%`, top: `${top}%`,
-                          width: `${width}%`, height: `${height}%`,
-                          borderColor: det.is_unknown ? '#ef4444' : '#22c55e',
-                        }}
-                      >
-                        <span
-                          className="absolute -top-5 left-0 text-[10px] leading-tight px-1 py-0.5 rounded whitespace-nowrap"
-                          style={{ backgroundColor: det.is_unknown ? '#ef4444' : '#22c55e', color: 'white' }}
+                  {/* Face bounding box overlays — pixel positioned to account for
+                      object-contain letterboxing (image centered in container) */}
+                  {imgDimensions && (() => {
+                    const bounds = getImageBounds();
+                    if (!bounds) return null;
+                    const { renderW, renderH, offsetX, offsetY } = bounds;
+                    return detections.map((det, i) => {
+                      if (!det.facial_area) return null;
+                      const { x, y, w, h } = det.facial_area;
+                      if (x === 0 && y === 0 && w === 0 && h === 0) return null;
+                      const left = offsetX + (x / imgDimensions.naturalWidth) * renderW;
+                      const top = offsetY + (y / imgDimensions.naturalHeight) * renderH;
+                      const width = (w / imgDimensions.naturalWidth) * renderW;
+                      const height = (h / imgDimensions.naturalHeight) * renderH;
+                      return (
+                        <div
+                          key={i}
+                          className="absolute border-2 pointer-events-none"
+                          style={{
+                            left: `${left}px`, top: `${top}px`,
+                            width: `${width}px`, height: `${height}px`,
+                            borderColor: det.is_unknown ? '#ef4444' : '#22c55e',
+                          }}
                         >
-                          {det.is_unknown ? 'Unknown' : (det.entity_name || det.img_name)}
-                        </span>
-                      </div>
-                    );
-                  })}
+                          <span
+                            className="absolute -top-5 left-0 text-[10px] leading-tight px-1 py-0.5 rounded whitespace-nowrap"
+                            style={{ backgroundColor: det.is_unknown ? '#ef4444' : '#22c55e', color: 'white' }}
+                          >
+                            {det.is_unknown ? 'Unknown' : (det.entity_name || det.img_name)}
+                          </span>
+                        </div>
+                      );
+                    });
+                  })()}
                 </div>
               ) : !snapshotLoading ? (
                 <div className="flex flex-col items-center justify-center text-gray-600">
