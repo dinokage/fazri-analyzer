@@ -841,26 +841,46 @@ async def webrtc_offer(
     body = await request.body()
     content_type = request.headers.get("content-type", "application/sdp")
 
-    async with httpx.AsyncClient(timeout=10) as client:
-        resp = await client.post(
-            f"{settings.GO2RTC_API_URL}/api/webrtc?src={stream_id}",
-            content=body,
-            headers={"Content-Type": content_type},
-        )
-
-        # If go2rtc doesn't know this stream, register it and retry
-        if resp.status_code == 404:
-            logger.info("go2rtc stream not found for %s — auto-registering from DB", stream_id)
-            await client.put(
-                f"{settings.GO2RTC_API_URL}/api/streams",
-                params={"src": stream_id, "name": cam_stream.rtsp_url},
-            )
-            # Retry the WebRTC offer after registration
+    try:
+        async with httpx.AsyncClient(timeout=10) as client:
             resp = await client.post(
                 f"{settings.GO2RTC_API_URL}/api/webrtc?src={stream_id}",
                 content=body,
                 headers={"Content-Type": content_type},
             )
+
+            # If go2rtc doesn't know this stream, register it and retry
+            if resp.status_code == 404:
+                logger.info("go2rtc stream not found for %s — auto-registering from DB", stream_id)
+                # go2rtc API: PUT /api/streams?{stream_name}={rtsp_url}
+                reg = await client.put(
+                    f"{settings.GO2RTC_API_URL}/api/streams",
+                    params={stream_id: cam_stream.rtsp_url},
+                )
+                if reg.status_code >= 400:
+                    logger.error("go2rtc stream registration failed %s: %s %s", stream_id, reg.status_code, reg.text[:200])
+                    raise HTTPException(
+                        status_code=status.HTTP_502_BAD_GATEWAY,
+                        detail=f"Failed to register stream in go2rtc: {reg.status_code}",
+                    )
+                # Retry the WebRTC offer after registration
+                resp = await client.post(
+                    f"{settings.GO2RTC_API_URL}/api/webrtc?src={stream_id}",
+                    content=body,
+                    headers={"Content-Type": content_type},
+                )
+    except httpx.ConnectError:
+        logger.error("go2rtc unreachable at %s — is the container running?", settings.GO2RTC_API_URL)
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="Live streaming service is unavailable. go2rtc is not reachable.",
+        )
+    except httpx.TimeoutException:
+        logger.error("go2rtc timed out for stream %s", stream_id)
+        raise HTTPException(
+            status_code=status.HTTP_504_GATEWAY_TIMEOUT,
+            detail="Live streaming service timed out.",
+        )
 
     if resp.status_code >= 400:
         raise HTTPException(
