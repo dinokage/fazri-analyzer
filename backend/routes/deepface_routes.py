@@ -171,46 +171,30 @@ def _set_alert_cooldown(anomaly_type: str, stream_id: str, entity_key: str) -> N
         logger.error("Cooldown set FAILED for key=%s: %s", key, exc)
 
 
-def _go2rtc_native_id(stream_id: str) -> str:
-    """Internal go2rtc stream name for the native H.265 RTSP source."""
-    return f"{stream_id}-native"
-
-
 def _go2rtc_register_urls(stream_id: str, rtsp_url: str) -> list:
-    """Return the two PUT URLs needed to register a camera in go2rtc.
+    """Return the single PUT URL to register a camera in go2rtc.
 
-    go2rtc serialises multi-source streams as a YAML list. In list items,
-    `ffmpeg:name#video=h264` has its `#` stripped as a YAML comment, causing
-    a 400. Using two separate single-source streams avoids this: each PUT
-    serialises as a scalar string (no list), so `#` is kept verbatim.
+    Source format: {rtsp_url}#video=h264
 
-    Stream 1 — {stream_id}-native:  go2rtc native RTSP client → handles H.265
-                                     B-frames without FFmpeg RPS/POC errors.
-    Stream 2 — {stream_id}:          ffmpeg:{stream_id}-native#video=h264 →
-                                     FFmpeg reads from go2rtc's internal stream
-                                     and outputs H.264 for browser WebRTC.
+    Appending #video=h264 to the RTSP URL tells go2rtc to use its own
+    native RTSP client (which handles H.265 B-frames / RPS correctly)
+    and only use FFmpeg as an H.264 *encoder* — never as an H.265 decoder.
+
+    This is different from the ffmpeg: source type where FFmpeg does both
+    H.265 decoding AND H.264 encoding, which triggers RPS/POC errors on
+    cameras with complex B-frame GOP structures (Dahua / CP Plus H.265).
     """
-    native_id = _go2rtc_native_id(stream_id)
     return [
         (
             f"{settings.GO2RTC_API_URL}/api/streams"
-            f"?name={quote(native_id, safe='')}"
-            f"&src={quote(rtsp_url, safe='')}"
-        ),
-        (
-            f"{settings.GO2RTC_API_URL}/api/streams"
             f"?name={quote(stream_id, safe='')}"
-            f"&src={quote(f'ffmpeg:{native_id}#video=h264', safe='')}"
+            f"&src={quote(f'{rtsp_url}#video=h264', safe='')}"
         ),
     ]
 
 
 def _go2rtc_register_url(stream_id: str, rtsp_url: str) -> str:
-    """Kept for import compatibility with main.py startup sync.
-
-    Returns only the native-RTSP registration URL.  Callers that need
-    the full two-stream setup should use _go2rtc_register_urls() directly.
-    """
+    """Kept for import compatibility with main.py startup sync."""
     return _go2rtc_register_urls(stream_id, rtsp_url)[0]
 
 
@@ -766,15 +750,14 @@ async def delete_stream(
                 stream_id, exc,
             )
 
-    # Remove go2rtc relay streams (both H.264 and native)
+    # Remove go2rtc relay stream
     if settings.GO2RTC_ENABLED:
         try:
             async with httpx.AsyncClient(timeout=5) as rtc_client:
-                for sid in [stream_id, _go2rtc_native_id(stream_id)]:
-                    await rtc_client.delete(
-                        f"{settings.GO2RTC_API_URL}/api/streams?src={quote(sid, safe='')}",
-                    )
-                logger.info("go2rtc streams removed: %s, %s", stream_id, _go2rtc_native_id(stream_id))
+                await rtc_client.delete(
+                    f"{settings.GO2RTC_API_URL}/api/streams?src={quote(stream_id, safe='')}",
+                )
+                logger.info("go2rtc stream removed: %s", stream_id)
         except Exception as exc:
             logger.warning("Could not remove go2rtc stream %s: %s", stream_id, exc)
 
