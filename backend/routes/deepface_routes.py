@@ -850,14 +850,16 @@ async def webrtc_offer(
     content_type = request.headers.get("content-type", "application/sdp")
 
     try:
-        async with httpx.AsyncClient(timeout=10) as client:
+        # Longer timeout: go2rtc may need several seconds to connect to the RTSP camera
+        async with httpx.AsyncClient(timeout=20) as client:
             resp = await client.post(
                 f"{settings.GO2RTC_API_URL}/api/webrtc?src={stream_id}",
                 content=body,
                 headers={"Content-Type": content_type},
             )
 
-            # If go2rtc doesn't know this stream, register it and retry
+            # If go2rtc doesn't know this stream, register it then wait for
+            # it to establish the lazy RTSP connection before retrying WHEP.
             if resp.status_code == 404:
                 logger.info("go2rtc stream not found for %s — auto-registering from DB", stream_id)
                 reg = await client.put(_go2rtc_register_url(stream_id, cam_stream.rtsp_url))
@@ -867,12 +869,20 @@ async def webrtc_offer(
                         status_code=status.HTTP_502_BAD_GATEWAY,
                         detail=f"Failed to register stream in go2rtc: {reg.status_code}",
                     )
-                # Retry the WebRTC offer after registration
-                resp = await client.post(
-                    f"{settings.GO2RTC_API_URL}/api/webrtc?src={stream_id}",
-                    content=body,
-                    headers={"Content-Type": content_type},
-                )
+
+                # go2rtc connects to the RTSP camera lazily on first consumer.
+                # Retry the WHEP offer a few times while it establishes the connection.
+                for attempt in range(5):
+                    await asyncio.sleep(1.5)
+                    resp = await client.post(
+                        f"{settings.GO2RTC_API_URL}/api/webrtc?src={stream_id}",
+                        content=body,
+                        headers={"Content-Type": content_type},
+                    )
+                    if resp.status_code != 404:
+                        break
+                    logger.debug("go2rtc WHEP still not ready for %s (attempt %d/5)", stream_id, attempt + 1)
+
     except httpx.ConnectError:
         logger.error("go2rtc unreachable at %s — is the container running?", settings.GO2RTC_API_URL)
         raise HTTPException(

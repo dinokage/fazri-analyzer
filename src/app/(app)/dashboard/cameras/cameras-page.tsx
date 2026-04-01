@@ -1204,7 +1204,9 @@ export default function CamerasPageContent() {
                             } ${!isFocused ? 'border border-transparent' : ''}`}
                             onClick={() => setFocusedChannel(isFocused ? null : ch.id)}
                           >
-                            <button type="button"
+                            <div
+                              role="checkbox"
+                              aria-checked={isSelected}
                               onClick={(e) => {
                                 e.stopPropagation();
                                 setSelectedChannels((prev) => {
@@ -1219,7 +1221,7 @@ export default function CamerasPageContent() {
                               }`}
                             >
                               {isSelected && <Check className="h-3 w-3 text-white" />}
-                            </button>
+                            </div>
                             <div className="min-w-0 flex-1">
                               <div className="flex items-center gap-1">
                                 <p className="text-xs text-white truncate">{ch.name}</p>
