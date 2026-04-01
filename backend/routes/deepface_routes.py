@@ -172,23 +172,22 @@ def _set_alert_cooldown(anomaly_type: str, stream_id: str, entity_key: str) -> N
 
 
 def _go2rtc_register_urls(stream_id: str, rtsp_url: str) -> list:
-    """Return the single PUT URL to register a camera in go2rtc.
+    """Return the PUT URL to register a camera stream in go2rtc.
 
-    Source format: {rtsp_url}#video=h264
+    Plain RTSP URL only — no #video=h264 here.
 
-    Appending #video=h264 to the RTSP URL tells go2rtc to use its own
-    native RTSP client (which handles H.265 B-frames / RPS correctly)
-    and only use FFmpeg as an H.264 *encoder* — never as an H.265 decoder.
-
-    This is different from the ffmpeg: source type where FFmpeg does both
-    H.265 decoding AND H.264 encoding, which triggers RPS/POC errors on
-    cameras with complex B-frame GOP structures (Dahua / CP Plus H.265).
+    go2rtc's YAML serialiser treats # as a comment character, so any value
+    containing # in the src param causes a 400 "did not find expected key".
+    Transcoding to H.264 is applied at WebRTC consumption time instead:
+      POST /api/webrtc?src={stream_id}%23video%3Dh264
+    go2rtc then uses its native RTSP decoder (handles H.265 B-frames) and
+    only invokes FFmpeg as an H.264 encoder for the WebRTC consumer.
     """
     return [
         (
             f"{settings.GO2RTC_API_URL}/api/streams"
             f"?name={quote(stream_id, safe='')}"
-            f"&src={quote(f'{rtsp_url}#video=h264', safe='')}"
+            f"&src={quote(rtsp_url, safe='')}"
         ),
     ]
 
