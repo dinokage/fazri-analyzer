@@ -226,7 +226,10 @@ class StreamProcessor:
         _, buffer = cv2.imencode(".jpg", frame, [cv2.IMWRITE_JPEG_QUALITY, 85])
         data_uri = "data:image/jpeg;base64," + base64.b64encode(buffer).decode()
 
-        # Run DeepFace search in thread executor
+        # Run DeepFace search in thread executor.
+        # similarity_search=True bypasses DeepFace's hardcoded internal threshold
+        # (0.55 for Buffalo_L) so we can apply our own configurable threshold.
+        # k=1 returns only the best match per face to reduce payload size.
         try:
             dfs = await loop.run_in_executor(
                 None,
@@ -239,6 +242,8 @@ class StreamProcessor:
                     align=True,
                     normalization=settings.normalization,
                     l2_normalize=settings.l2_normalize,
+                    similarity_search=True,   # skip internal threshold filter
+                    k=1,                      # best match per face only
                     database_type="postgres",
                     connection_details=settings.connection_details,
                 ),
@@ -258,36 +263,58 @@ class StreamProcessor:
 
         # Collect matches across all detected faces.
         # dfs is a list with one DataFrame per detected face in the frame.
-        # An empty DataFrame means the face was detected but has no match in
-        # the pgvector database — i.e. an unknown face.  We track the index
-        # so we can later resolve a stable tracker_id via embeddings.
+        # Since we use similarity_search=True, DataFrames may contain rows
+        # that exceed our threshold — we apply our own filter here.
+        # An empty DataFrame means a face was detected but the pgvector DB
+        # had no embeddings at all (different from "match exists but too distant").
+        threshold = settings.cosine_threshold
         matches = []
         unknown_match_indices: List[tuple] = []  # (dfs_index, matches_index)
 
         for i, df in enumerate(dfs):
             if df.empty:
+                # No embeddings in DB for this face
                 unknown_match_indices.append((i, len(matches)))
                 matches.append({
                     "img_name": "UNKNOWN_FACE",
                     "distance": 1.0,
                     "confidence": 0.0,
-                    "threshold": 0.40,
+                    "threshold": threshold,
                     "facial_area": {"x": 0, "y": 0, "w": 0, "h": 0},
                 })
                 continue
-            for _, row in df.iterrows():
+
+            # Apply our own threshold: best match (k=1) must be within threshold
+            best_row = df.iloc[0] if len(df) > 0 else None
+            if best_row is None or best_row.get("distance", 1.0) > threshold:
+                # Face detected but no match within our threshold → unknown
+                unknown_match_indices.append((i, len(matches)))
                 matches.append({
-                    "img_name": row.get("img_name"),
-                    "distance": row.get("distance"),
-                    "confidence": row.get("confidence", 0.0),
-                    "threshold": row.get("threshold"),
+                    "img_name": "UNKNOWN_FACE",
+                    "distance": best_row.get("distance", 1.0) if best_row is not None else 1.0,
+                    "confidence": best_row.get("confidence", 0.0) if best_row is not None else 0.0,
+                    "threshold": threshold,
                     "facial_area": {
-                        "x": row.get("target_x"),
-                        "y": row.get("target_y"),
-                        "w": row.get("target_w"),
-                        "h": row.get("target_h"),
+                        "x": best_row.get("target_x", 0) if best_row is not None else 0,
+                        "y": best_row.get("target_y", 0) if best_row is not None else 0,
+                        "w": best_row.get("target_w", 0) if best_row is not None else 0,
+                        "h": best_row.get("target_h", 0) if best_row is not None else 0,
                     },
                 })
+                continue
+
+            matches.append({
+                "img_name": best_row.get("img_name"),
+                "distance": best_row.get("distance"),
+                "confidence": best_row.get("confidence", 0.0),
+                "threshold": threshold,
+                "facial_area": {
+                    "x": best_row.get("target_x"),
+                    "y": best_row.get("target_y"),
+                    "w": best_row.get("target_w"),
+                    "h": best_row.get("target_h"),
+                },
+            })
 
         if not matches:
             return

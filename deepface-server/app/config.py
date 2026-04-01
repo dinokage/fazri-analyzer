@@ -16,7 +16,7 @@ class Settings(BaseSettings):
     model_name: str = "Buffalo_L"
     detector_backend: str = "mtcnn"
     distance_metric: str = "cosine"
-    cosine_threshold: float = 0.40   # tightened from 0.55 default; reduce for fewer false positives
+    cosine_threshold: float = 0.55   # Buffalo_L default; raise for RTSP cameras with lower quality
     enforce_detection: bool = True
     l2_normalize: bool = False
     normalization: str = "raw"        # Buffalo_L needs [0,255] input; "raw" restores from [0,1]
