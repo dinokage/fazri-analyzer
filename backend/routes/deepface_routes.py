@@ -174,20 +174,23 @@ def _set_alert_cooldown(anomaly_type: str, stream_id: str, entity_key: str) -> N
 def _go2rtc_register_urls(stream_id: str, rtsp_url: str) -> list:
     """Return the PUT URL to register a camera stream in go2rtc.
 
-    Plain RTSP URL only — no #video=h264 here.
+    Source: ffmpeg:{rtsp_url}#video=h264#hardware
 
-    go2rtc's YAML serialiser treats # as a comment character, so any value
-    containing # in the src param causes a 400 "did not find expected key".
-    Transcoding to H.264 is applied at WebRTC consumption time instead:
-      POST /api/webrtc?src={stream_id}%23video%3Dh264
-    go2rtc then uses its native RTSP decoder (handles H.265 B-frames) and
-    only invokes FFmpeg as an H.264 encoder for the WebRTC consumer.
+    go2rtc has no built-in H.265→H.264 transcoder — FFmpeg is required.
+    The ffmpeg: prefix makes FFmpeg handle decode+encode.
+    #hardware enables GPU-accelerated decoding (vaapi/nvenc/videotoolbox)
+    which bypasses FFmpeg's software H.265 decoder that fails with RPS/POC
+    errors on Dahua/CP Plus cameras using complex B-frame GOP structures.
+
+    Falls back to software if no hardware is available, but software may
+    show black video on H.265 streams with problematic GOP structure.
+    In that case, use the camera sub-stream (subtype=1) which is H.264.
     """
     return [
         (
             f"{settings.GO2RTC_API_URL}/api/streams"
             f"?name={quote(stream_id, safe='')}"
-            f"&src={quote(rtsp_url, safe='')}"
+            f"&src={quote(f'ffmpeg:{rtsp_url}#video=h264#hardware', safe='')}"
         ),
     ]
 
@@ -867,7 +870,7 @@ async def webrtc_offer(
         # Longer timeout: go2rtc may need several seconds to connect to the RTSP camera
         async with httpx.AsyncClient(timeout=20) as client:
             resp = await client.post(
-                f"{settings.GO2RTC_API_URL}/api/webrtc?src={quote(f'{stream_id}#video=h264', safe='')}",
+                f"{settings.GO2RTC_API_URL}/api/webrtc?src={stream_id}",
                 content=body,
                 headers={"Content-Type": content_type},
             )
@@ -894,7 +897,7 @@ async def webrtc_offer(
                 for attempt in range(5):
                     await asyncio.sleep(1.5)
                     resp = await client.post(
-                        f"{settings.GO2RTC_API_URL}/api/webrtc?src={quote(f'{stream_id}#video=h264', safe='')}",
+                        f"{settings.GO2RTC_API_URL}/api/webrtc?src={stream_id}",
                         content=body,
                         headers={"Content-Type": content_type},
                     )
