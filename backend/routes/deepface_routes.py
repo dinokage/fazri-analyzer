@@ -174,14 +174,15 @@ def _set_alert_cooldown(anomaly_type: str, stream_id: str, entity_key: str) -> N
 def _go2rtc_register_url(stream_id: str, rtsp_url: str) -> str:
     """Build go2rtc stream registration URL.
 
-    go2rtc API: PUT /api/streams?{stream_name}={rtsp_url}
-    The stream name is the key and the RTSP URL is the value.
-    Both must be percent-encoded as query parameter components.
+    go2rtc API: PUT /api/streams?name={stream_name}&src={rtsp_url}
+    Confirmed from go2rtc source (www/add.html):
+      url.searchParams.set('name', streamName)
+      url.searchParams.set('src', sourceUrl)
     """
     return (
         f"{settings.GO2RTC_API_URL}/api/streams"
-        f"?{quote(stream_id, safe='')}"
-        f"={quote(rtsp_url, safe='')}"
+        f"?name={quote(stream_id, safe='')}"
+        f"&src={quote(rtsp_url, safe='')}"
     )
 
 
