@@ -275,10 +275,11 @@ export default function CamerasPageContent() {
   const autoRefreshRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const prevBlobUrlRef = useRef<string | null>(null);
 
-  // Live view (go2rtc MSE proxied through backend)
+  // Live view (WebRTC via go2rtc WHEP, signaling proxied through backend)
   const [liveMode, setLiveMode] = useState(false);
-  const [liveUrl, setLiveUrl] = useState<string | null>(null);
+  const [liveReady, setLiveReady] = useState(false);
   const videoRef = useRef<HTMLVideoElement>(null);
+  const pcRef = useRef<RTCPeerConnection | null>(null);
 
   // Face detection overlays
   type Detection = {
@@ -376,7 +377,6 @@ export default function CamerasPageContent() {
   useEffect(() => {
     if (previewStream) {
       fetchSnapshot(previewStream);
-      setLiveUrl(apiClient.getStreamLiveUrl(previewStream.stream_id));
     } else {
       if (prevBlobUrlRef.current) {
         URL.revokeObjectURL(prevBlobUrlRef.current);
@@ -386,7 +386,9 @@ export default function CamerasPageContent() {
       setDetections([]);
       setImgDimensions(null);
       setLiveMode(false);
-      setLiveUrl(null);
+      setLiveReady(false);
+      // Tear down WebRTC peer connection
+      if (pcRef.current) { pcRef.current.close(); pcRef.current = null; }
     }
   }, [previewStream, fetchSnapshot]);
 
@@ -398,6 +400,61 @@ export default function CamerasPageContent() {
     }
     return () => { if (autoRefreshRef.current) clearInterval(autoRefreshRef.current); };
   }, [autoRefresh, previewStream, fetchSnapshot, liveMode]);
+
+  // Establish WebRTC connection when entering live mode
+  useEffect(() => {
+    if (!liveMode || !previewStream || !videoRef.current) return;
+
+    let cancelled = false;
+    const video = videoRef.current;
+    const streamId = previewStream.stream_id;
+
+    async function connect() {
+      // Tear down any existing connection
+      if (pcRef.current) { pcRef.current.close(); pcRef.current = null; }
+
+      const pc = new RTCPeerConnection({
+        iceServers: [{ urls: 'stun:stun1.l.google.com:19302' }],
+      });
+      pcRef.current = pc;
+
+      // Receive remote tracks
+      pc.ontrack = (event) => {
+        if (!cancelled && video) {
+          video.srcObject = event.streams[0];
+          setLiveReady(true);
+        }
+      };
+
+      // Add transceiver for receiving video
+      pc.addTransceiver('video', { direction: 'recvonly' });
+      pc.addTransceiver('audio', { direction: 'recvonly' });
+
+      const offer = await pc.createOffer();
+      await pc.setLocalDescription(offer);
+
+      // Send SDP offer to backend (proxied to go2rtc WHEP)
+      try {
+        const answerSdp = await apiClient.webrtcOffer(streamId, offer.sdp ?? '');
+        if (cancelled) return;
+        await pc.setRemoteDescription({ type: 'answer', sdp: answerSdp });
+      } catch (err) {
+        if (!cancelled) {
+          setLiveMode(false);
+          setLiveReady(false);
+          toast.error('Live stream failed — falling back to snapshot');
+        }
+      }
+    }
+
+    connect();
+
+    return () => {
+      cancelled = true;
+      if (pcRef.current) { pcRef.current.close(); pcRef.current = null; }
+      setLiveReady(false);
+    };
+  }, [liveMode, previewStream]);
 
   // Poll detections in live mode (overlays on live video)
   useEffect(() => {
@@ -741,7 +798,7 @@ export default function CamerasPageContent() {
 
       {/* ─── Preview Modal ─────────────────────────────────────────────────── */}
       <Dialog open={!!previewStream} onOpenChange={(open) => { if (!open) { setPreviewStream(null); setAutoRefresh(false); } }}>
-        <DialogContent className="bg-gray-900 border-gray-800 sm:max-w-2xl overflow-hidden">
+        <DialogContent className="bg-gray-900 border-gray-800 sm:max-w-2xl w-full min-w-0 overflow-hidden [&>*]:min-w-0">
           <DialogHeader>
             <DialogTitle className="text-white flex items-center gap-2">
               <Camera className="h-4 w-4 text-blue-400" />
@@ -754,13 +811,17 @@ export default function CamerasPageContent() {
           </DialogHeader>
 
           <div className="space-y-3 py-2">
-            <div className="relative bg-black rounded-lg overflow-hidden aspect-video flex items-center justify-center border border-gray-800 max-w-full">
-              {/* Live mode — MSE stream proxied through backend */}
-              {liveMode && liveUrl ? (
+            <div className="relative bg-black rounded-lg overflow-hidden aspect-video flex items-center justify-center border border-gray-800 w-full">
+              {/* Live mode — WebRTC stream via go2rtc WHEP */}
+              {liveMode ? (
                 <div ref={containerRef} className="relative w-full h-full">
+                  {!liveReady && (
+                    <div className="absolute inset-0 flex items-center justify-center bg-black/60 z-10">
+                      <Loader2 className="h-6 w-6 text-blue-400 animate-spin" />
+                    </div>
+                  )}
                   <video
                     ref={videoRef}
-                    src={liveUrl}
                     autoPlay
                     muted
                     playsInline
@@ -860,7 +921,7 @@ export default function CamerasPageContent() {
             {/* Controls */}
             <div className="flex items-center gap-3">
               {/* Live / Snapshot toggle */}
-              {liveUrl && (
+              {previewStream && (
                 <div className="flex rounded-md border border-gray-700 overflow-hidden">
                   <button type="button"
                     onClick={() => setLiveMode(false)}

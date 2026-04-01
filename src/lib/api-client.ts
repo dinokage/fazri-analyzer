@@ -795,8 +795,18 @@ export const apiClient = {
     return URL.createObjectURL(blob);
   },
 
-  getStreamLiveUrl(streamId: string): string {
-    return `${API_BASE_URL}/api/v1/deepface/streams/${encodeURIComponent(streamId)}/live`;
+  async webrtcOffer(streamId: string, sdpOffer: string): Promise<string> {
+    const headers = await getAuthHeaders();
+    const response = await fetch(
+      `${API_BASE_URL}/api/v1/deepface/streams/${encodeURIComponent(streamId)}/webrtc`,
+      {
+        method: 'POST',
+        headers: { ...headers, 'Content-Type': 'application/sdp' },
+        body: sdpOffer,
+      },
+    );
+    if (!response.ok) throw new ApiError(`WebRTC signaling failed: ${response.status}`, response.status);
+    return response.text();
   },
 
   async getStreamDetections(streamId: string): Promise<{

@@ -31,6 +31,7 @@ import httpx
 import numpy as np
 from fastapi import APIRouter, Depends, HTTPException, Request, UploadFile, File, status
 from fastapi.responses import StreamingResponse
+from starlette.responses import Response
 from sqlalchemy.orm import Session
 
 from auth.dependencies import require_staff, require_admin
@@ -802,18 +803,21 @@ async def get_stream_snapshot(
 # ============================================================================
 
 
-@router.get(
-    "/streams/{stream_id}/live",
-    summary="Proxy go2rtc MSE stream for authenticated browser playback",
+@router.post(
+    "/streams/{stream_id}/webrtc",
+    summary="WebRTC WHEP signaling proxy for live video",
 )
-async def get_stream_live(
+async def webrtc_offer(
     stream_id: str,
+    request: Request,
     db: Session = Depends(get_db),
     current_user: AuthenticatedUser = Depends(require_staff()),
-) -> StreamingResponse:
+) -> Response:
     """
-    Proxies go2rtc's MSE (progressive MP4) stream through the authenticated
-    backend API so the browser doesn't need direct access to the go2rtc container.
+    Proxies WebRTC signaling (WHEP) to go2rtc. The frontend sends an SDP
+    offer, this endpoint forwards it to go2rtc and returns the SDP answer.
+    Auth happens here (Authorization header); the actual media stream flows
+    directly via WebRTC (peer-to-peer, no tokens needed).
     """
     cam_stream = db.query(CameraStream).filter(CameraStream.stream_id == stream_id).first()
     if cam_stream is None:
@@ -822,15 +826,22 @@ async def get_stream_live(
     if not settings.GO2RTC_ENABLED:
         raise HTTPException(status_code=status.HTTP_503_SERVICE_UNAVAILABLE, detail="Live streaming not available")
 
-    go2rtc_url = f"{settings.GO2RTC_API_URL}/api/stream.mp4?src={stream_id}"
+    # Forward the SDP offer to go2rtc's WHEP endpoint
+    body = await request.body()
+    content_type = request.headers.get("content-type", "application/sdp")
 
-    async def stream_generator():
-        async with httpx.AsyncClient(timeout=None) as client:
-            async with client.stream("GET", go2rtc_url) as resp:
-                async for chunk in resp.aiter_bytes(chunk_size=8192):
-                    yield chunk
+    async with httpx.AsyncClient(timeout=10) as client:
+        resp = await client.post(
+            f"{settings.GO2RTC_API_URL}/api/webrtc?src={stream_id}",
+            content=body,
+            headers={"Content-Type": content_type},
+        )
 
-    return StreamingResponse(stream_generator(), media_type="video/mp4")
+    return Response(
+        content=resp.content,
+        status_code=resp.status_code,
+        media_type=resp.headers.get("content-type", "application/sdp"),
+    )
 
 
 # ============================================================================
