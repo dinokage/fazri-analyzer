@@ -795,18 +795,8 @@ export const apiClient = {
     return URL.createObjectURL(blob);
   },
 
-  async getStreamUrls(streamId: string): Promise<{
-    webrtc: string | null;
-    hls: string | null;
-    mse: string | null;
-    webui: string | null;
-    enabled: boolean;
-  }> {
-    const response = await fetch(
-      `${API_BASE_URL}/api/v1/deepface/streams/${encodeURIComponent(streamId)}/urls`,
-      { headers: await getAuthHeaders() },
-    );
-    return handleResponse(response);
+  getStreamLiveUrl(streamId: string): string {
+    return `${API_BASE_URL}/api/v1/deepface/streams/${encodeURIComponent(streamId)}/live`;
   },
 
   async getStreamDetections(streamId: string): Promise<{

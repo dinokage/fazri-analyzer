@@ -1,7 +1,7 @@
 'use client';
 
 import { useRef, useState } from 'react';
-import { Camera, CheckCircle2, AlertCircle, Upload, X, UserCheck, Search } from 'lucide-react';
+import { Camera, CheckCircle2, AlertCircle, Upload, X, UserCheck, Search, RefreshCw } from 'lucide-react';
 import { toast } from 'sonner';
 
 import { useSession } from '@/lib/auth-client';
@@ -34,9 +34,10 @@ export default function FaceEnrollmentPageContent() {
   const [searching, setSearching] = useState(false);
   const [results, setResults] = useState<EntityResult[]>([]);
   const [selectedEntity, setSelectedEntity] = useState<EntityResult | null>(null);
-  const [file, setFile] = useState<File | null>(null);
-  const [preview, setPreview] = useState<string | null>(null);
+  const [files, setFiles] = useState<File[]>([]);
+  const [previews, setPreviews] = useState<string[]>([]);
   const [uploading, setUploading] = useState(false);
+  const [uploadProgress, setUploadProgress] = useState<{ done: number; total: number; errors: string[] } | null>(null);
   const [result, setResult] = useState<ResultState | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
@@ -74,36 +75,53 @@ export default function FaceEnrollmentPageContent() {
   };
 
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const selected = e.target.files?.[0];
-    if (!selected) return;
-    setFile(selected);
-    setPreview(URL.createObjectURL(selected));
+    const selected = Array.from(e.target.files ?? []);
+    if (!selected.length) return;
+    setFiles((prev) => [...prev, ...selected]);
+    setPreviews((prev) => [...prev, ...selected.map((f) => URL.createObjectURL(f))]);
+    if (fileInputRef.current) fileInputRef.current.value = '';
   };
 
-  const clearFile = () => {
-    setFile(null);
-    if (preview) URL.revokeObjectURL(preview);
-    setPreview(null);
+  const removeFile = (index: number) => {
+    URL.revokeObjectURL(previews[index]);
+    setFiles((prev) => prev.filter((_, i) => i !== index));
+    setPreviews((prev) => prev.filter((_, i) => i !== index));
+  };
+
+  const clearAllFiles = () => {
+    previews.forEach((p) => URL.revokeObjectURL(p));
+    setFiles([]);
+    setPreviews([]);
     if (fileInputRef.current) fileInputRef.current.value = '';
   };
 
   const handleEnroll = async () => {
-    if (!file || !selectedEntity) return;
+    if (!files.length || !selectedEntity) return;
     setUploading(true);
-    try {
-      await apiClient.registerFace(selectedEntity.entity_id, file);
-      setResult({ success: true, entityName: selectedEntity.name, message: 'Face enrolled successfully.' });
-      setStep('result');
-    } catch (err) {
-      setResult({
-        success: false,
-        entityName: selectedEntity.name,
-        message: err instanceof Error ? err.message : 'Enrollment failed',
-      });
-      setStep('result');
-    } finally {
-      setUploading(false);
+    setUploadProgress({ done: 0, total: files.length, errors: [] });
+    const errors: string[] = [];
+    let successCount = 0;
+
+    for (let i = 0; i < files.length; i++) {
+      setUploadProgress({ done: i, total: files.length, errors });
+      try {
+        await apiClient.registerFace(selectedEntity.entity_id, files[i]);
+        successCount++;
+      } catch (err) {
+        errors.push(`Photo ${i + 1}: ${err instanceof Error ? err.message : 'Failed'}`);
+      }
     }
+
+    setUploadProgress(null);
+    if (successCount === files.length) {
+      setResult({ success: true, entityName: selectedEntity.name, message: `${successCount} photo${successCount > 1 ? 's' : ''} enrolled successfully.` });
+    } else if (successCount > 0) {
+      setResult({ success: true, entityName: selectedEntity.name, message: `${successCount} of ${files.length} photos enrolled. ${errors.join('; ')}` });
+    } else {
+      setResult({ success: false, entityName: selectedEntity.name, message: errors.join('; ') });
+    }
+    setStep('result');
+    setUploading(false);
   };
 
   const resetToSearch = () => {
@@ -111,7 +129,8 @@ export default function FaceEnrollmentPageContent() {
     setQuery('');
     setResults([]);
     setSelectedEntity(null);
-    clearFile();
+    clearAllFiles();
+    setUploadProgress(null);
     setResult(null);
   };
 
@@ -214,57 +233,63 @@ export default function FaceEnrollmentPageContent() {
             </button>
           </div>
 
-          <h2 className="text-base font-semibold text-white">Upload Photo</h2>
+          <div className="flex items-center justify-between">
+            <h2 className="text-base font-semibold text-white">Upload Photos</h2>
+            <span className={`text-xs ${files.length >= 3 ? 'text-green-400' : 'text-amber-400'}`}>
+              {files.length} photo{files.length !== 1 ? 's' : ''} · {files.length < 3 ? '3-5 recommended for best accuracy' : 'good coverage'}
+            </span>
+          </div>
 
-          {preview ? (
-            <div className="relative">
-              <img
-                src={preview}
-                alt="Face preview"
-                className="w-full h-64 object-cover rounded-lg border border-gray-700"
-              />
-              <button
-                onClick={clearFile}
-                className="absolute top-2 right-2 p-1 rounded-full bg-gray-900/80 hover:bg-gray-800 text-gray-300"
-                type="button"
-              >
-                <X className="h-4 w-4" />
-              </button>
-            </div>
-          ) : (
-            <label
-              htmlFor="face-upload"
-              className="flex flex-col items-center justify-center h-48 rounded-lg border-2 border-dashed border-gray-700 cursor-pointer hover:border-gray-500 hover:bg-gray-800/30 transition-colors"
-            >
-              <Camera className="h-10 w-10 text-gray-500 mb-2" />
-              <p className="text-sm text-gray-400">Click or drag to upload a photo</p>
-              <p className="text-xs text-gray-600 mt-1">JPEG or PNG, front-facing</p>
+          {/* Photo grid */}
+          <div className="grid grid-cols-3 gap-2">
+            {previews.map((src, i) => (
+              <div key={i} className="relative aspect-square rounded-lg overflow-hidden border border-gray-700">
+                <img src={src} alt={`Photo ${i + 1}`} className="w-full h-full object-cover" />
+                <button onClick={() => removeFile(i)} type="button"
+                  className="absolute top-1 right-1 p-0.5 rounded-full bg-gray-900/80 hover:bg-red-900/80 text-gray-300 hover:text-red-300">
+                  <X className="h-3 w-3" />
+                </button>
+                <span className="absolute bottom-1 left-1 text-[10px] bg-black/60 px-1 rounded text-gray-300">{i + 1}</span>
+              </div>
+            ))}
+            {/* Add more button */}
+            <label htmlFor="face-upload"
+              className="flex flex-col items-center justify-center aspect-square rounded-lg border-2 border-dashed border-gray-700 cursor-pointer hover:border-gray-500 hover:bg-gray-800/30 transition-colors">
+              <Upload className="h-5 w-5 text-gray-500 mb-1" />
+              <p className="text-[10px] text-gray-500">Add photo</p>
             </label>
-          )}
+          </div>
           <input
             ref={fileInputRef}
             id="face-upload"
             type="file"
             accept="image/jpeg,image/png,image/jpg"
+            multiple
             className="hidden"
             onChange={handleFileChange}
           />
+          <p className="text-xs text-gray-500">
+            Upload multiple photos: frontal, left angle, right angle, different lighting.
+            Each photo is registered as a separate embedding for better recognition.
+          </p>
+
+          {/* Upload progress */}
+          {uploadProgress && (
+            <div className="rounded-lg border border-blue-900 bg-blue-900/10 p-3">
+              <div className="flex items-center gap-2 text-xs text-blue-300">
+                <RefreshCw className="h-3 w-3 animate-spin" />
+                Enrolling photo {uploadProgress.done + 1} of {uploadProgress.total}…
+              </div>
+            </div>
+          )}
 
           <div className="flex gap-3 pt-2">
-            <Button
-              variant="outline"
-              onClick={resetToSearch}
-              disabled={uploading}
-              className="border-gray-700 flex-1"
-            >
+            <Button variant="outline" onClick={resetToSearch} disabled={uploading} className="border-gray-700 flex-1">
               Back
             </Button>
-            <Button
-              onClick={handleEnroll}
-              disabled={!file || uploading}
-              className="bg-blue-600 hover:bg-blue-700 flex-1"
-            >
-              {uploading ? 'Enrolling…' : 'Enroll Face'}
+            <Button onClick={handleEnroll} disabled={!files.length || uploading}
+              className="bg-blue-600 hover:bg-blue-700 flex-1">
+              {uploading ? 'Enrolling…' : `Enroll ${files.length} Photo${files.length !== 1 ? 's' : ''}`}
             </Button>
           </div>
         </div>

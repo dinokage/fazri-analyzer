@@ -798,35 +798,39 @@ async def get_stream_snapshot(
 
 
 # ============================================================================
-# Stream URLs (for frontend live view)
+# Live stream proxy (go2rtc MSE via backend)
 # ============================================================================
 
 
 @router.get(
-    "/streams/{stream_id}/urls",
-    summary="Get streaming URLs for a camera (HLS, WebRTC)",
+    "/streams/{stream_id}/live",
+    summary="Proxy go2rtc MSE stream for authenticated browser playback",
 )
-async def get_stream_urls(
+async def get_stream_live(
     stream_id: str,
     db: Session = Depends(get_db),
     current_user: AuthenticatedUser = Depends(require_staff()),
-) -> Dict[str, Any]:
-    """Return HLS and WebRTC URLs for the given stream via MediaMTX relay."""
+) -> StreamingResponse:
+    """
+    Proxies go2rtc's MSE (progressive MP4) stream through the authenticated
+    backend API so the browser doesn't need direct access to the go2rtc container.
+    """
     cam_stream = db.query(CameraStream).filter(CameraStream.stream_id == stream_id).first()
     if cam_stream is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=f"Stream '{stream_id}' not found")
 
     if not settings.GO2RTC_ENABLED:
-        return {"webrtc": None, "hls": None, "mse": None, "webui": None, "enabled": False}
+        raise HTTPException(status_code=status.HTTP_503_SERVICE_UNAVAILABLE, detail="Live streaming not available")
 
-    base = settings.GO2RTC_API_URL
-    return {
-        "webrtc": f"{base}/api/webrtc?src={stream_id}",
-        "hls": f"{base}/api/stream.m3u8?src={stream_id}",
-        "mse": f"{base}/api/stream.mp4?src={stream_id}",
-        "webui": f"{base}/#src={stream_id}",
-        "enabled": True,
-    }
+    go2rtc_url = f"{settings.GO2RTC_API_URL}/api/stream.mp4?src={stream_id}"
+
+    async def stream_generator():
+        async with httpx.AsyncClient(timeout=None) as client:
+            async with client.stream("GET", go2rtc_url) as resp:
+                async for chunk in resp.aiter_bytes(chunk_size=8192):
+                    yield chunk
+
+    return StreamingResponse(stream_generator(), media_type="video/mp4")
 
 
 # ============================================================================

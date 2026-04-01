@@ -4,7 +4,7 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import {
   Camera, Plus, Trash2, Wifi, WifiOff, AlertTriangle,
   Play, RefreshCw, Network, Link2, ChevronRight, ChevronLeft,
-  CheckCircle2, Loader2, ServerCrash, Search, Check, X,
+  CheckCircle2, Loader2, ServerCrash, Search, Check, X, Video, Image,
 } from 'lucide-react';
 import { toast } from 'sonner';
 
@@ -275,6 +275,11 @@ export default function CamerasPageContent() {
   const autoRefreshRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const prevBlobUrlRef = useRef<string | null>(null);
 
+  // Live view (go2rtc MSE proxied through backend)
+  const [liveMode, setLiveMode] = useState(false);
+  const [liveUrl, setLiveUrl] = useState<string | null>(null);
+  const videoRef = useRef<HTMLVideoElement>(null);
+
   // Face detection overlays
   type Detection = {
     img_name: string;
@@ -371,6 +376,7 @@ export default function CamerasPageContent() {
   useEffect(() => {
     if (previewStream) {
       fetchSnapshot(previewStream);
+      setLiveUrl(apiClient.getStreamLiveUrl(previewStream.stream_id));
     } else {
       if (prevBlobUrlRef.current) {
         URL.revokeObjectURL(prevBlobUrlRef.current);
@@ -379,17 +385,31 @@ export default function CamerasPageContent() {
       setSnapshotBlobUrl(null);
       setDetections([]);
       setImgDimensions(null);
+      setLiveMode(false);
+      setLiveUrl(null);
     }
   }, [previewStream, fetchSnapshot]);
 
   useEffect(() => {
-    if (autoRefresh && previewStream) {
+    if (autoRefresh && previewStream && !liveMode) {
       autoRefreshRef.current = setInterval(() => fetchSnapshot(previewStream), 5000);
     } else {
       if (autoRefreshRef.current) clearInterval(autoRefreshRef.current);
     }
     return () => { if (autoRefreshRef.current) clearInterval(autoRefreshRef.current); };
-  }, [autoRefresh, previewStream, fetchSnapshot]);
+  }, [autoRefresh, previewStream, fetchSnapshot, liveMode]);
+
+  // Poll detections in live mode (overlays on live video)
+  useEffect(() => {
+    if (!liveMode || !previewStream) return;
+    const poll = setInterval(async () => {
+      try {
+        const resp = await apiClient.getStreamDetections(previewStream.stream_id);
+        setDetections(resp.detections);
+      } catch { /* ignore */ }
+    }, 2000);
+    return () => clearInterval(poll);
+  }, [liveMode, previewStream]);
 
   // ─── Access guard ───────────────────────────────────────────────────────────
 
@@ -721,43 +741,40 @@ export default function CamerasPageContent() {
 
       {/* ─── Preview Modal ─────────────────────────────────────────────────── */}
       <Dialog open={!!previewStream} onOpenChange={(open) => { if (!open) { setPreviewStream(null); setAutoRefresh(false); } }}>
-        <DialogContent className="bg-gray-900 border-gray-800 sm:max-w-2xl">
+        <DialogContent className="bg-gray-900 border-gray-800 sm:max-w-2xl overflow-hidden">
           <DialogHeader>
             <DialogTitle className="text-white flex items-center gap-2">
               <Camera className="h-4 w-4 text-blue-400" />
               {previewStream?.stream_id}
             </DialogTitle>
-            <DialogDescription className="text-gray-400 flex items-center gap-2">
+            <DialogDescription className="text-gray-400 flex items-center gap-2 min-w-0">
               <StatusBadge status={previewStream?.status ?? 'stopped'} />
               <span className="text-xs font-mono truncate">{previewStream?.rtsp_url}</span>
             </DialogDescription>
           </DialogHeader>
 
           <div className="space-y-3 py-2">
-            <div className="relative bg-black rounded-lg overflow-hidden aspect-video flex items-center justify-center border border-gray-800">
-              {snapshotLoading && (
-                <div className="absolute inset-0 flex items-center justify-center bg-black/60 z-10">
-                  <RefreshCw className="h-6 w-6 text-gray-400 animate-spin" />
-                </div>
-              )}
-              {snapshotBlobUrl ? (
+            <div className="relative bg-black rounded-lg overflow-hidden aspect-video flex items-center justify-center border border-gray-800 max-w-full">
+              {/* Live mode — MSE stream proxied through backend */}
+              {liveMode && liveUrl ? (
                 <div ref={containerRef} className="relative w-full h-full">
-                  <img
-                    ref={imgRef}
-                    src={snapshotBlobUrl}
-                    alt="Camera snapshot"
-                    className="w-full h-full object-contain"
-                    onLoad={() => {
-                      if (imgRef.current) {
+                  <video
+                    ref={videoRef}
+                    src={liveUrl}
+                    autoPlay
+                    muted
+                    playsInline
+                    className="w-full h-full object-contain bg-black"
+                    onLoadedMetadata={() => {
+                      if (videoRef.current) {
                         setImgDimensions({
-                          naturalWidth: imgRef.current.naturalWidth,
-                          naturalHeight: imgRef.current.naturalHeight,
+                          naturalWidth: videoRef.current.videoWidth,
+                          naturalHeight: videoRef.current.videoHeight,
                         });
                       }
                     }}
                   />
-                  {/* Face bounding box overlays — pixel positioned to account for
-                      object-contain letterboxing (image centered in container) */}
+                  {/* Detection overlays on live video — same positioning as snapshot */}
                   {imgDimensions && (() => {
                     const bounds = getImageBounds();
                     if (!bounds) return null;
@@ -768,22 +785,14 @@ export default function CamerasPageContent() {
                       if (x === 0 && y === 0 && w === 0 && h === 0) return null;
                       const left = offsetX + (x / imgDimensions.naturalWidth) * renderW;
                       const top = offsetY + (y / imgDimensions.naturalHeight) * renderH;
-                      const width = (w / imgDimensions.naturalWidth) * renderW;
-                      const height = (h / imgDimensions.naturalHeight) * renderH;
+                      const bw = (w / imgDimensions.naturalWidth) * renderW;
+                      const bh = (h / imgDimensions.naturalHeight) * renderH;
                       return (
-                        <div
-                          key={i}
-                          className="absolute border-2 pointer-events-none"
-                          style={{
-                            left: `${left}px`, top: `${top}px`,
-                            width: `${width}px`, height: `${height}px`,
-                            borderColor: det.is_unknown ? '#ef4444' : '#22c55e',
-                          }}
-                        >
-                          <span
-                            className="absolute -top-5 left-0 text-[10px] leading-tight px-1 py-0.5 rounded whitespace-nowrap"
-                            style={{ backgroundColor: det.is_unknown ? '#ef4444' : '#22c55e', color: 'white' }}
-                          >
+                        <div key={i} className="absolute border-2 pointer-events-none"
+                          style={{ left: `${left}px`, top: `${top}px`, width: `${bw}px`, height: `${bh}px`,
+                            borderColor: det.is_unknown ? '#ef4444' : '#22c55e' }}>
+                          <span className="absolute -top-5 left-0 text-[10px] leading-tight px-1 py-0.5 rounded whitespace-nowrap"
+                            style={{ backgroundColor: det.is_unknown ? '#ef4444' : '#22c55e', color: 'white' }}>
                             {det.is_unknown ? 'Unknown' : (det.entity_name || det.img_name)}
                           </span>
                         </div>
@@ -791,28 +800,110 @@ export default function CamerasPageContent() {
                     });
                   })()}
                 </div>
-              ) : !snapshotLoading ? (
-                <div className="flex flex-col items-center justify-center text-gray-600">
-                  <ServerCrash className="h-10 w-10 mb-2" />
-                  <p className="text-sm">Could not load snapshot</p>
-                  <p className="text-xs">Camera may be offline or unreachable</p>
-                </div>
-              ) : null}
+              ) : (
+                <>
+                  {/* Snapshot mode */}
+                  {snapshotLoading && (
+                    <div className="absolute inset-0 flex items-center justify-center bg-black/60 z-10">
+                      <RefreshCw className="h-6 w-6 text-gray-400 animate-spin" />
+                    </div>
+                  )}
+                  {snapshotBlobUrl ? (
+                    <div ref={containerRef} className="relative w-full h-full">
+                      <img ref={imgRef} src={snapshotBlobUrl} alt="Camera snapshot"
+                        className="w-full h-full object-contain"
+                        onLoad={() => {
+                          if (imgRef.current) {
+                            setImgDimensions({
+                              naturalWidth: imgRef.current.naturalWidth,
+                              naturalHeight: imgRef.current.naturalHeight,
+                            });
+                          }
+                        }}
+                      />
+                      {imgDimensions && (() => {
+                        const bounds = getImageBounds();
+                        if (!bounds) return null;
+                        const { renderW, renderH, offsetX, offsetY } = bounds;
+                        return detections.map((det, i) => {
+                          if (!det.facial_area) return null;
+                          const { x, y, w, h } = det.facial_area;
+                          if (x === 0 && y === 0 && w === 0 && h === 0) return null;
+                          const left = offsetX + (x / imgDimensions.naturalWidth) * renderW;
+                          const top = offsetY + (y / imgDimensions.naturalHeight) * renderH;
+                          const bw = (w / imgDimensions.naturalWidth) * renderW;
+                          const bh = (h / imgDimensions.naturalHeight) * renderH;
+                          return (
+                            <div key={i} className="absolute border-2 pointer-events-none"
+                              style={{ left: `${left}px`, top: `${top}px`, width: `${bw}px`, height: `${bh}px`,
+                                borderColor: det.is_unknown ? '#ef4444' : '#22c55e' }}>
+                              <span className="absolute -top-5 left-0 text-[10px] leading-tight px-1 py-0.5 rounded whitespace-nowrap"
+                                style={{ backgroundColor: det.is_unknown ? '#ef4444' : '#22c55e', color: 'white' }}>
+                                {det.is_unknown ? 'Unknown' : (det.entity_name || det.img_name)}
+                              </span>
+                            </div>
+                          );
+                        });
+                      })()}
+                    </div>
+                  ) : !snapshotLoading ? (
+                    <div className="flex flex-col items-center justify-center text-gray-600">
+                      <ServerCrash className="h-10 w-10 mb-2" />
+                      <p className="text-sm">Could not load snapshot</p>
+                      <p className="text-xs">Camera may be offline or unreachable</p>
+                    </div>
+                  ) : null}
+                </>
+              )}
             </div>
 
+            {/* Controls */}
             <div className="flex items-center gap-3">
-              <Button variant="outline" size="sm" onClick={() => previewStream && fetchSnapshot(previewStream)}
-                disabled={snapshotLoading} className="border-gray-700 gap-1.5">
-                <RefreshCw className={`h-3.5 w-3.5 ${snapshotLoading ? 'animate-spin' : ''}`} />
-                Refresh
-              </Button>
-              <button type="button" onClick={() => setAutoRefresh((v) => !v)}
-                className={`flex items-center gap-2 text-sm px-3 py-1.5 rounded-md border transition-colors ${
-                  autoRefresh ? 'border-blue-600 text-blue-400 bg-blue-900/20' : 'border-gray-700 text-gray-400 hover:border-gray-600'
-                }`}>
-                <span className={`inline-block h-2 w-2 rounded-full ${autoRefresh ? 'bg-blue-400 animate-pulse' : 'bg-gray-600'}`} />
-                Auto-refresh {autoRefresh ? '(5s)' : ''}
-              </button>
+              {/* Live / Snapshot toggle */}
+              {liveUrl && (
+                <div className="flex rounded-md border border-gray-700 overflow-hidden">
+                  <button type="button"
+                    onClick={() => setLiveMode(false)}
+                    className={`flex items-center gap-1.5 text-xs px-3 py-1.5 transition-colors ${
+                      !liveMode ? 'bg-blue-600 text-white' : 'text-gray-400 hover:text-gray-300 hover:bg-gray-800'
+                    }`}>
+                    <Image className="h-3 w-3" /> Snapshot
+                  </button>
+                  <button type="button"
+                    onClick={() => setLiveMode(true)}
+                    className={`flex items-center gap-1.5 text-xs px-3 py-1.5 transition-colors ${
+                      liveMode ? 'bg-blue-600 text-white' : 'text-gray-400 hover:text-gray-300 hover:bg-gray-800'
+                    }`}>
+                    <Video className="h-3 w-3" /> Live
+                  </button>
+                </div>
+              )}
+
+              {/* Snapshot controls (only in snapshot mode) */}
+              {!liveMode && (
+                <>
+                  <Button variant="outline" size="sm" onClick={() => previewStream && fetchSnapshot(previewStream)}
+                    disabled={snapshotLoading} className="border-gray-700 gap-1.5">
+                    <RefreshCw className={`h-3.5 w-3.5 ${snapshotLoading ? 'animate-spin' : ''}`} />
+                    Refresh
+                  </Button>
+                  <button type="button" onClick={() => setAutoRefresh((v) => !v)}
+                    className={`flex items-center gap-2 text-sm px-3 py-1.5 rounded-md border transition-colors ${
+                      autoRefresh ? 'border-blue-600 text-blue-400 bg-blue-900/20' : 'border-gray-700 text-gray-400 hover:border-gray-600'
+                    }`}>
+                    <span className={`inline-block h-2 w-2 rounded-full ${autoRefresh ? 'bg-blue-400 animate-pulse' : 'bg-gray-600'}`} />
+                    Auto-refresh {autoRefresh ? '(5s)' : ''}
+                  </button>
+                </>
+              )}
+
+              {/* Live indicator */}
+              {liveMode && (
+                <div className="flex items-center gap-2 text-xs text-red-400">
+                  <span className="h-2 w-2 rounded-full bg-red-500 animate-pulse" />
+                  LIVE
+                </div>
+              )}
             </div>
           </div>
         </DialogContent>
