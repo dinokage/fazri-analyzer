@@ -574,24 +574,24 @@ async def create_stream(
     webhook_url = f"{base}/api/v1/deepface/webhook"
     logger.info("Deepface webhook callback URL: %s", webhook_url)
 
-    # Register RTSP source with MediaMTX relay (if enabled).
-    # MediaMTX sits between the camera and all consumers, decoding once
-    # and fan-out via RTSP re-publish + HLS + WebRTC.
+    # Register RTSP source with go2rtc relay (if enabled).
+    # go2rtc sits between the camera and all consumers, providing
+    # RTSP re-publish + HLS + WebRTC + JPEG snapshots from a single decode.
     relay_rtsp_url = body.rtsp_url  # fallback: direct to camera
-    if settings.MEDIAMTX_ENABLED:
+    if settings.GO2RTC_ENABLED:
         try:
-            async with httpx.AsyncClient(timeout=5) as mtx_client:
-                resp = await mtx_client.post(
-                    f"{settings.MEDIAMTX_API_URL}/v3/config/paths/add/{body.stream_id}",
-                    json={"source": body.rtsp_url, "sourceOnDemand": True},
+            async with httpx.AsyncClient(timeout=5) as rtc_client:
+                resp = await rtc_client.put(
+                    f"{settings.GO2RTC_API_URL}/api/streams",
+                    params={"src": body.stream_id, "name": body.rtsp_url},
                 )
                 if resp.status_code == 200:
-                    relay_rtsp_url = f"{settings.MEDIAMTX_RTSP_URL}/{body.stream_id}"
-                    logger.info("MediaMTX path registered: %s → %s", body.stream_id, body.rtsp_url)
+                    relay_rtsp_url = f"{settings.GO2RTC_RTSP_URL}/{body.stream_id}"
+                    logger.info("go2rtc stream registered: %s → %s", body.stream_id, body.rtsp_url)
                 else:
-                    logger.warning("MediaMTX path registration failed (%d): %s", resp.status_code, resp.text)
+                    logger.warning("go2rtc stream registration failed (%d): %s", resp.status_code, resp.text)
         except Exception as exc:
-            logger.warning("MediaMTX unreachable — DeepFace will connect directly to camera: %s", exc)
+            logger.warning("go2rtc unreachable — DeepFace will connect directly to camera: %s", exc)
 
     # Tell DeepFace server to start monitoring (via relay if available)
     deepface_client = get_deepface_client()
@@ -723,16 +723,17 @@ async def delete_stream(
                 stream_id, exc,
             )
 
-    # Remove MediaMTX relay path
-    if settings.MEDIAMTX_ENABLED:
+    # Remove go2rtc relay stream
+    if settings.GO2RTC_ENABLED:
         try:
-            async with httpx.AsyncClient(timeout=5) as mtx_client:
-                await mtx_client.delete(
-                    f"{settings.MEDIAMTX_API_URL}/v3/config/paths/delete/{stream_id}",
+            async with httpx.AsyncClient(timeout=5) as rtc_client:
+                await rtc_client.delete(
+                    f"{settings.GO2RTC_API_URL}/api/streams",
+                    params={"src": stream_id},
                 )
-                logger.info("MediaMTX path removed: %s", stream_id)
+                logger.info("go2rtc stream removed: %s", stream_id)
         except Exception as exc:
-            logger.warning("Could not remove MediaMTX path %s: %s", stream_id, exc)
+            logger.warning("Could not remove go2rtc stream %s: %s", stream_id, exc)
 
     db.delete(cam_stream)
     db.commit()
@@ -765,18 +766,26 @@ async def get_stream_snapshot(
     if cam_stream is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=f"Stream '{stream_id}' not found")
 
-    # Use MediaMTX relay if available (local network, fast handshake).
-    # Falls back to camera's direct RTSP URL if relay is disabled.
-    rtsp_url = (
-        f"{settings.MEDIAMTX_RTSP_URL}/{stream_id}"
-        if settings.MEDIAMTX_ENABLED
-        else cam_stream.rtsp_url
-    )
+    # Use go2rtc's built-in snapshot endpoint if available.
+    # This is instant (go2rtc serves the latest decoded frame as JPEG)
+    # instead of opening a new RTSP connection per request.
+    if settings.GO2RTC_ENABLED:
+        try:
+            async with httpx.AsyncClient(timeout=8) as rtc_client:
+                resp = await rtc_client.get(
+                    f"{settings.GO2RTC_API_URL}/api/frame.jpeg",
+                    params={"src": stream_id},
+                )
+                resp.raise_for_status()
+                return StreamingResponse(io.BytesIO(resp.content), media_type="image/jpeg")
+        except Exception as exc:
+            logger.warning("go2rtc snapshot failed for %s, falling back to RTSP: %s", stream_id, exc)
 
+    # Fallback: direct RTSP grab (slow — new TCP connection per request)
     loop = asyncio.get_event_loop()
     try:
         jpeg_bytes = await asyncio.wait_for(
-            loop.run_in_executor(None, _grab_rtsp_frame, rtsp_url),
+            loop.run_in_executor(None, _grab_rtsp_frame, cam_stream.rtsp_url),
             timeout=8.0,
         )
     except (asyncio.TimeoutError, RuntimeError) as exc:
@@ -807,12 +816,15 @@ async def get_stream_urls(
     if cam_stream is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=f"Stream '{stream_id}' not found")
 
-    if not settings.MEDIAMTX_ENABLED:
-        return {"hls": None, "webrtc": None, "enabled": False}
+    if not settings.GO2RTC_ENABLED:
+        return {"webrtc": None, "hls": None, "mse": None, "webui": None, "enabled": False}
 
+    base = settings.GO2RTC_API_URL
     return {
-        "hls": f"{settings.MEDIAMTX_HLS_URL}/{stream_id}/",
-        "webrtc": f"{settings.MEDIAMTX_WEBRTC_URL}/{stream_id}/",
+        "webrtc": f"{base}/api/webrtc?src={stream_id}",
+        "hls": f"{base}/api/stream.m3u8?src={stream_id}",
+        "mse": f"{base}/api/stream.mp4?src={stream_id}",
+        "webui": f"{base}/#src={stream_id}",
         "enabled": True,
     }
 

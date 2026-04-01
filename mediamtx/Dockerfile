@@ -1,3 +1,3 @@
-FROM bluenviron/mediamtx:latest-ffmpeg
-COPY mediamtx.yml /mediamtx.yml
-EXPOSE 8554 8888 8889 9997
+FROM alexxit/go2rtc:latest
+COPY mediamtx.yml /config/go2rtc.yaml
+EXPOSE 1984 8554 8555

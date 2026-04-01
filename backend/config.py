@@ -159,11 +159,9 @@ class Settings(BaseSettings):
     # MediaMTX RTSP Relay
     # =========================================================================
 
-    MEDIAMTX_API_URL: str = "http://mediamtx-relay:9997"
-    MEDIAMTX_RTSP_URL: str = "rtsp://mediamtx-relay:8554"
-    MEDIAMTX_HLS_URL: str = "http://mediamtx-relay:8888"
-    MEDIAMTX_WEBRTC_URL: str = "http://mediamtx-relay:8889"
-    MEDIAMTX_ENABLED: bool = True
+    GO2RTC_API_URL: str = "http://go2rtc:1984"       # HTTP API + WebUI + HLS + WebRTC + snapshots
+    GO2RTC_RTSP_URL: str = "rtsp://go2rtc:8554"     # RTSP re-publish (DeepFace consumes here)
+    GO2RTC_ENABLED: bool = True
 
     # =========================================================================
     # Discord Webhook

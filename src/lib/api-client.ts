@@ -796,8 +796,10 @@ export const apiClient = {
   },
 
   async getStreamUrls(streamId: string): Promise<{
-    hls: string | null;
     webrtc: string | null;
+    hls: string | null;
+    mse: string | null;
+    webui: string | null;
     enabled: boolean;
   }> {
     const response = await fetch(
