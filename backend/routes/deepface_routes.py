@@ -28,6 +28,7 @@ from uuid import UUID
 
 import cv2
 import httpx
+from urllib.parse import quote
 import numpy as np
 from fastapi import APIRouter, Depends, HTTPException, Request, UploadFile, File, status
 from fastapi.responses import StreamingResponse
@@ -168,6 +169,15 @@ def _set_alert_cooldown(anomaly_type: str, stream_id: str, entity_key: str) -> N
         logger.debug("Cooldown set: key=%s ttl=%s result=%s", key, settings.ALERT_COOLDOWN_SECONDS, result)
     except Exception as exc:
         logger.error("Cooldown set FAILED for key=%s: %s", key, exc)
+
+
+def _go2rtc_register_url(stream_id: str, rtsp_url: str) -> str:
+    """Build go2rtc stream registration URL without double-encoding the RTSP URL.
+
+    httpx's params= encodes @, ?, & which breaks the RTSP URL.
+    go2rtc expects: PUT /api/streams?src=name&name=rtsp://user:pass@host/path
+    """
+    return f"{settings.GO2RTC_API_URL}/api/streams?src={quote(stream_id, safe='')}&name={rtsp_url}"
 
 
 # ============================================================================
@@ -582,10 +592,7 @@ async def create_stream(
     if settings.GO2RTC_ENABLED:
         try:
             async with httpx.AsyncClient(timeout=5) as rtc_client:
-                resp = await rtc_client.put(
-                    f"{settings.GO2RTC_API_URL}/api/streams",
-                    params={"src": body.stream_id, "name": body.rtsp_url},
-                )
+                resp = await rtc_client.put(_go2rtc_register_url(body.stream_id, body.rtsp_url))
                 if resp.status_code == 200:
                     relay_rtsp_url = f"{settings.GO2RTC_RTSP_URL}/{body.stream_id}"
                     logger.info("go2rtc stream registered: %s → %s", body.stream_id, body.rtsp_url)
@@ -729,8 +736,7 @@ async def delete_stream(
         try:
             async with httpx.AsyncClient(timeout=5) as rtc_client:
                 await rtc_client.delete(
-                    f"{settings.GO2RTC_API_URL}/api/streams",
-                    params={"src": stream_id},
+                    f"{settings.GO2RTC_API_URL}/api/streams?src={quote(stream_id, safe='')}",
                 )
                 logger.info("go2rtc stream removed: %s", stream_id)
         except Exception as exc:
@@ -780,10 +786,7 @@ async def get_stream_snapshot(
                 # Auto-register with go2rtc if stream not found, then retry
                 if resp.status_code == 404:
                     logger.info("go2rtc stream not found for %s — auto-registering", stream_id)
-                    await rtc_client.put(
-                        f"{settings.GO2RTC_API_URL}/api/streams",
-                        params={"src": stream_id, "name": cam_stream.rtsp_url},
-                    )
+                    await rtc_client.put(_go2rtc_register_url(stream_id, cam_stream.rtsp_url))
                     resp = await rtc_client.get(
                         f"{settings.GO2RTC_API_URL}/api/frame.jpeg",
                         params={"src": stream_id},
