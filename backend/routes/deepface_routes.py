@@ -172,12 +172,17 @@ def _set_alert_cooldown(anomaly_type: str, stream_id: str, entity_key: str) -> N
 
 
 def _go2rtc_register_url(stream_id: str, rtsp_url: str) -> str:
-    """Build go2rtc stream registration URL without double-encoding the RTSP URL.
+    """Build go2rtc stream registration URL.
 
-    httpx's params= encodes @, ?, & which breaks the RTSP URL.
-    go2rtc expects: PUT /api/streams?src=name&name=rtsp://user:pass@host/path
+    Both src and name must be percent-encoded so the RTSP URL's & and ?
+    characters don't split the HTTP query string. go2rtc decodes them
+    internally.
     """
-    return f"{settings.GO2RTC_API_URL}/api/streams?src={quote(stream_id, safe='')}&name={rtsp_url}"
+    return (
+        f"{settings.GO2RTC_API_URL}/api/streams"
+        f"?src={quote(stream_id, safe='')}"
+        f"&name={quote(rtsp_url, safe='')}"
+    )
 
 
 # ============================================================================
