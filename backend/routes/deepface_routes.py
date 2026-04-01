@@ -130,7 +130,7 @@ def _get_alert_redis():
                 socket_timeout=2,
             )
             _alert_redis.ping()
-            logger.info("Alert cooldown Redis connected: %s:%s db=%s", settings.REDIS_HOST, settings.REDIS_PORT, settings.REDIS_DB)
+            logger.debug("Alert cooldown Redis connected: %s:%s db=%s", settings.REDIS_HOST, settings.REDIS_PORT, settings.REDIS_DB)
         except Exception as exc:
             logger.warning("Alert cooldown Redis unavailable: %s — duplicates may occur", exc)
             _alert_redis = None
@@ -149,7 +149,7 @@ def _is_alert_suppressed(anomaly_type: str, stream_id: str, entity_key: str) -> 
     key = _cooldown_key(anomaly_type, stream_id, entity_key)
     try:
         exists = r.exists(key) == 1
-        logger.info("Cooldown check: key=%s exists=%s", key, exists)
+        logger.debug("Cooldown check: key=%s exists=%s", key, exists)
         return exists
     except Exception as exc:
         logger.error("Cooldown check failed for key=%s: %s", key, exc)
@@ -164,7 +164,7 @@ def _set_alert_cooldown(anomaly_type: str, stream_id: str, entity_key: str) -> N
     key = _cooldown_key(anomaly_type, stream_id, entity_key)
     try:
         result = r.set(key, "1", ex=settings.ALERT_COOLDOWN_SECONDS, nx=True)
-        logger.info("Cooldown set: key=%s ttl=%s result=%s", key, settings.ALERT_COOLDOWN_SECONDS, result)
+        logger.debug("Cooldown set: key=%s ttl=%s result=%s", key, settings.ALERT_COOLDOWN_SECONDS, result)
     except Exception as exc:
         logger.error("Cooldown set FAILED for key=%s: %s", key, exc)
 
