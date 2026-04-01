@@ -6,30 +6,21 @@ python-multipart==0.0.20        # required for UploadFile / Form support
 # Settings
 pydantic-settings==2.7.1
 
-# DeepFace + ML stack
-deepface==0.0.99
-tensorflow==2.19.0              # swap for tensorflow-cpu if no GPU; 2.18 has ml_dtypes packaging bug on aarch64
-tf-keras                        # required by DeepFace with TF 2.16+
-opencv-python-headless==4.11.0.86   # headless — no GUI in server context
-
-# InsightFace — required for Buffalo_L recognition model
+# InsightFace — SCRFD face detector + ArcFace recognition (buffalo_l model pack)
 insightface>=0.7.3
 onnxruntime>=1.9.0
 albumentations
 
-# YOLOv8 face detector — better multi-face detection than MTCNN
-ultralytics>=8.0.0
-
 # Image processing
+opencv-python-headless==4.11.0.86   # headless — no GUI in server context
 Pillow==11.1.0
-numpy==1.26.4                   # pin <2; TF 2.18 is incompatible with numpy 2.x
+numpy==1.26.4
 
-# Database
-psycopg[binary]                 # PostgreSQL driver (psycopg v3, required by DeepFace)
-pgvector==0.3.6                 # pgvector Python client
+# Database — pgvector for embedding storage and HNSW-indexed cosine search
+psycopg[binary]>=3.1
+pgvector==0.3.6
 
 # Utilities
 python-dotenv==1.0.1
 sentry-sdk[fastapi]==2.24.0
-pandas==2.2.3                   # returned by DeepFace.search()
 httpx==0.27.2                   # async HTTP client for webhook delivery

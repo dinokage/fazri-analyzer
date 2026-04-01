@@ -1,6 +1,6 @@
 FROM python:3.12-slim
 
-# System libs required by OpenCV and TensorFlow
+# System libs required by OpenCV and InsightFace
 RUN apt-get update && apt-get install -y --no-install-recommends \
     ffmpeg \
     libsm6 \
@@ -13,17 +13,13 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 
 WORKDIR /app
 
-ENV TF_USE_LEGACY_KERAS=1
-
 # Install Python deps first (layer-cache friendly)
 COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
 # Pre-download model weights into the image so startup is instant.
 COPY prebake_weights.py .
-RUN DEEPFACE_POSTGRES_URI=postgresql://x:x@localhost/x \
-    DEEPFACE_DATABASE_TYPE=postgres \
-    python prebake_weights.py
+RUN python prebake_weights.py
 
 # Copy application code
 COPY app/ ./app/

@@ -2,16 +2,15 @@
 RTSP stream processor.
 
 Each StreamProcessor runs as an asyncio Task, reading frames from an RTSP
-URL at a configured interval, running DeepFace recognition, and posting
+URL at a configured interval, running InsightFace recognition, and posting
 results to a webhook URL.
 
-DeepFace and cv2 calls are blocking/CPU-bound — they run in the default
+InsightFace and cv2 calls are blocking/CPU-bound — they run in the default
 thread executor via loop.run_in_executor() to avoid blocking the event loop.
 """
 from __future__ import annotations
 
 import asyncio
-import base64
 import logging
 import time
 import uuid
@@ -79,7 +78,6 @@ class StreamProcessor:
         self.last_error: Optional[str] = None
         self._task: Optional[asyncio.Task] = None
         # Per-stream face tracker: maps tracker_id → {embedding, last_seen}
-        # Used to assign stable IDs to unknown faces across consecutive frames.
         self._face_tracker: Dict[str, Dict] = {}
 
     @property
@@ -142,14 +140,9 @@ class StreamProcessor:
 
     @staticmethod
     def _read_latest_frame(cap: cv2.VideoCapture) -> tuple:
-        """Flush the RTSP buffer and return the most recent frame.
-
-        OpenCV buffers incoming RTSP frames. If we sleep between reads, the
-        buffer fills up and cap.read() returns stale frames. Calling grab()
-        repeatedly drains the buffer; retrieve() decodes only the last one.
-        """
+        """Flush the RTSP buffer and return the most recent frame."""
         ret = False
-        for _ in range(30):  # drain up to ~1 s of buffered frames at 30 fps
+        for _ in range(30):
             ret = cap.grab()
             if not ret:
                 break
@@ -161,11 +154,7 @@ class StreamProcessor:
     async def _open_capture(self, loop: asyncio.AbstractEventLoop) -> cv2.VideoCapture:
         def _open():
             import os
-            cv2.setLogLevel(0)  # suppress H264 decode warnings from FFmpeg
-            # Force TCP transport so OpenCV's FFmpeg backend doesn't use UDP.
-            # UDP drops/reorders packets over Tailscale, causing H264 decode errors.
-            # OPENCV_FFMPEG_CAPTURE_OPTIONS is the correct way — URL query params
-            # are not honoured by OpenCV's FFmpeg backend.
+            cv2.setLogLevel(0)
             os.environ["OPENCV_FFMPEG_CAPTURE_OPTIONS"] = "rtsp_transport;tcp"
             cap = cv2.VideoCapture(self.rtsp_url, cv2.CAP_FFMPEG)
             cap.set(cv2.CAP_PROP_BUFFERSIZE, 1)
@@ -177,12 +166,10 @@ class StreamProcessor:
         logger.info("Stream %s: connected to %s", self.stream_id, self.rtsp_url)
         return cap
 
-    def _resolve_tracker_id(self, embedding: list) -> str:
-        """Match an embedding against tracked unknown faces via cosine similarity.
+    # ── Face tracker ───────────────────────────────────────────────────────────
 
-        Returns an existing tracker_id if the face is recognised, or generates
-        a new one.  Stale entries (older than face_track_ttl) are pruned each call.
-        """
+    def _resolve_tracker_id(self, embedding: list) -> str:
+        """Match an embedding against tracked unknown faces via cosine similarity."""
         now = time.monotonic()
 
         # Prune stale entries
@@ -192,7 +179,6 @@ class StreamProcessor:
             if now - data["last_seen"] < ttl
         }
 
-        # Cosine similarity against all tracked embeddings
         emb = np.array(embedding, dtype=np.float32)
         emb_norm = emb / (np.linalg.norm(emb) + 1e-10)
 
@@ -209,235 +195,70 @@ class StreamProcessor:
             self._face_tracker[best_tid]["last_seen"] = now
             return best_tid
 
-        # New face — assign a fresh tracker_id
         new_tid = str(uuid.uuid4())[:12]
         self._face_tracker[new_tid] = {"embedding": embedding, "last_seen": now}
         logger.debug(
-            "Stream %s: new unknown face tracked as %s (similarity to best existing: %.3f)",
+            "Stream %s: new unknown face tracked as %s (best sim: %.3f)",
             self.stream_id, new_tid, best_sim,
         )
         return new_tid
 
+    # ── Frame processing ───────────────────────────────────────────────────────
+
     async def _process_frame(self, loop: asyncio.AbstractEventLoop, frame: np.ndarray) -> None:
-        from deepface import DeepFace
-        from deepface.modules.exceptions import EmptyDatasource, FaceNotDetected
+        from app.face_engine import detect_and_embed
+        from app.pgvector_service import get_pgvector_service
 
-        # Encode frame as JPEG data-URI
-        _, buffer = cv2.imencode(".jpg", frame, [cv2.IMWRITE_JPEG_QUALITY, settings.jpeg_quality])
-        data_uri = "data:image/jpeg;base64," + base64.b64encode(buffer).decode()
-
-        # Run DeepFace search in thread executor.
-        # similarity_search=True bypasses DeepFace's hardcoded internal threshold
-        # (0.55 for Buffalo_L) so we can apply our own configurable threshold.
-        # k=1 returns only the best match per face to reduce payload size.
-        try:
-            dfs = await loop.run_in_executor(
-                None,
-                lambda: DeepFace.search(
-                    img=data_uri,
-                    model_name=settings.model_name,
-                    detector_backend=settings.detector_backend,
-                    distance_metric=settings.distance_metric,
-                    enforce_detection=False,  # frames won't always contain a face
-                    align=True,
-                    expand_percentage=settings.expand_percentage,
-                    normalization=settings.normalization,
-                    l2_normalize=settings.l2_normalize,
-                    similarity_search=True,   # skip internal threshold filter
-                    k=1,                      # best match per face only
-                    database_type="postgres",
-                    connection_details=settings.connection_details,
-                ),
-            )
-        except (FaceNotDetected, EmptyDatasource):
-            return
-        except Exception as exc:
-            err = str(exc)
-            # "No embeddings found in the database" means pgvector is empty.
-            # DeepFace raises a plain Exception (not EmptyDatasource) for this.
-            # Fall back to face detection only so we can still alert on unknown faces.
-            if "No embeddings found in the database" in err:
-                await self._handle_empty_database(loop, data_uri)
-            else:
-                logger.warning("Stream %s DeepFace error (skipping frame): %s", self.stream_id, exc)
-            return
-
-        # Collect matches across all detected faces.
-        # dfs is a list with one DataFrame per detected face in the frame.
-        # Since we use similarity_search=True, DataFrames may contain rows
-        # that exceed our threshold — we apply our own filter here.
-        # An empty DataFrame means a face was detected but the pgvector DB
-        # had no embeddings at all (different from "match exists but too distant").
-        threshold = settings.cosine_threshold
-        matches = []
-        unknown_match_indices: List[tuple] = []  # (dfs_index, matches_index)
-
-        for i, df in enumerate(dfs):
-            if df.empty:
-                # No embeddings in DB for this face
-                unknown_match_indices.append((i, len(matches)))
-                matches.append({
-                    "img_name": "UNKNOWN_FACE",
-                    "distance": 1.0,
-                    "confidence": 0.0,
-                    "threshold": threshold,
-                    "facial_area": {"x": 0, "y": 0, "w": 0, "h": 0},
-                })
-                continue
-
-            # Apply our own threshold: best match (k=1) must be within threshold.
-            # Pandas returns numpy types (int64, float64) which are not JSON
-            # serializable — cast everything to native Python types.
-            best_row = df.iloc[0] if len(df) > 0 else None
-            if best_row is None or float(best_row.get("distance", 1.0)) > threshold:
-                # Face detected but no match within our threshold → unknown
-                unknown_match_indices.append((i, len(matches)))
-                matches.append({
-                    "img_name": "UNKNOWN_FACE",
-                    "distance": float(best_row.get("distance", 1.0)) if best_row is not None else 1.0,
-                    "confidence": float(best_row.get("confidence", 0.0)) if best_row is not None else 0.0,
-                    "threshold": threshold,
-                    "facial_area": {
-                        "x": int(best_row.get("target_x", 0) or 0) if best_row is not None else 0,
-                        "y": int(best_row.get("target_y", 0) or 0) if best_row is not None else 0,
-                        "w": int(best_row.get("target_w", 0) or 0) if best_row is not None else 0,
-                        "h": int(best_row.get("target_h", 0) or 0) if best_row is not None else 0,
-                    },
-                })
-                continue
-
-            matches.append({
-                "img_name": str(best_row.get("img_name")),
-                "distance": float(best_row.get("distance")),
-                "confidence": float(best_row.get("confidence", 0.0)),
-                "threshold": threshold,
-                "facial_area": {
-                    "x": int(best_row.get("target_x") or 0),
-                    "y": int(best_row.get("target_y") or 0),
-                    "w": int(best_row.get("target_w") or 0),
-                    "h": int(best_row.get("target_h") or 0),
-                },
-            })
-
-        if not matches:
-            return
-
-        # For unknown faces, compute embeddings via represent() to assign
-        # stable tracker_ids.  represent() uses the same detector on the
-        # same image, so results are 1:1 ordered with the search() DataFrames.
-        if unknown_match_indices:
-            try:
-                face_objs = await loop.run_in_executor(
-                    None,
-                    lambda: DeepFace.represent(
-                        img_path=data_uri,
-                        model_name=settings.model_name,
-                        detector_backend=settings.detector_backend,
-                        enforce_detection=False,
-                        align=True,
-                        expand_percentage=settings.expand_percentage,
-                        normalization=settings.normalization,
-                        l2_normalize=settings.l2_normalize,
-                    ),
-                )
-                for dfs_idx, match_idx in unknown_match_indices:
-                    if dfs_idx < len(face_objs):
-                        fobj = face_objs[dfs_idx]
-                        embedding = fobj.get("embedding", [])
-                        area = fobj.get("facial_area", {})
-                        if embedding:
-                            tracker_id = self._resolve_tracker_id(embedding)
-                            matches[match_idx]["tracker_id"] = tracker_id
-                        matches[match_idx]["facial_area"] = {
-                            "x": area.get("x", 0),
-                            "y": area.get("y", 0),
-                            "w": area.get("w", 0),
-                            "h": area.get("h", 0),
-                        }
-            except Exception as exc:
-                logger.debug("Stream %s: represent() for tracking failed: %s", self.stream_id, exc)
-
-        await self._post_webhook(matches)
-
-    async def _handle_empty_database(
-        self, loop: asyncio.AbstractEventLoop, data_uri: str
-    ) -> None:
-        """
-        Called when pgvector has no registered embeddings.
-        Runs face detection only (no search) so we can still post UNKNOWN_FACE
-        entries and trigger the alert_on_unknown_face rule on the backend.
-        """
-        from deepface import DeepFace
-        from deepface.modules.exceptions import FaceNotDetected
-
-        try:
-            faces = await loop.run_in_executor(
-                None,
-                lambda: DeepFace.extract_faces(
-                    img_path=data_uri,
-                    detector_backend=settings.detector_backend,
-                    enforce_detection=True,
-                    align=True,
-                ),
-            )
-        except FaceNotDetected:
-            return  # No face in frame — nothing to report
-        except Exception as exc:
-            logger.debug("Stream %s face detection error: %s", self.stream_id, exc)
-            return
-
+        # ONE call: detect all faces + compute all embeddings (no JPEG encoding)
+        faces = await loop.run_in_executor(None, detect_and_embed, frame)
         if not faces:
             return
 
-        # Get embeddings for tracker_id assignment.
-        # represent() is used instead of extract_faces() because it returns
-        # the face embedding alongside coordinates.
-        face_objs: list = []
-        try:
-            from deepface import DeepFace as _DF
-            face_objs = await loop.run_in_executor(
-                None,
-                lambda: _DF.represent(
-                    img_path=data_uri,
-                    model_name=settings.model_name,
-                    detector_backend=settings.detector_backend,
-                    enforce_detection=False,
-                    align=True,
-                    expand_percentage=settings.expand_percentage,
-                    normalization=settings.normalization,
-                    l2_normalize=settings.l2_normalize,
-                ),
-            )
-        except Exception as exc:
-            logger.debug("Stream %s: represent() for empty-db tracking failed: %s", self.stream_id, exc)
-
+        pgvector = get_pgvector_service()
+        threshold = settings.cosine_threshold
         matches = []
-        for i, face in enumerate(faces):
-            area = face.get("facial_area", {})
-            tracker_id = None
-            if i < len(face_objs):
-                embedding = face_objs[i].get("embedding", [])
-                if embedding:
-                    tracker_id = self._resolve_tracker_id(embedding)
-            matches.append({
-                "img_name": "UNKNOWN_FACE",
-                "distance": 1.0,
-                "confidence": round(face.get("confidence", 0.0) * 100, 2),
-                "threshold": 0.40,
-                "facial_area": {
-                    "x": area.get("x", 0),
-                    "y": area.get("y", 0),
-                    "w": area.get("w", 0),
-                    "h": area.get("h", 0),
-                },
-                "tracker_id": tracker_id,
-            })
 
-        logger.info(
-            "Stream %s: database empty, detected %d unknown face(s)",
-            self.stream_id, len(matches),
-        )
-        await self._post_webhook(matches)
+        for face in faces:
+            bbox = face["bbox"]  # [x1, y1, x2, y2]
+            embedding = face["embedding"]
+            det_score = face["det_score"]
+
+            # Search pgvector for closest match (HNSW indexed, sub-ms)
+            results = await loop.run_in_executor(
+                None, pgvector.search, embedding, threshold,
+            )
+
+            facial_area = {
+                "x": bbox[0],
+                "y": bbox[1],
+                "w": bbox[2] - bbox[0],
+                "h": bbox[3] - bbox[1],
+            }
+
+            if results:
+                best = results[0]
+                matches.append({
+                    "img_name": best["identity_name"],
+                    "distance": round(best["distance"], 4),
+                    "confidence": round(det_score * 100, 2),
+                    "threshold": threshold,
+                    "facial_area": facial_area,
+                })
+            else:
+                tracker_id = self._resolve_tracker_id(embedding.tolist())
+                matches.append({
+                    "img_name": "UNKNOWN_FACE",
+                    "distance": 1.0,
+                    "confidence": round(det_score * 100, 2),
+                    "threshold": threshold,
+                    "tracker_id": tracker_id,
+                    "facial_area": facial_area,
+                })
+
+        if matches:
+            await self._post_webhook(matches)
+
+    # ── Webhook delivery ───────────────────────────────────────────────────────
 
     async def _post_webhook(self, matches: list) -> None:
         import hashlib

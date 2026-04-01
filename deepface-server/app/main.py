@@ -1,11 +1,8 @@
 """
-FastAPI application entry point.
+FastAPI application entry point for the face recognition service.
 
-Import order matters:
-  app.config is imported first — it sets TF_USE_LEGACY_KERAS=1 at module
-  level, which must happen before TensorFlow is imported anywhere.
-  DeepFace is only imported inside the lifespan function to guarantee
-  config.py has already run.
+Uses InsightFace (buffalo_l) directly for detection + recognition,
+and pgvector for embedding storage/search. No DeepFace or TensorFlow.
 """
 from __future__ import annotations
 
@@ -17,7 +14,7 @@ import uvicorn
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
-from app.config import settings  # sets TF env var at import time
+from app.config import settings
 
 logging.basicConfig(
     level=logging.INFO,
@@ -37,36 +34,30 @@ if settings.sentry_enabled and settings.sentry_dsn:
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    logger.info(
-        "Preloading DeepFace models — may take up to 30 s on first run "
-        "(weights download ~230 MB)..."
-    )
-    from deepface import DeepFace  # deferred so TF env var is already set
+    logger.info("Loading InsightFace buffalo_l model pack (SCRFD + ArcFace)...")
+    from app.face_engine import load_engine
+    load_engine()
 
-    DeepFace.build_model(settings.model_name, task="facial_recognition")
-    logger.info("  %s (facial_recognition) ready", settings.model_name)
-
-    DeepFace.build_model(settings.detector_backend, task="face_detector")
-    logger.info("  %s (face_detector) ready", settings.detector_backend)
+    logger.info("Ensuring pgvector schema (face_embeddings table + HNSW index)...")
+    from app.pgvector_service import get_pgvector_service
+    pgv = get_pgvector_service()
+    pgv.ensure_schema()
+    count = pgv.count_all()
+    logger.info("pgvector ready: %d embeddings in database", count)
 
     logger.info("All models loaded. Accepting requests.")
     logger.info(
-        "Active settings: model=%s detector=%s normalization=%s l2_normalize=%s",
-        settings.model_name, settings.detector_backend,
-        settings.normalization, settings.l2_normalize,
+        "Active settings: det_size=%d cosine_threshold=%.2f face_track_sim=%.2f",
+        settings.det_size, settings.cosine_threshold, settings.face_track_similarity,
     )
     yield
-    # No explicit teardown needed for DeepFace
 
 
 def create_app() -> FastAPI:
     app = FastAPI(
-        title="DeepFace Server",
-        description=(
-            "Face detection and recognition API powered by "
-            "DeepFace + Buffalo_L + retinaface + pgvector"
-        ),
-        version="0.1.0",
+        title="Face Recognition Server",
+        description="Face detection and recognition powered by InsightFace (buffalo_l) + pgvector",
+        version="0.2.0",
         lifespan=lifespan,
     )
 

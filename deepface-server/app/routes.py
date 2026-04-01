@@ -3,24 +3,22 @@ from __future__ import annotations
 import logging
 from typing import Optional
 
+import cv2
+import numpy as np
 from fastapi import APIRouter, File, HTTPException, Request, UploadFile, status
 
 from app.config import settings
 from app.schemas import (
     BuildIndexResponse,
-    DetectRequest,
     DetectResponse,
     DetectedFace,
     FaceEmbedding,
     FacialArea,
     HealthResponse,
-    RegisterRequest,
     RegisterResponse,
-    RepresentRequest,
     RepresentResponse,
     SearchFaceResult,
     SearchMatch,
-    SearchRequest,
     SearchResponse,
     StreamInfo,
     StreamStartRequest,
@@ -28,7 +26,6 @@ from app.schemas import (
     StreamStatusResponse,
     StreamStopResponse,
 )
-from app.utils import df_to_search_matches, load_image_input, ndarray_to_base64_png
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
@@ -46,17 +43,21 @@ def _500(detail: str) -> HTTPException:
 
 # ── Input resolution ──────────────────────────────────────────────────────────
 
-async def _resolve(request: Request, file: Optional[UploadFile]) -> tuple[str, dict]:
+async def _resolve_image(request: Request, file: Optional[UploadFile]) -> tuple[np.ndarray, dict]:
     """
-    Parse image input and any JSON fields from either multipart or JSON body.
-    Returns (data_uri, extra_fields_dict).
+    Parse image input from multipart or JSON body.
+    Returns (BGR numpy array, extra_fields_dict).
     """
+    import base64
+
     content_type = request.headers.get("content-type", "")
 
     if "multipart/form-data" in content_type:
         form = await request.form()
-        b64 = None
         extra = {k: v for k, v in form.items() if k != "file"}
+        if file is None:
+            raise _422("Provide a multipart 'file' field.")
+        image_bytes = await file.read()
     else:
         try:
             payload = await request.json()
@@ -65,12 +66,19 @@ async def _resolve(request: Request, file: Optional[UploadFile]) -> tuple[str, d
         b64 = payload.pop("image", None)
         extra = payload
         file = None
+        if not b64:
+            raise _422("Provide a JSON 'image' field (base64).")
+        # Strip data-URI prefix if present
+        if "," in b64:
+            b64 = b64.split(",", 1)[1]
+        image_bytes = base64.b64decode(b64)
 
-    if file is None and b64 is None:
-        raise _422("Provide either a multipart 'file' field or a JSON 'image' field (base64).")
-
-    data_uri = await load_image_input(file, b64)
-    return data_uri, extra
+    # Decode to BGR numpy array (no JPEG re-encoding)
+    arr = np.frombuffer(image_bytes, dtype=np.uint8)
+    frame = cv2.imdecode(arr, cv2.IMREAD_COLOR)
+    if frame is None:
+        raise _422("Could not decode the image.")
+    return frame, extra
 
 
 def _bool(val, default: bool = True) -> bool:
@@ -85,12 +93,15 @@ def _bool(val, default: bool = True) -> bool:
 
 @router.get("/health", response_model=HealthResponse, tags=["system"])
 async def health():
+    from app.pgvector_service import get_pgvector_service
+    pgv = get_pgvector_service()
+    count = pgv.count_all()
     db_host = settings.deepface_postgres_uri.split("@")[-1]
     return HealthResponse(
         status="ok",
-        model_name=settings.model_name,
-        detector_backend=settings.detector_backend,
-        database=db_host,
+        model_name="buffalo_l (InsightFace)",
+        detector_backend="SCRFD (bundled)",
+        database=f"{db_host} ({count} embeddings)",
     )
 
 
@@ -98,44 +109,20 @@ async def health():
 
 @router.post("/detect", response_model=DetectResponse, tags=["detection"])
 async def detect(request: Request, file: Optional[UploadFile] = File(default=None)):
-    """Detect all faces in an image; return bounding boxes and base64 PNG crops."""
-    from deepface import DeepFace
-    from deepface.modules.exceptions import FaceNotDetected, ImgNotFound
+    """Detect all faces in an image; return bounding boxes."""
+    from app.face_engine import detect_and_embed
 
-    data_uri, extra = await _resolve(request, file)
-    enforce = _bool(extra.get("enforce_detection", True))
-
-    try:
-        faces_raw = DeepFace.extract_faces(
-            img_path=data_uri,
-            detector_backend=settings.detector_backend,
-            enforce_detection=enforce,
-            align=True,
-            color_face="rgb",
-            normalize_face=True,
-        )
-    except FaceNotDetected as exc:
-        raise _422(str(exc)) from exc
-    except ImgNotFound as exc:
-        raise _422(str(exc)) from exc
-    except ValueError as exc:
-        raise _422(str(exc)) from exc
+    frame, _extra = await _resolve_image(request, file)
+    faces = detect_and_embed(frame)
 
     faces_out = []
-    for f in faces_raw:
-        area = f["facial_area"]
+    for f in faces:
+        x1, y1, x2, y2 = f["bbox"]
         faces_out.append(
             DetectedFace(
-                facial_area=FacialArea(
-                    x=area["x"],
-                    y=area["y"],
-                    w=area["w"],
-                    h=area["h"],
-                    left_eye=area.get("left_eye"),
-                    right_eye=area.get("right_eye"),
-                ),
-                confidence=float(f["confidence"]),
-                face_base64=ndarray_to_base64_png(f["face"]),
+                facial_area=FacialArea(x=x1, y=y1, w=x2 - x1, h=y2 - y1),
+                confidence=f["det_score"],
+                face_base64="",  # not needed for new pipeline
             )
         )
 
@@ -146,42 +133,27 @@ async def detect(request: Request, file: Optional[UploadFile] = File(default=Non
 
 @router.post("/represent", response_model=RepresentResponse, tags=["recognition"])
 async def represent(request: Request, file: Optional[UploadFile] = File(default=None)):
-    """Return 512-dim Buffalo_L embeddings for every face in the image."""
-    from deepface import DeepFace
-    from deepface.modules.exceptions import FaceNotDetected, ImgNotFound
+    """Return 512-dim embeddings for every face in the image."""
+    from app.face_engine import detect_and_embed
 
-    data_uri, extra = await _resolve(request, file)
-    enforce = _bool(extra.get("enforce_detection", True))
+    frame, _extra = await _resolve_image(request, file)
+    faces = detect_and_embed(frame)
 
-    try:
-        reps = DeepFace.represent(
-            img_path=data_uri,
-            model_name=settings.model_name,
-            detector_backend=settings.detector_backend,
-            enforce_detection=enforce,
-            align=True,
-            normalization=settings.normalization,
-            l2_normalize=settings.l2_normalize,
-        )
-    except FaceNotDetected as exc:
-        raise _422(str(exc)) from exc
-    except ImgNotFound as exc:
-        raise _422(str(exc)) from exc
-    except ValueError as exc:
-        raise _422(str(exc)) from exc
+    if not faces:
+        raise _422("No face detected in the image.")
 
     embeddings_out = []
-    for r in reps:
-        area = r["facial_area"]
+    for f in faces:
+        x1, y1, x2, y2 = f["bbox"]
         embeddings_out.append(
             FaceEmbedding(
-                embedding=r["embedding"],
-                facial_area=FacialArea(x=area["x"], y=area["y"], w=area["w"], h=area["h"]),
-                face_confidence=float(r["face_confidence"]),
+                embedding=f["embedding"].tolist(),
+                facial_area=FacialArea(x=x1, y=y1, w=x2 - x1, h=y2 - y1),
+                face_confidence=f["det_score"],
             )
         )
 
-    return RepresentResponse(model_name=settings.model_name, embeddings=embeddings_out)
+    return RepresentResponse(model_name="buffalo_l", embeddings=embeddings_out)
 
 
 # ── POST /register ────────────────────────────────────────────────────────────
@@ -189,44 +161,27 @@ async def represent(request: Request, file: Optional[UploadFile] = File(default=
 @router.post("/register", response_model=RegisterResponse, tags=["database"])
 async def register(request: Request, file: Optional[UploadFile] = File(default=None)):
     """Register a face into the pgvector database with an identity label."""
-    from deepface import DeepFace
-    from deepface.modules.exceptions import (
-        DimensionMismatchError,
-        FaceNotDetected,
-        ImgNotFound,
-    )
+    from app.face_engine import embed_single
+    from app.pgvector_service import get_pgvector_service
 
-    data_uri, extra = await _resolve(request, file)
-    enforce = _bool(extra.get("enforce_detection", True))
+    frame, extra = await _resolve_image(request, file)
     name = extra.get("img_name")
-
     if not name:
         raise _422("'img_name' is required for registration.")
 
-    try:
-        result = DeepFace.register(
-            img=data_uri,
-            img_name=name,
-            model_name=settings.model_name,
-            detector_backend=settings.detector_backend,
-            enforce_detection=enforce,
-            align=True,
-            expand_percentage=settings.expand_percentage,
-            normalization=settings.normalization,
-            l2_normalize=settings.l2_normalize,
-            database_type="postgres",
-            connection_details=settings.connection_details,
-        )
-    except FaceNotDetected as exc:
-        raise _422(str(exc)) from exc
-    except ImgNotFound as exc:
-        raise _422(str(exc)) from exc
-    except DimensionMismatchError as exc:
-        raise _500(f"Embedding dimension mismatch: {exc}") from exc
-    except ValueError as exc:
-        raise _422(str(exc)) from exc
+    face = embed_single(frame)
+    if face is None:
+        raise _422("No face detected in the uploaded image.")
 
-    return RegisterResponse(inserted=result["inserted"], img_name=name)
+    pgv = get_pgvector_service()
+    row_id = pgv.register(
+        identity_name=str(name),
+        embedding=face["embedding"],
+        det_score=face["det_score"],
+    )
+    logger.info("Registered face for '%s' (row_id=%d, det_score=%.3f)", name, row_id, face["det_score"])
+
+    return RegisterResponse(inserted=1, img_name=str(name))
 
 
 # ── POST /search ──────────────────────────────────────────────────────────────
@@ -234,53 +189,41 @@ async def register(request: Request, file: Optional[UploadFile] = File(default=N
 @router.post("/search", response_model=SearchResponse, tags=["database"])
 async def search(request: Request, file: Optional[UploadFile] = File(default=None)):
     """Search the pgvector database for faces matching the query image."""
-    from deepface import DeepFace
-    from deepface.modules.exceptions import EmptyDatasource, FaceNotDetected, ImgNotFound
+    from app.face_engine import detect_and_embed
+    from app.pgvector_service import get_pgvector_service
 
-    data_uri, extra = await _resolve(request, file)
-    enforce = _bool(extra.get("enforce_detection", True))
-    search_method = extra.get("search_method", "exact")
-    similarity_search = _bool(extra.get("similarity_search", False), default=False)
-    k_raw = extra.get("k")
-    k = int(k_raw) if k_raw is not None else None
+    frame, extra = await _resolve_image(request, file)
+    threshold = float(extra.get("threshold", settings.cosine_threshold))
+    k = int(extra.get("k", 5))
 
-    try:
-        dfs = DeepFace.search(
-            img=data_uri,
-            model_name=settings.model_name,
-            detector_backend=settings.detector_backend,
-            distance_metric=settings.distance_metric,
-            enforce_detection=enforce,
-            align=True,
-            expand_percentage=settings.expand_percentage,
-            normalization=settings.normalization,
-            l2_normalize=settings.l2_normalize,
-            database_type="postgres",
-            connection_details=settings.connection_details,
-            search_method=search_method,
-            similarity_search=similarity_search,
-            k=k,
-        )
-    except FaceNotDetected as exc:
-        raise _422(str(exc)) from exc
-    except ImgNotFound as exc:
-        raise _422(str(exc)) from exc
-    except EmptyDatasource:
-        return SearchResponse(results=[])
-    except ValueError as exc:
-        raise _422(str(exc)) from exc
+    faces = detect_and_embed(frame)
+    if not faces:
+        raise _422("No face detected in the image.")
 
+    pgv = get_pgvector_service()
     results_out = []
-    for df in dfs:
-        if df.empty:
-            results_out.append(SearchFaceResult(matches=[]))
-        else:
-            # DeepFace.search() already filters by its internal threshold (0.55 for Buffalo_L)
-            # We keep results as-is so we can see actual distances for tuning
-            raw_matches = df_to_search_matches(df)
-            results_out.append(
-                SearchFaceResult(matches=[SearchMatch(**m) for m in raw_matches])
+
+    for face in faces:
+        matches = pgv.search(face["embedding"], threshold=threshold, limit=k)
+        x1, y1, x2, y2 = face["bbox"]
+        results_out.append(
+            SearchFaceResult(
+                matches=[
+                    SearchMatch(
+                        img_name=m["identity_name"],
+                        distance=m["distance"],
+                        threshold=threshold,
+                        confidence=face["det_score"] * 100,
+                        distance_metric="cosine",
+                        target_x=x1,
+                        target_y=y1,
+                        target_w=x2 - x1,
+                        target_h=y2 - y1,
+                    )
+                    for m in matches
+                ]
             )
+        )
 
     return SearchResponse(results=results_out)
 
@@ -289,24 +232,10 @@ async def search(request: Request, file: Optional[UploadFile] = File(default=Non
 
 @router.post("/build-index", response_model=BuildIndexResponse, tags=["database"])
 async def build_index():
-    """Build the ANN index on the pgvector DB for fast approximate search."""
-    from deepface import DeepFace
-    from deepface.modules.exceptions import EmptyDatasource
-
-    try:
-        DeepFace.build_index(
-            model_name=settings.model_name,
-            database_type="postgres",
-            connection_details=settings.connection_details,
-        )
-    except EmptyDatasource:
-        raise _422("Cannot build index: database has no registered faces.")
-    except ValueError as exc:
-        raise _500(str(exc)) from exc
-
+    """HNSW index is created automatically on table creation. This is a no-op."""
     return BuildIndexResponse(
         status="ok",
-        message=f"ANN index built successfully for model '{settings.model_name}'.",
+        message="HNSW index is created automatically with the face_embeddings table.",
     )
 
 

@@ -1,12 +1,11 @@
-import os
-os.environ["TF_USE_LEGACY_KERAS"] = "1"
+"""
+Download InsightFace buffalo_l model pack during Docker build.
 
-from deepface import DeepFace
+This runs as a build step (see Dockerfile) so the container starts
+without any network fetch. Models are cached in ~/.insightface/models/.
+"""
+from insightface.app import FaceAnalysis
 
-DeepFace.build_model("Buffalo_L", task="facial_recognition")
-print("Buffalo_L ready.")
-
-DeepFace.build_model("yolov8n", task="face_detector")
-print("yolov8n ready.")
-
-print("Weights baked in.")
+app = FaceAnalysis(name="buffalo_l", providers=["CPUExecutionProvider"])
+app.prepare(ctx_id=-1, det_size=(640, 640))
+print("buffalo_l (SCRFD + ArcFace) weights baked in.")
