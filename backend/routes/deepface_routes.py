@@ -172,21 +172,22 @@ def _set_alert_cooldown(anomaly_type: str, stream_id: str, entity_key: str) -> N
 
 
 def _go2rtc_register_url(stream_id: str, rtsp_url: str) -> str:
-    """Build go2rtc stream registration URL.
+    """Build go2rtc stream registration URL with dual sources.
 
-    go2rtc API: PUT /api/streams?name={stream_name}&src={source}
-    Confirmed from go2rtc source (www/add.html).
+    go2rtc API: PUT /api/streams?name={stream_name}&src={source1}&src={source2}
 
-    We wrap the RTSP URL with ffmpeg to transcode to H.264 for browser
-    WebRTC compatibility. Cameras (Dahua/CP Plus subtype=0) commonly
-    send H.265 which Chrome cannot decode via WebRTC without transcoding.
-    ffmpeg:{rtsp_url}#video=h264 forces H.264 output regardless of camera codec.
+    Two sources per stream (Dahua/CP Plus pattern from go2rtc docs):
+      1. Native RTSP — go2rtc's own RTSP client handles H.265 B-frames
+         far better than FFmpeg's RTSP decoder, avoiding RPS/POC errors.
+      2. ffmpeg:{stream_id}#video=h264 — FFmpeg reads from go2rtc's internal
+         stream (not from the camera directly) and transcodes to H.264 for
+         browser WebRTC compatibility. Chrome cannot decode H.265 via WebRTC.
     """
-    ffmpeg_src = f"ffmpeg:{rtsp_url}#video=h264"
     return (
         f"{settings.GO2RTC_API_URL}/api/streams"
         f"?name={quote(stream_id, safe='')}"
-        f"&src={quote(ffmpeg_src, safe='')}"
+        f"&src={quote(rtsp_url, safe='')}"
+        f"&src={quote(f'ffmpeg:{stream_id}#video=h264', safe='')}"
     )
 
 
