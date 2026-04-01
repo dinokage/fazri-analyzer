@@ -174,18 +174,14 @@ def _set_alert_cooldown(anomaly_type: str, stream_id: str, entity_key: str) -> N
 def _go2rtc_register_url(stream_id: str, rtsp_url: str) -> str:
     """Build go2rtc stream registration URL.
 
-    The RTSP URL contains & and ? which would split the HTTP query string.
-    We encode only the characters that break query-string parsing while
-    keeping the RTSP URL otherwise readable for go2rtc:
-      & → %26  (would start a new query param)
-      # → %23  (would start a fragment)
-    Characters like @, :, /, ? are safe within a query param value.
+    go2rtc API: PUT /api/streams?{stream_name}={rtsp_url}
+    The stream name is the key and the RTSP URL is the value.
+    Both must be percent-encoded as query parameter components.
     """
-    safe_name = rtsp_url.replace("&", "%26").replace("#", "%23")
     return (
         f"{settings.GO2RTC_API_URL}/api/streams"
-        f"?src={quote(stream_id, safe='')}"
-        f"&name={safe_name}"
+        f"?{quote(stream_id, safe='')}"
+        f"={quote(rtsp_url, safe='')}"
     )
 
 
