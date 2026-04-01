@@ -24,15 +24,20 @@ class PgVectorService:
     def __init__(self, connection_uri: Optional[str] = None):
         self.uri = connection_uri or settings.deepface_postgres_uri
 
-    def _connect(self) -> psycopg.Connection:
+    def _connect(self, with_vector: bool = True) -> psycopg.Connection:
         conn = psycopg.connect(self.uri)
-        register_vector(conn)
+        if with_vector:
+            register_vector(conn)
         return conn
 
     def ensure_schema(self) -> None:
         """Create the face_embeddings table + HNSW index if they don't exist."""
-        with self._connect() as conn:
+        # First connection WITHOUT register_vector — extension may not exist yet
+        with self._connect(with_vector=False) as conn:
             conn.execute("CREATE EXTENSION IF NOT EXISTS vector")
+            conn.commit()
+        # Now reconnect WITH register_vector (extension is guaranteed to exist)
+        with self._connect() as conn:
             conn.execute("""
                 CREATE TABLE IF NOT EXISTS face_embeddings (
                     id BIGSERIAL PRIMARY KEY,
