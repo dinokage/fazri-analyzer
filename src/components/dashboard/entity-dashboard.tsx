@@ -3,6 +3,7 @@
 
 import { useEffect, useState } from 'react';
 import { EntityProfile } from './entity-profile';
+import { FaceRegistrationCard } from './face-registration-card';
 import { ActivityTimeline } from './activity-timeline';
 import { PredictionData, PredictiveInsights } from './predictive-insights';
 import { ActivityFrequency, HeatmapData } from './activity-frequency';
@@ -182,6 +183,7 @@ export function EntityDashboard({ entityId }: { entityId: string }) {
         {/* Left Column */}
         <div className="space-y-6">
           <EntityProfile entity={entity} />
+          <FaceRegistrationCard entityId={entityId} />
           <ActivityTimeline
             timeline={timeline}
             entityId={entityId}

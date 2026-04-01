@@ -4,7 +4,11 @@ Includes all database tables for alerts, staff management, audit logging, and de
 """
 
 import enum
-from datetime import datetime
+from datetime import datetime, timezone
+
+
+def _utcnow():
+    return datetime.now(timezone.utc)
 from sqlalchemy import (
     Column,
     String,
@@ -129,8 +133,8 @@ class StaffProfile(Base):
     is_mock_user = Column(Boolean, default=False)
 
     # Timestamps
-    created_at = Column(DateTime, default=datetime.utcnow)
-    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+    created_at = Column(DateTime(timezone=True), default=_utcnow)
+    updated_at = Column(DateTime(timezone=True), default=_utcnow, onupdate=_utcnow)
 
     # Relationships
     locations = relationship("StaffLocation", back_populates="staff", cascade="all, delete-orphan")
@@ -163,7 +167,7 @@ class StaffLocation(Base):
     source = Column(String(50), default="card_swipe")  # card_swipe, manual, gps
 
     # Timestamps
-    timestamp = Column(DateTime, default=datetime.utcnow, index=True)
+    timestamp = Column(DateTime(timezone=True), default=_utcnow, index=True)
 
     # Relationships
     staff = relationship("StaffProfile", back_populates="locations")
@@ -217,13 +221,13 @@ class Alert(Base):
 
     # Assignment
     assigned_to = Column(UUID(as_uuid=True), ForeignKey("staff_profiles.id"), nullable=True)
-    assigned_at = Column(DateTime, nullable=True)
+    assigned_at = Column(DateTime(timezone=True), nullable=True)
 
     # Acknowledgment
-    acknowledged_at = Column(DateTime, nullable=True)
+    acknowledged_at = Column(DateTime(timezone=True), nullable=True)
 
     # Resolution
-    resolved_at = Column(DateTime, nullable=True)
+    resolved_at = Column(DateTime(timezone=True), nullable=True)
     resolved_by = Column(UUID(as_uuid=True), ForeignKey("staff_profiles.id"), nullable=True)
     resolution_type = Column(Enum(ResolutionType), nullable=True)
     resolution_notes = Column(Text, nullable=True)
@@ -237,8 +241,8 @@ class Alert(Base):
     mock_scenario = Column(String(100), nullable=True)
 
     # Timestamps
-    created_at = Column(DateTime, default=datetime.utcnow, index=True)
-    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+    created_at = Column(DateTime(timezone=True), default=_utcnow, index=True)
+    updated_at = Column(DateTime(timezone=True), default=_utcnow, onupdate=_utcnow)
 
     # Relationships
     assigned_staff = relationship("StaffProfile", foreign_keys=[assigned_to], backref="alerts_assigned")
@@ -271,9 +275,9 @@ class AlertAssignment(Base):
     staff_id = Column(UUID(as_uuid=True), ForeignKey("staff_profiles.id"), nullable=False)
 
     # Assignment details
-    assigned_at = Column(DateTime, default=datetime.utcnow)
-    acknowledged_at = Column(DateTime, nullable=True)
-    completed_at = Column(DateTime, nullable=True)
+    assigned_at = Column(DateTime(timezone=True), default=_utcnow)
+    acknowledged_at = Column(DateTime(timezone=True), nullable=True)
+    completed_at = Column(DateTime(timezone=True), nullable=True)
 
     # Assignment metadata
     assignment_reason = Column(String(255), nullable=True)  # "proximity", "manual", "escalation"
@@ -328,7 +332,7 @@ class AlertAuditLog(Base):
     is_mock = Column(Boolean, default=False)
 
     # Timestamp (immutable)
-    timestamp = Column(DateTime, default=datetime.utcnow, nullable=False)
+    timestamp = Column(DateTime(timezone=True), default=_utcnow, nullable=False)
 
     # Relationships
     alert = relationship("Alert", back_populates="audit_logs")
@@ -375,9 +379,9 @@ class NotificationQueue(Base):
     is_mock = Column(Boolean, default=False)
 
     # Timestamps
-    created_at = Column(DateTime, default=datetime.utcnow)
-    scheduled_at = Column(DateTime, default=datetime.utcnow)  # For delayed notifications
-    processed_at = Column(DateTime, nullable=True)
+    created_at = Column(DateTime(timezone=True), default=_utcnow)
+    scheduled_at = Column(DateTime(timezone=True), default=_utcnow)  # For delayed notifications
+    processed_at = Column(DateTime(timezone=True), nullable=True)
 
     # Relationships
     alert = relationship("Alert", back_populates="notifications")
@@ -413,9 +417,9 @@ class NotificationLog(Base):
     response_data = Column(JSON, nullable=True)
 
     # Timestamps
-    sent_at = Column(DateTime, default=datetime.utcnow)
-    delivered_at = Column(DateTime, nullable=True)
-    read_at = Column(DateTime, nullable=True)
+    sent_at = Column(DateTime(timezone=True), default=_utcnow)
+    delivered_at = Column(DateTime(timezone=True), nullable=True)
+    read_at = Column(DateTime(timezone=True), nullable=True)
 
     # Relationships
     notification = relationship("NotificationQueue", backref="delivery_logs")
@@ -467,8 +471,8 @@ class DemoScenario(Base):
     is_active = Column(Boolean, default=True)
 
     # Timestamps
-    created_at = Column(DateTime, default=datetime.utcnow)
-    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+    created_at = Column(DateTime(timezone=True), default=_utcnow)
+    updated_at = Column(DateTime(timezone=True), default=_utcnow, onupdate=_utcnow)
 
     # Relationships
     timeline_events = relationship("DemoTimelineEvent", back_populates="scenario", cascade="all, delete-orphan")

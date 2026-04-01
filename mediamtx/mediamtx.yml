@@ -1,0 +1,35 @@
+# go2rtc configuration for Fazri Analyzer RTSP relay
+# Docs: https://github.com/AlexxIT/go2rtc
+
+# ── HTTP API + WebUI ───────────────────────────────────────────────────────
+api:
+  listen: ":1984"
+  origin: "*"
+
+# ── RTSP server ────────────────────────────────────────────────────────────
+# DeepFace consumes relay streams here
+rtsp:
+  listen: ":8554"
+
+# ── WebRTC ─────────────────────────────────────────────────────────────────
+# Sub-200ms latency live view for browser
+webrtc:
+  listen: ":8555"
+  # Without an explicit candidate the ICE offer contains only the Docker
+  # internal IP (172.20.x.x) which the browser cannot reach.
+  # Set GO2RTC_HOST to the server's public IP at container startup so
+  # go2rtc advertises the correct host:8555 UDP address to browsers.
+  candidates:
+    - ${GO2RTC_HOST}:8555
+  ice_servers:
+    - urls: ["stun:stun1.l.google.com:19302"]
+
+# ── Logging ────────────────────────────────────────────────────────────────
+log:
+  level: debug
+
+# ── Streams ────────────────────────────────────────────────────────────────
+# Streams are added dynamically via the API when cameras are registered.
+# PUT /api/streams?name={stream_id}&src=ffmpeg:{rtsp_url}#video=h264
+# go2rtc connects to the camera on-demand (when a consumer requests).
+streams: {}

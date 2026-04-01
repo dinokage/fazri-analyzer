@@ -8,7 +8,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 
 import entity_routes, graph_routes, spatial_routes, anomaly_routes, chat_routes
-from routes import alert_router, staff_router, notification_router, demo_router
+from routes import alert_router, staff_router, notification_router, demo_router, webhook_router
 from routes.gitlab_routes import router as gitlab_router
 from config import settings
 from auth.dependencies import get_current_user
@@ -123,6 +123,8 @@ logger = logging.getLogger(__name__)
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     """Application lifespan handler for startup/shutdown events"""
+    import asyncio
+
     # Startup
     logger.info("Starting Fazri Analyzer API...")
 
@@ -135,9 +137,71 @@ async def lifespan(app: FastAPI):
         except Exception as e:
             logger.error(f"Failed to initialize alert system: {e}")
 
+    # Re-register all active camera streams with go2rtc.
+    # go2rtc stores streams in memory only — they are lost on restart.
+    if settings.GO2RTC_ENABLED:
+        try:
+            import httpx
+            from database.connection import get_db as _get_db
+            from models.db.camera_streams import CameraStream, CameraStreamStatus
+            from routes.deepface_routes import _go2rtc_register_urls
+
+            db_gen = _get_db()
+            db = next(db_gen)
+            try:
+                active_streams = (
+                    db.query(CameraStream)
+                    .filter(CameraStream.status == CameraStreamStatus.ACTIVE)
+                    .all()
+                )
+                async with httpx.AsyncClient(timeout=5) as client:
+                    for stream in active_streams:
+                        try:
+                            ok = True
+                            for reg_url in _go2rtc_register_urls(stream.stream_id, stream.rtsp_url):
+                                resp = await client.put(reg_url)
+                                if resp.status_code == 200:
+                                    logger.info("go2rtc re-registered: %s", reg_url.split("name=")[1].split("&")[0])
+                                else:
+                                    logger.warning(
+                                        "go2rtc re-registration failed %s: %d",
+                                        reg_url.split("name=")[1].split("&")[0], resp.status_code,
+                                    )
+                                    ok = False
+                        except Exception as exc:
+                            logger.warning("go2rtc re-registration error for %s: %s", stream.stream_id, exc)
+            finally:
+                try:
+                    next(db_gen)
+                except StopIteration:
+                    pass
+        except Exception as exc:
+            logger.warning("go2rtc startup sync failed: %s", exc)
+
+    # Start DeepFace batch sync background task if enabled
+    _batch_sync_task = None
+    if settings.DEEPFACE_ENABLED and settings.DEEPFACE_BATCH_SYNC_INTERVAL_SECONDS > 0:
+        try:
+            from services.deepface_batch_sync import DeepFaceBatchSync
+            _batch_sync = DeepFaceBatchSync()
+            _batch_sync_task = asyncio.create_task(_batch_sync.run_forever())
+            logger.info(
+                "DeepFace batch sync started (interval=%ds)",
+                settings.DEEPFACE_BATCH_SYNC_INTERVAL_SECONDS,
+            )
+        except Exception as e:
+            logger.error(f"Failed to start DeepFace batch sync: {e}")
+
     yield
 
-    # Shutdown
+    # Shutdown — cancel the batch sync task cleanly
+    if _batch_sync_task and not _batch_sync_task.done():
+        _batch_sync_task.cancel()
+        try:
+            await _batch_sync_task
+        except asyncio.CancelledError:
+            pass
+
     logger.info("Shutting down Fazri Analyzer API...")
 
 
@@ -238,7 +302,14 @@ if settings.ALERT_SYSTEM_ENABLED:
     app.include_router(staff_router)
     app.include_router(notification_router)
     app.include_router(demo_router)
+    app.include_router(webhook_router)
     logger.info("Alert system routes registered")
+
+# Include DeepFace integration routes
+if settings.DEEPFACE_ENABLED:
+    from routes.deepface_routes import router as deepface_router
+    app.include_router(deepface_router)
+    logger.info("DeepFace integration routes registered")
 
 @app.get("/")
 async def root():

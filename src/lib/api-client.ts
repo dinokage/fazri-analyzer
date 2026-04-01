@@ -269,19 +269,6 @@ export const apiClient = {
     return handleResponse(response);
   },
 
-  async fuzzySearchByName(name: string, threshold = 0.85) {
-    const params = new URLSearchParams({
-      name,
-      threshold: threshold.toString(),
-    });
-
-    const response = await fetch(
-      `${API_BASE_URL}/api/v1/entities/fuzzy-search?${params}`,
-      { headers: await getAuthHeaders() }
-    );
-    return handleResponse(response);
-  },
-
   async getAnomaliesByEntity(entityId: string, startDate?: string, endDate?: string) {
     const params = new URLSearchParams();
     if (startDate) params.append('start_date', startDate);
@@ -716,6 +703,235 @@ export const apiClient = {
     const response = await fetch(
       `${API_BASE_URL}/api/v1/gitlab/health`,
       { headers: await getAuthHeaders() }
+    );
+    return handleResponse(response);
+  },
+
+  // ===== DEEPFACE / CAMERA STREAM ENDPOINTS =====
+
+  async getCameraStreams() {
+    const response = await fetch(
+      `${API_BASE_URL}/api/v1/deepface/streams`,
+      { headers: await getAuthHeaders() }
+    );
+    return handleResponse(response);
+  },
+
+  async createCameraStream(data: {
+    stream_id: string;
+    rtsp_url: string;
+    zone_id: string;
+    building?: string;
+    floor?: string;
+    alert_on_unknown_face: boolean;
+  }) {
+    const response = await fetch(
+      `${API_BASE_URL}/api/v1/deepface/streams`,
+      {
+        method: 'POST',
+        headers: await getAuthHeaders(),
+        body: JSON.stringify(data),
+      }
+    );
+    return handleResponse(response);
+  },
+
+  async deleteCameraStream(streamId: string) {
+    const response = await fetch(
+      `${API_BASE_URL}/api/v1/deepface/streams/${encodeURIComponent(streamId)}`,
+      {
+        method: 'DELETE',
+        headers: await getAuthHeaders(),
+      }
+    );
+    if (response.status === 204) return;
+    return handleResponse(response);
+  },
+
+  async getVapidPublicKey(): Promise<string> {
+    const response = await fetch(
+      `${API_BASE_URL}/api/v1/notifications/vapid-public-key`,
+      { headers: await getAuthHeaders() }
+    );
+    const data = await handleResponse(response);
+    return data.publicKey as string;
+  },
+
+  async subscribePush(subscription: { endpoint: string; p256dh: string; auth: string }) {
+    const response = await fetch(
+      `${API_BASE_URL}/api/v1/notifications/push-subscription`,
+      {
+        method: 'POST',
+        headers: await getAuthHeaders(),
+        body: JSON.stringify(subscription),
+      }
+    );
+    return handleResponse(response);
+  },
+
+  async unsubscribePush(subscription: { endpoint: string; p256dh: string; auth: string }) {
+    const response = await fetch(
+      `${API_BASE_URL}/api/v1/notifications/push-subscription`,
+      {
+        method: 'DELETE',
+        headers: await getAuthHeaders(),
+        body: JSON.stringify(subscription),
+      }
+    );
+    return handleResponse(response);
+  },
+
+  async getCameraSnapshot(streamId: string): Promise<string> {
+    // <img src> cannot send Authorization headers, so we fetch the JPEG
+    // through apiClient (which attaches the Bearer token) and convert it
+    // to a blob object URL for use in <img src>.
+    const headers = await getAuthHeaders();
+    const response = await fetch(
+      `${API_BASE_URL}/api/v1/deepface/streams/${encodeURIComponent(streamId)}/snapshot`,
+      { headers },
+    );
+    if (!response.ok) throw new ApiError(`Snapshot failed: ${response.status}`, response.status);
+    const blob = await response.blob();
+    return URL.createObjectURL(blob);
+  },
+
+  async webrtcOffer(streamId: string, sdpOffer: string): Promise<string> {
+    const headers = await getAuthHeaders();
+    const response = await fetch(
+      `${API_BASE_URL}/api/v1/deepface/streams/${encodeURIComponent(streamId)}/webrtc`,
+      {
+        method: 'POST',
+        headers: { ...headers, 'Content-Type': 'application/sdp' },
+        body: sdpOffer,
+      },
+    );
+    if (!response.ok) throw new ApiError(`WebRTC signaling failed: ${response.status}`, response.status);
+    return response.text();
+  },
+
+  async getStreamDetections(streamId: string): Promise<{
+    detections: Array<{
+      img_name: string;
+      entity_name: string | null;
+      confidence: number;
+      distance: number;
+      facial_area: { x: number; y: number; w: number; h: number } | null;
+      is_unknown: boolean;
+    }>;
+    cached: boolean;
+  }> {
+    const response = await fetch(
+      `${API_BASE_URL}/api/v1/deepface/streams/${encodeURIComponent(streamId)}/detections`,
+      { headers: await getAuthHeaders() },
+    );
+    return handleResponse(response);
+  },
+
+  async probeOnvif(data: {
+    ip: string;
+    port?: number;
+    username?: string;
+    password?: string;
+    use_https?: boolean;
+  }): Promise<{
+    vendor?: string;
+    model?: string;
+    channels?: Array<{ id: string; name: string; rtsp_url: string }>;
+    error?: string;
+    message?: string;
+  }> {
+    const response = await fetch(
+      `${API_BASE_URL}/api/v1/deepface/onvif/probe`,
+      {
+        method: 'POST',
+        headers: await getAuthHeaders(),
+        body: JSON.stringify(data),
+      }
+    );
+    return handleResponse(response);
+  },
+
+  // ===== OUTGOING WEBHOOK ENDPOINTS =====
+
+  async listWebhooks() {
+    const response = await fetch(`${API_BASE_URL}/api/v1/webhooks`, {
+      headers: await getAuthHeaders(),
+    });
+    return handleResponse(response);
+  },
+
+  async createWebhook(url: string, events: string[]) {
+    const response = await fetch(`${API_BASE_URL}/api/v1/webhooks`, {
+      method: 'POST',
+      headers: await getAuthHeaders(),
+      body: JSON.stringify({ url, events }),
+    });
+    return handleResponse(response);
+  },
+
+  async updateWebhook(id: string, data: { url?: string; events?: string[]; active?: boolean }) {
+    const response = await fetch(`${API_BASE_URL}/api/v1/webhooks/${encodeURIComponent(id)}`, {
+      method: 'PUT',
+      headers: await getAuthHeaders(),
+      body: JSON.stringify(data),
+    });
+    return handleResponse(response);
+  },
+
+  async deleteWebhook(id: string) {
+    const response = await fetch(`${API_BASE_URL}/api/v1/webhooks/${encodeURIComponent(id)}`, {
+      method: 'DELETE',
+      headers: await getAuthHeaders(),
+    });
+    if (response.status === 204) return;
+    return handleResponse(response);
+  },
+
+  async testWebhook(id: string): Promise<{ success: boolean; status?: number; error?: string }> {
+    const response = await fetch(`${API_BASE_URL}/api/v1/webhooks/${encodeURIComponent(id)}/test`, {
+      method: 'POST',
+      headers: await getAuthHeaders(),
+    });
+    return handleResponse(response);
+  },
+
+  async fuzzySearchByName(name: string, threshold = 0.7) {
+    const params = new URLSearchParams({ name, threshold: threshold.toString() });
+    const response = await fetch(`${API_BASE_URL}/api/v1/entities/fuzzy-search?${params}`, {
+      headers: await getAuthHeaders(),
+    });
+    const data = await handleResponse(response);
+    // Backend returns { matches: [{ entity: {...}, similarity }] }
+    // Map to flat EntityResult[] with `type` instead of `entity_type`
+    const results = (data.matches ?? []).map((m: { entity: Record<string, unknown>; similarity: number }) => ({
+      entity_id: m.entity.entity_id,
+      name: m.entity.name,
+      type: m.entity.entity_type,
+      department: m.entity.department,
+      face_id: m.entity.face_id,
+    }));
+    return { results };
+  },
+
+  async registerFace(entityId: string, file: File) {
+    // Do NOT use getAuthHeaders() here — it always sets Content-Type: application/json,
+    // which prevents the browser from setting the multipart/form-data boundary that
+    // FastAPI's UploadFile parser requires.
+    const session = await getSession();
+    if (!session?.data) throw new ApiError('No active session. Please log in.', 401);
+    const { data } = await authClient.token();
+    if (!data?.token) throw new ApiError('No active session. Please log in.', 401);
+
+    const formData = new FormData();
+    formData.append('image', file);
+
+    const response = await fetch(
+      `${API_BASE_URL}/api/v1/deepface/entities/${encodeURIComponent(entityId)}/register`,
+      {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${data.token}` },
+        body: formData,
+      }
     );
     return handleResponse(response);
   },

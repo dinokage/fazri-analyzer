@@ -28,6 +28,9 @@ import {
   LogOut,
   ShieldAlert,
   Bot,
+  UserCheck,
+  Camera,
+  Webhook,
 } from "lucide-react"
 import { useActiveAlertCount } from "@/hooks/useAlerts"
 
@@ -143,6 +146,48 @@ export function SidebarLayout({ children }: { children: React.ReactNode }) {
                             >
                               <Bot className="h-5 w-5 flex-shrink-0" />
                               <span className="truncate">AI Assistant</span>
+                            </Link>
+                          </SidebarMenuButton>
+                        </SidebarMenuItem>
+                        <SidebarMenuItem>
+                          <SidebarMenuButton
+                            asChild
+                            data-active={isActive("/dashboard/face-enrollment")}
+                          >
+                            <Link
+                              href="/dashboard/face-enrollment"
+                              className="flex items-center gap-3"
+                            >
+                              <UserCheck className="h-5 w-5 flex-shrink-0" />
+                              <span className="truncate">Face Enrollment</span>
+                            </Link>
+                          </SidebarMenuButton>
+                        </SidebarMenuItem>
+                        <SidebarMenuItem>
+                          <SidebarMenuButton
+                            asChild
+                            data-active={isActive("/dashboard/cameras") || pathname.startsWith("/dashboard/cameras")}
+                          >
+                            <Link
+                              href="/dashboard/cameras"
+                              className="flex items-center gap-3"
+                            >
+                              <Camera className="h-5 w-5 flex-shrink-0" />
+                              <span className="truncate">Camera Streams</span>
+                            </Link>
+                          </SidebarMenuButton>
+                        </SidebarMenuItem>
+                        <SidebarMenuItem>
+                          <SidebarMenuButton
+                            asChild
+                            data-active={isActive("/dashboard/webhooks")}
+                          >
+                            <Link
+                              href="/dashboard/webhooks"
+                              className="flex items-center gap-3"
+                            >
+                              <Webhook className="h-5 w-5 flex-shrink-0" />
+                              <span className="truncate">Webhooks</span>
                             </Link>
                           </SidebarMenuButton>
                         </SidebarMenuItem>

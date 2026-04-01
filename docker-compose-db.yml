@@ -64,8 +64,38 @@ services:
       timeout: 10s
       retries: 3
 
+  deepface-postgres:
+    image: pgvector/pgvector:pg17
+    container_name: deepface_postgres
+    environment:
+      POSTGRES_USER: deepface
+      POSTGRES_PASSWORD: deepface
+      POSTGRES_DB: deepface
+    ports:
+      - "5433:5432"
+    volumes:
+      - deepface_postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U deepface"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  deepface-server:
+    image: deepface-server:latest
+    container_name: deepface_server
+    ports:
+      - "8001:8000"
+    environment:
+      - DEEPFACE_POSTGRES_URI=postgresql://deepface:deepface@deepface-postgres:5432/deepface
+    depends_on:
+      deepface-postgres:
+        condition: service_healthy
+    restart: on-failure
+
 volumes:
   db_data:
   neo4j_data:
   pgadmin_data:
   redis_data:
+  deepface_postgres_data:

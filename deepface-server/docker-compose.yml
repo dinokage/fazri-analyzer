@@ -1,0 +1,50 @@
+version: "3.9"
+
+services:
+
+  # PostgreSQL with pgvector extension
+  postgres:
+    image: pgvector/pgvector:pg17
+    container_name: deepface-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: deepface
+      POSTGRES_PASSWORD: deepface
+      POSTGRES_DB: deepface
+    ports:
+      - "5432:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U deepface -d deepface"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+
+  # DeepFace FastAPI server
+  api:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: deepface-api
+    restart: unless-stopped
+    ports:
+      - "8000:8000"
+    environment:
+      HOST: "0.0.0.0"
+      PORT: "8000"
+      WORKERS: "1"
+      MODEL_NAME: "Buffalo_L"
+      DETECTOR_BACKEND: "mtcnn"
+      DISTANCE_METRIC: "cosine"
+      COSINE_THRESHOLD: "0.40"
+      ENFORCE_DETECTION: "true"
+      DEEPFACE_POSTGRES_URI: "postgresql://deepface:deepface@postgres:5432/deepface"
+      DEEPFACE_DATABASE_TYPE: "postgres"
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+volumes:
+  pgdata:

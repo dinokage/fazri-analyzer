@@ -29,6 +29,7 @@ from models.schemas.alerts import (
 )
 from .audit_service import AuditService
 from config import settings
+from services.webhook_service import WebhookService
 
 logger = logging.getLogger(__name__)
 
@@ -112,6 +113,14 @@ class AlertService:
         self.db.refresh(alert)
 
         logger.info(f"Alert created: id={alert.id}, title={alert.title}, severity={alert.severity.value}")
+
+        WebhookService.dispatch_event("ALERT_CREATED", {
+            "alert_id": str(alert.id),
+            "title": alert.title,
+            "severity": alert.severity.value,
+            "zone_id": alert.location.get("zone_id") if alert.location else None,
+            "timestamp": alert.created_at.isoformat() if alert.created_at else "",
+        })
 
         return alert
 
@@ -392,6 +401,13 @@ class AlertService:
 
         logger.info(f"Alert status updated: id={alert_id}, {old_status} -> {new_status.value}")
 
+        if new_status_enum == AlertStatus.ACKNOWLEDGED:
+            WebhookService.dispatch_event("ALERT_ACKNOWLEDGED", {
+                "alert_id": str(alert_id),
+                "acknowledged_by": str(updated_by) if updated_by else None,
+                "timestamp": alert.acknowledged_at.isoformat() if alert.acknowledged_at else "",
+            })
+
         return alert
 
     def assign_alert(
@@ -481,6 +497,13 @@ class AlertService:
         self.db.refresh(alert)
 
         logger.info(f"Alert assigned: id={alert_id}, staff={staff_id}, reason={reason}")
+
+        WebhookService.dispatch_event("ALERT_ASSIGNED", {
+            "alert_id": str(alert_id),
+            "staff_id": str(staff_id),
+            "reason": reason,
+            "timestamp": alert.assigned_at.isoformat() if alert.assigned_at else "",
+        })
 
         return alert
 
@@ -591,6 +614,12 @@ class AlertService:
 
         logger.info(f"Alert resolved: id={alert_id}, type={resolution_type.value}")
 
+        WebhookService.dispatch_event("ALERT_RESOLVED", {
+            "alert_id": str(alert_id),
+            "resolution_type": resolution_type.value,
+            "timestamp": alert.resolved_at.isoformat() if alert.resolved_at else "",
+        })
+
         return alert
 
     def escalate_alert(
@@ -670,6 +699,14 @@ class AlertService:
         self.db.refresh(alert)
 
         logger.info(f"Alert escalated: id={alert_id}, to={escalate_to}, count={alert.escalation_count}")
+
+        WebhookService.dispatch_event("ALERT_ESCALATED", {
+            "alert_id": str(alert_id),
+            "escalated_to": str(escalate_to),
+            "reason": reason,
+            "escalation_count": alert.escalation_count,
+            "timestamp": datetime.utcnow().isoformat(),
+        })
 
         return alert
 

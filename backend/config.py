@@ -32,6 +32,7 @@ class Settings(BaseSettings):
     # JWT Configuration (for better-auth integration)
     BETTER_AUTH_SECRET: str = ""  # REQUIRED: Must match auth service BETTER_AUTH_SECRET
     AUTH_SERVICE_URL: str = ""    # REQUIRED: Public URL of the auth service VPS (e.g. https://auth.fazri.com)
+    AUTH_DATABASE_URL: str = ""   # Direct connection to auth service PostgreSQL (for cross-service queries)
 
     # File Paths
     DATA_DIR: str = "/app/augmented"
@@ -76,6 +77,7 @@ class Settings(BaseSettings):
     # Alert System Feature Flags
     ALERT_SYSTEM_ENABLED: bool = True
     DEMO_MODE_ENABLED: bool = True
+    ALERT_COOLDOWN_SECONDS: int = 60  # Suppress duplicate alerts for same face/stream within this window
 
     # Assignment Configuration
     ALERT_MAX_CONCURRENT_PER_STAFF: int = 3  # Max alerts per staff member
@@ -132,6 +134,48 @@ class Settings(BaseSettings):
     DATABASE_MAX_OVERFLOW: int = 20
     DATABASE_POOL_TIMEOUT: int = 30
     DATABASE_POOL_RECYCLE: int = 3600
+
+    # =========================================================================
+    # DeepFace Integration
+    # =========================================================================
+
+    DEEPFACE_ENABLED: bool = True
+    # URL of the DeepFace server (container-to-container: http://deepface-server:8000)
+    DEEPFACE_SERVER_URL: str = "http://deepface-server:8000"
+    # HMAC-SHA256 secret for webhook signature validation; empty = skip (dev only)
+    DEEPFACE_WEBHOOK_SECRET: str = ""
+    # Face distance threshold: 0.0 = identical, >0.60 = no match (tuned for RTSP quality)
+    DEEPFACE_CONFIDENCE_THRESHOLD: float = 0.60
+    # Distance above which to flag a "low confidence" anomaly even if within threshold
+    DEEPFACE_LOW_CONFIDENCE_DISTANCE: float = 0.45
+    # How long in minutes before a second detection in a different zone is "impossible travel"
+    DEEPFACE_IMPOSSIBLE_TRAVEL_MINUTES: int = 5
+    # Interval for batch sync from DeepFace pgvector DB (seconds); 0 = disabled
+    DEEPFACE_BATCH_SYNC_INTERVAL_SECONDS: int = 300
+    # Connection string to the DeepFace pgvector Postgres DB (for batch sync)
+    DEEPFACE_POSTGRES_URI: str = "postgresql://deepface:deepface@deepface-postgres:5432/deepface"
+
+    # =========================================================================
+    # MediaMTX RTSP Relay
+    # =========================================================================
+
+    GO2RTC_API_URL: str = "http://go2rtc:1984"       # HTTP API + WebUI + HLS + WebRTC + snapshots
+    GO2RTC_RTSP_URL: str = "rtsp://go2rtc:8554"     # RTSP re-publish (DeepFace consumes here)
+    GO2RTC_ENABLED: bool = True
+
+    # =========================================================================
+    # Discord Webhook
+    # =========================================================================
+    # Incoming webhook URL for unknown-face alert notifications.
+    # Leave empty to disable.
+    DISCORD_WEBHOOK_URL: str = ""
+
+    # =========================================================================
+    # Web Push (VAPID)
+    # =========================================================================
+    VAPID_PRIVATE_KEY: str = ""  # Base64url-encoded VAPID private key
+    VAPID_PUBLIC_KEY: str = ""   # Base64url-encoded VAPID public key (sent to clients)
+    VAPID_CLAIMS_EMAIL: str = "alerts@fazri.campus"  # mailto: claim in VAPID JWT
 
     model_config = ConfigDict(
         env_file=".env",

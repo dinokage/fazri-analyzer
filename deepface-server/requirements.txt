@@ -1,0 +1,26 @@
+# Web framework
+fastapi==0.115.12
+uvicorn[standard]==0.34.0
+python-multipart==0.0.22        # required for UploadFile / Form support
+
+# Settings
+pydantic-settings==2.7.1
+
+# InsightFace — SCRFD face detector + ArcFace recognition (buffalo_l model pack)
+insightface>=0.7.3
+onnxruntime>=1.9.0
+albumentations
+
+# Image processing
+opencv-python-headless==4.11.0.86   # headless — no GUI in server context
+Pillow>=12.1.1
+numpy==1.26.4
+
+# Database — pgvector for embedding storage and HNSW-indexed cosine search
+psycopg[binary]>=3.1
+pgvector==0.3.6
+
+# Utilities
+python-dotenv==1.0.1
+sentry-sdk[fastapi]==2.24.0
+httpx==0.27.2                   # async HTTP client for webhook delivery

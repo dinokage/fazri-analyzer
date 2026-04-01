@@ -1,4 +1,5 @@
-import "dotenv/config";
+import "./instrument";
+import * as Sentry from "@sentry/node";
 import express from "express";
 import cors from "cors";
 import { toNodeHandler } from "better-auth/node";
@@ -46,6 +47,8 @@ app.post("/api/check-username", async (req, res) => {
   }
 });
 
+
+Sentry.setupExpressErrorHandler(app);
 
 app.listen(PORT, () => {
   console.log(`Auth service running on port ${PORT}`);

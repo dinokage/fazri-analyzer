@@ -1,7 +1,10 @@
 # backend/app/api/entity_routes.py
+import difflib
+import logging
 from fastapi import APIRouter, HTTPException, Query, Depends
 from typing import Optional, List
 from pydantic import BaseModel
+from sqlalchemy.orm import Session
 
 from services.entity_resolver import get_resolver
 from services.confidence_scorer import ConfidenceScorer
@@ -9,8 +12,46 @@ from models.entity import Entity
 from auth.dependencies import get_current_user, require_staff
 from auth.models import AuthenticatedUser, UserRole
 from auth.exceptions import PermissionDeniedError
+from database.connection import get_db
+
+logger = logging.getLogger(__name__)
+
+
+def _name_similarity(query: str, candidate: str) -> float:
+    """Fuzzy similarity between a search query and a candidate name.
+
+    Takes the maximum of:
+    - Full sequence ratio (handles typos across full names)
+    - Best per-word ratio (handles partial searches like "john" in "John Smith")
+
+    Examples:
+        "john"  vs "John Smith" → word hit on "John"  → 1.0
+        "smith" vs "John Smith" → word hit on "Smith"  → 1.0
+        "jhn"   vs "John Smith" → word approx on "John" → ~0.86
+    """
+    q = query.lower()
+    n = candidate.lower()
+    full = difflib.SequenceMatcher(None, q, n).ratio()
+    word_best = max(
+        (difflib.SequenceMatcher(None, q, word).ratio() for word in n.split()),
+        default=0.0,
+    )
+    return max(full, word_best)
 
 router = APIRouter(prefix="/api/v1/entities", tags=["entities"])
+
+# Module-level shared engine for auth database queries (lazy singleton)
+_auth_engine = None
+
+
+def _get_auth_engine():
+    global _auth_engine
+    if _auth_engine is None:
+        from sqlalchemy import create_engine
+        from config import settings
+        if settings.AUTH_DATABASE_URL:
+            _auth_engine = create_engine(settings.AUTH_DATABASE_URL, pool_pre_ping=True)
+    return _auth_engine
 
 class EntitySearchRequest(BaseModel):
     identifier_type: str
@@ -56,22 +97,92 @@ async def search_entity(
 async def fuzzy_search_by_name(
     name: str = Query(..., description="Name to search"),
     threshold: float = Query(0.85, ge=0.0, le=1.0),
-    current_user: AuthenticatedUser = Depends(require_staff())
+    current_user: AuthenticatedUser = Depends(require_staff()),
+    db: Session = Depends(get_db),
 ):
-    """Fuzzy name search (STAFF+ only)"""
-    resolver = get_resolver()
-    matches = resolver.resolve_by_fuzzy_name(name, threshold)
-    
+    """Fuzzy name search across auth users and staff_profiles (STAFF+ only)"""
+    from sqlalchemy import text
+    from config import settings
+
+    seen_entity_ids: set = set()
+    matches = []
+
+    # ── 1. Query auth service user table ──────────────────────────────────────
+    auth_engine = _get_auth_engine()
+    if auth_engine is not None:
+        try:
+            with auth_engine.connect() as conn:
+                rows = conn.execute(
+                    text(
+                        "SELECT entity_id, name, role, department, face_id "
+                        'FROM "user" '
+                        "WHERE name ILIKE :pattern OR entity_id ILIKE :pattern "
+                        "ORDER BY name LIMIT 20"
+                    ),
+                    {"pattern": f"%{name}%"},
+                ).fetchall()
+            for row in rows:
+                if not row.entity_id:
+                    continue
+                similarity = max(
+                    _name_similarity(name, row.name) if row.name else 0.0,
+                    _name_similarity(name, row.entity_id),
+                )
+                if similarity < threshold:
+                    continue
+                seen_entity_ids.add(row.entity_id)
+                matches.append({
+                    "entity": {
+                        "entity_id": row.entity_id,
+                        "name": row.name,
+                        "entity_type": row.role.lower() if row.role else "student",
+                        "department": row.department,
+                        "face_id": row.face_id,
+                    },
+                    "similarity": round(similarity, 4),
+                })
+        except Exception as exc:
+            logger.warning("Auth DB fuzzy-search failed: %s", exc)
+
+    # ── 2. Query staff_profiles (non-mock, with entity_id) ────────────────────
+    from models.db.alerts import StaffProfile
+
+    from sqlalchemy import or_
+    staff_list = (
+        db.query(StaffProfile)
+        .filter(or_(StaffProfile.name.ilike(f"%{name}%"), StaffProfile.entity_id.ilike(f"%{name}%")))
+        .filter(StaffProfile.is_mock_user.is_(False))
+        .filter(StaffProfile.entity_id.isnot(None))
+        .order_by(StaffProfile.name)
+        .limit(20)
+        .all()
+    )
+    for s in staff_list:
+        if not s.name or s.entity_id in seen_entity_ids:
+            continue
+        similarity = max(
+            _name_similarity(name, s.name),
+            _name_similarity(name, s.entity_id),
+        )
+        if similarity < threshold:
+            continue
+        matches.append({
+            "entity": {
+                "entity_id": s.entity_id,
+                "name": s.name,
+                "entity_type": s.role.value if s.role else "staff",
+                "department": s.department,
+                "face_id": None,
+            },
+            "similarity": round(similarity, 4),
+        })
+
+    matches.sort(key=lambda m: m["entity"]["name"])
+
     return {
         "query": name,
         "threshold": threshold,
-        "matches": [
-            {
-                "entity": match[0],
-                "similarity": match[1]
-            }
-            for match in matches[:10]  # Top 10
-        ]
+        "matches": matches[:20],
     }
 
 @router.get("/{entity_id}")
