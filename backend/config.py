@@ -171,11 +171,41 @@ class Settings(BaseSettings):
     DISCORD_WEBHOOK_URL: str = ""
 
     # =========================================================================
+    # Hikvision ISAPI Access Control
+    # =========================================================================
+    HIKVISION_ENABLED: bool = False
+    HIKVISION_BASE_URL: str = "http://localhost:9001"  # simulator default
+    HIKVISION_USERNAME: str = "admin"
+    HIKVISION_PASSWORD: str = ""
+    HIKVISION_POLL_INTERVAL_SECONDS: int = 5
+    # JSON string mapping door numbers to zone_ids, e.g. '{"1": "LIB_ENT", "2": "LAB_101"}'
+    HIKVISION_DOOR_ZONE_MAP: str = "{}"
+
+    # =========================================================================
+    # Aruba AOS8 WiFi
+    # =========================================================================
+    ARUBA_ENABLED: bool = False
+    ARUBA_BASE_URL: str = "http://localhost:9002"  # simulator default
+    ARUBA_USERNAME: str = ""
+    ARUBA_PASSWORD: str = ""
+    ARUBA_POLL_INTERVAL_SECONDS: int = 30
+    # JSON string mapping AP names to zone_ids, e.g. '{"AP-LIB-1F-01": "LIB_ENT"}'
+    ARUBA_AP_ZONE_MAP: str = "{}"
+
+    # =========================================================================
     # Web Push (VAPID)
     # =========================================================================
     VAPID_PRIVATE_KEY: str = ""  # Base64url-encoded VAPID private key
     VAPID_PUBLIC_KEY: str = ""   # Base64url-encoded VAPID public key (sent to clients)
     VAPID_CLAIMS_EMAIL: str = "alerts@fazri.campus"  # mailto: claim in VAPID JWT
+
+    # =========================================================================
+    # Testing — NEVER enable in production
+    # =========================================================================
+    # When TESTING=true the JWT decoder also accepts HS256 tokens signed with
+    # TEST_JWT_SECRET so integration tests can run without a live auth service.
+    TESTING: bool = False
+    TEST_JWT_SECRET: str = "test-secret-do-not-use-in-production"
 
     model_config = ConfigDict(
         env_file=".env",

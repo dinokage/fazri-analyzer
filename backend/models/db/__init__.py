@@ -17,6 +17,9 @@ from .alerts import (
     NotificationChannel,
     NotificationStatus,
 )
+from .sensor_events import SensorEventRecord
+from .entity_identifiers import EntityIdentifier
+from .entity_profiles import EntityProfile
 
 __all__ = [
     # Models
@@ -36,4 +39,9 @@ __all__ = [
     "AuditAction",
     "NotificationChannel",
     "NotificationStatus",
+    # Sensor events
+    "SensorEventRecord",
+    # Entity resolution tables
+    "EntityIdentifier",
+    "EntityProfile",
 ]
