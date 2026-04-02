@@ -5,9 +5,9 @@ Simulates the Hikvision AcsEvent search endpoint so the HikvisionISAPIClient
 can be tested without real hardware.
 
 Start:
-    uvicorn backend.simulators.hikvision_simulator:app --port 9001
+    uvicorn backend.simulators.hikvision_simulator:app --port 9011
     # or with continuous event generation:
-    uvicorn backend.simulators.hikvision_simulator:app --port 9001 & python -m backend.simulators.hikvision_simulator --continuous
+    uvicorn backend.simulators.hikvision_simulator:app --port 9011 & python -m backend.simulators.hikvision_simulator --continuous
 """
 
 from __future__ import annotations
@@ -259,7 +259,7 @@ if __name__ == "__main__":
 
     parser = argparse.ArgumentParser(description="Hikvision ISAPI Simulator")
     parser.add_argument("--continuous", action="store_true", help="Generate events continuously")
-    parser.add_argument("--port", type=int, default=9001)
+    parser.add_argument("--port", type=int, default=9011)
     args = parser.parse_args()
 
     if args.continuous:

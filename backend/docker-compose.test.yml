@@ -89,7 +89,7 @@ services:
     environment:
       HIKVISION_SIM_CONTINUOUS: "1"
     ports:
-      - "9001:9001"
+      - "9011:9001"
     networks:
       - fazri-test
 
