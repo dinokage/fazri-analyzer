@@ -4,7 +4,8 @@
 /node_modules
 /auth/node_modules
 /auth/dist
-/docs
+/docs/*
+!docs/enrollment-runbook.md
 /.pnp
 .pnp.*
 .yarn/*
@@ -35,6 +36,7 @@ yarn-error.log*
 
 # env files (can opt-in for committing if needed)
 .env*
+!.env.prod.example
 
 # vercel
 .vercel

@@ -31,6 +31,8 @@ import {
   UserCheck,
   Camera,
   Webhook,
+  Radio,
+  Heart,
 } from "lucide-react"
 import { useActiveAlertCount } from "@/hooks/useAlerts"
 
@@ -119,6 +121,20 @@ export function SidebarLayout({ children }: { children: React.ReactNode }) {
                         <SidebarMenuItem>
                           <SidebarMenuButton
                             asChild
+                            data-active={isActive("/dashboard/events")}
+                          >
+                            <Link
+                              href="/dashboard/events"
+                              className="flex items-center gap-3"
+                            >
+                              <Radio className="h-5 w-5 flex-shrink-0" />
+                              <span className="truncate">Sensor Events</span>
+                            </Link>
+                          </SidebarMenuButton>
+                        </SidebarMenuItem>
+                        <SidebarMenuItem>
+                          <SidebarMenuButton
+                            asChild
                             data-active={isActive("/dashboard/alerts") || pathname.startsWith("/dashboard/alerts/")}
                           >
                             <Link
@@ -188,6 +204,20 @@ export function SidebarLayout({ children }: { children: React.ReactNode }) {
                             >
                               <Webhook className="h-5 w-5 flex-shrink-0" />
                               <span className="truncate">Webhooks</span>
+                            </Link>
+                          </SidebarMenuButton>
+                        </SidebarMenuItem>
+                        <SidebarMenuItem>
+                          <SidebarMenuButton
+                            asChild
+                            data-active={isActive("/dashboard/system")}
+                          >
+                            <Link
+                              href="/dashboard/system"
+                              className="flex items-center gap-3"
+                            >
+                              <Heart className="h-5 w-5 flex-shrink-0" />
+                              <span className="truncate">System Health</span>
                             </Link>
                           </SidebarMenuButton>
                         </SidebarMenuItem>
