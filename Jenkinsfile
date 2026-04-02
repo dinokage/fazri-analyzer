@@ -51,6 +51,22 @@ pipeline {
 
         // ── Notification credentials ──────────────────────────────────────────
         DISCORD_WEBHOOK_URL  = credentials('fazri-discord-webhook-url')
+
+        // ── Hikvision RFID ────────────────────────────────────────────────────
+        HIKVISION_ENABLED       = credentials('fazri-hikvision-enabled')
+        HIKVISION_BASE_URL      = credentials('fazri-hikvision-base-url')
+        HIKVISION_USERNAME      = credentials('fazri-hikvision-username')
+        HIKVISION_PASSWORD      = credentials('fazri-hikvision-password')
+        HIKVISION_POLL_INTERVAL = credentials('fazri-hikvision-poll-interval')
+        HIKVISION_DOOR_ZONE_MAP = credentials('fazri-hikvision-door-zone-map')
+
+        // ── Aruba WiFi ────────────────────────────────────────────────────────
+        ARUBA_ENABLED           = credentials('fazri-aruba-enabled')
+        ARUBA_BASE_URL          = credentials('fazri-aruba-base-url')
+        ARUBA_USERNAME          = credentials('fazri-aruba-username')
+        ARUBA_PASSWORD          = credentials('fazri-aruba-password')
+        ARUBA_POLL_INTERVAL     = credentials('fazri-aruba-poll-interval')
+        ARUBA_AP_ZONE_MAP       = credentials('fazri-aruba-ap-zone-map')
     }
 
     stages {
@@ -265,6 +281,19 @@ pipeline {
                                     -e GO2RTC_API_URL="http://${GO2RTC_CONTAINER}:1984" \
                                     -e GO2RTC_RTSP_URL="rtsp://${GO2RTC_CONTAINER}:8554" \
                                     -e GO2RTC_ENABLED=true \
+                                    -e HIKVISION_ENABLED="${HIKVISION_ENABLED}" \
+                                    -e HIKVISION_BASE_URL="${HIKVISION_BASE_URL}" \
+                                    -e HIKVISION_USERNAME="${HIKVISION_USERNAME}" \
+                                    -e HIKVISION_PASSWORD="${HIKVISION_PASSWORD}" \
+                                    -e HIKVISION_POLL_INTERVAL_SECONDS="${HIKVISION_POLL_INTERVAL}" \
+                                    -e HIKVISION_DOOR_ZONE_MAP="${HIKVISION_DOOR_ZONE_MAP}" \
+                                    -e ARUBA_ENABLED="${ARUBA_ENABLED}" \
+                                    -e ARUBA_BASE_URL="${ARUBA_BASE_URL}" \
+                                    -e ARUBA_USERNAME="${ARUBA_USERNAME}" \
+                                    -e ARUBA_PASSWORD="${ARUBA_PASSWORD}" \
+                                    -e ARUBA_POLL_INTERVAL_SECONDS="${ARUBA_POLL_INTERVAL}" \
+                                    -e ARUBA_AP_ZONE_MAP="${ARUBA_AP_ZONE_MAP}" \
+                                    -e TESTING=false \
                                     -v app_data_${DEPLOY_ENV}:/app/augmented \
                                     -v app_ml_models_${DEPLOY_ENV}:/app/ml_models \
                                     -v app_logs_${DEPLOY_ENV}:/app/logs \
