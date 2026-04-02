@@ -31,6 +31,7 @@ import random
 import sys
 from datetime import datetime, timezone, timedelta
 from typing import Dict, List
+from urllib.parse import unquote
 
 logger = logging.getLogger(__name__)
 
@@ -88,11 +89,14 @@ def _load_entities_from_db() -> List[Dict]:
         return []
 
     try:
+        # POSTGRES_PASSWORD may be URL-encoded (e.g. %40 for @) when stored in
+        # Jenkins credentials for use in SQLAlchemy URLs. psycopg2 takes the
+        # raw password, so decode it first.
         conn = psycopg2.connect(
             host=os.getenv("POSTGRES_SERVER", "db"),
             port=int(os.getenv("POSTGRES_PORT", "5432")),
             user=os.getenv("POSTGRES_USER", "postgres"),
-            password=os.getenv("POSTGRES_PASSWORD", ""),
+            password=unquote(os.getenv("POSTGRES_PASSWORD", "")),
             dbname=os.getenv("POSTGRES_DB", "ethos_iitg"),
             connect_timeout=5,
         )
