@@ -88,8 +88,22 @@ services:
     command: uvicorn simulators.hikvision_simulator:app --host 0.0.0.0 --port 9001
     environment:
       HIKVISION_SIM_CONTINUOUS: "1"
+      HIKVISION_SIM_COORDINATOR: "1"
+      POSTGRES_SERVER: ${SIM_POSTGRES_SERVER:-db}
+      POSTGRES_USER: ${SIM_POSTGRES_USER:-postgres}
+      POSTGRES_PASSWORD: ${SIM_POSTGRES_PASSWORD:-testpassword}
+      POSTGRES_DB: ${SIM_POSTGRES_DB:-ethos_test}
+      POSTGRES_PORT: "5432"
+      REDIS_HOST: ${SIM_REDIS_HOST:-redis}
+      REDIS_PORT: ${SIM_REDIS_PORT:-6379}
+      SIM_NUM_ENTITIES: "10"
     ports:
       - "9011:9001"
+    depends_on:
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
     networks:
       - fazri-test
 
@@ -100,8 +114,14 @@ services:
       target: development
     container_name: fazri_test_aruba_sim
     command: uvicorn simulators.aruba_simulator:app --host 0.0.0.0 --port 9002
+    environment:
+      REDIS_HOST: ${SIM_REDIS_HOST:-redis}
+      REDIS_PORT: ${SIM_REDIS_PORT:-6379}
     ports:
       - "9002:9002"
+    depends_on:
+      redis:
+        condition: service_healthy
     networks:
       - fazri-test
 

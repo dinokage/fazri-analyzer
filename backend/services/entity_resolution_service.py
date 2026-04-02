@@ -22,7 +22,7 @@ from datetime import datetime, timezone
 from typing import List, Optional
 from functools import lru_cache
 
-from sqlalchemy import text
+from sqlalchemy import func, text
 from sqlalchemy.orm import Session
 
 from database.connection import SessionLocal
@@ -89,15 +89,21 @@ class EntityResolutionService:
         if own_session:
             db = SessionLocal()
         try:
-            ident = (
-                db.query(EntityIdentifier)
-                .filter_by(
-                    identifier_type=identifier_type,
-                    identifier_value=str(identifier_value),
-                    active=True,
-                )
-                .first()
+            # mac_address identifiers may be stored in mixed case (e.g. "DH6d0bd80c8f8e")
+            # while sensors send lowercase — use case-insensitive comparison for MACs only.
+            ident_query = db.query(EntityIdentifier).filter(
+                EntityIdentifier.identifier_type == identifier_type,
+                EntityIdentifier.active == True,  # noqa: E712
             )
+            if identifier_type == "mac_address":
+                ident_query = ident_query.filter(
+                    func.lower(EntityIdentifier.identifier_value) == identifier_value.lower()
+                )
+            else:
+                ident_query = ident_query.filter(
+                    EntityIdentifier.identifier_value == str(identifier_value)
+                )
+            ident = ident_query.first()
             if ident is None:
                 return None
 

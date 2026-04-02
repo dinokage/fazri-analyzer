@@ -24,6 +24,8 @@ from typing import Optional
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
+import json
+
 from fastapi import FastAPI, Request, Response, HTTPException, status
 from fastapi.responses import PlainTextResponse
 
@@ -62,6 +64,27 @@ if not SAMPLE_ENTITIES:
 # In-memory event store for the simulator
 _events: list = []
 _serial_counter = 1000
+
+# Module-level async Redis client (initialised on startup)
+_redis = None
+
+
+async def _get_redis():
+    """Return an async Redis client, or None if unavailable."""
+    try:
+        import redis.asyncio as aioredis
+        client = aioredis.Redis(
+            host=os.getenv("REDIS_HOST", "redis"),
+            port=int(os.getenv("REDIS_PORT", "6379")),
+            db=0,
+            socket_timeout=2,
+            socket_connect_timeout=2,
+        )
+        await client.ping()
+        return client
+    except Exception as exc:
+        logger.warning("Hikvision sim: Redis unavailable (%s) — falling back to random events", exc)
+        return None
 
 
 def _make_event(entity: dict, zone_id: str, granted: bool = True) -> dict:
@@ -262,25 +285,82 @@ async def seed_events() -> None:
 
 
 # ---------------------------------------------------------------------------
-# --continuous mode: emit a new event every 2-5 seconds
+# --continuous mode: original random event generator (fallback)
 # ---------------------------------------------------------------------------
 
 async def _continuous_generator() -> None:
-    """Background task that generates random access events."""
+    """Background task that generates random access events (Redis-unavailable fallback)."""
     while True:
         entity = random.choice(SAMPLE_ENTITIES)
         zone = random.choice(ZONE_IDS)
         _events.append(_make_event(entity, zone, granted=random.random() > 0.1))
-        # Keep the store bounded at 10 000 events
         if len(_events) > 10_000:
             del _events[:5_000]
         await asyncio.sleep(random.uniform(2, 5))
 
 
+# ---------------------------------------------------------------------------
+# Coordinator-driven event generator (primary mode when Redis is available)
+# ---------------------------------------------------------------------------
+
+async def _coordinator_driven_generator() -> None:
+    """
+    Reads entity positions from Redis (written by MovementCoordinator) and
+    appends RFID events to _events whenever an entity arrives at a new zone.
+
+    Fires RFID ACCESS_GRANTED at `since_rfid` time using the entity's real
+    card_id from entity_identifiers — making events resolvable by the backend.
+    """
+    last_zone: dict = {}  # entity_id → last zone an RFID event was fired for
+
+    while True:
+        now = datetime.now(timezone.utc)
+        try:
+            raw_eids = await _redis.smembers("sim:active_entities")
+            for raw_eid in raw_eids:
+                eid = raw_eid.decode() if isinstance(raw_eid, bytes) else raw_eid
+                raw = await _redis.get(f"sim:entity:{eid}")
+                if not raw:
+                    continue
+                info = json.loads(raw)
+                if info.get("traveling"):
+                    continue
+                zone = info["zone_id"]
+                since_rfid = datetime.fromisoformat(info["since_rfid"])
+                if zone != last_zone.get(eid) and since_rfid <= now:
+                    entity = {
+                        "card_id":   info["card_id"],
+                        "entity_id": eid,
+                        "name":      info.get("name", ""),
+                    }
+                    _events.append(_make_event(entity, zone, granted=True))
+                    last_zone[eid] = zone
+                    if len(_events) > 10_000:
+                        del _events[:5_000]
+        except Exception as exc:
+            logger.warning("Hikvision sim coordinator generator error: %s", exc)
+
+        await asyncio.sleep(3)
+
+
 @app.on_event("startup")
 async def maybe_start_continuous() -> None:
-    if os.getenv("HIKVISION_SIM_CONTINUOUS", "").lower() in ("1", "true", "yes"):
-        asyncio.create_task(_continuous_generator())
+    global _redis
+    _redis = await _get_redis()
+
+    continuous = os.getenv("HIKVISION_SIM_CONTINUOUS", "").lower() in ("1", "true", "yes")
+    coordinator = os.getenv("HIKVISION_SIM_COORDINATOR", "").lower() in ("1", "true", "yes")
+
+    if coordinator and _redis is not None:
+        # This instance owns the movement coordinator
+        from simulators.movement_coordinator import run_coordinator
+        asyncio.create_task(run_coordinator(_redis))
+
+    if continuous:
+        if _redis is not None:
+            asyncio.create_task(_coordinator_driven_generator())
+        else:
+            asyncio.create_task(_continuous_generator())
 
 
 if __name__ == "__main__":

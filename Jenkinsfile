@@ -67,6 +67,16 @@ pipeline {
         ARUBA_PASSWORD          = credentials('fazri-aruba-password')
         ARUBA_POLL_INTERVAL     = credentials('fazri-aruba-poll-interval')
         ARUBA_AP_ZONE_MAP       = credentials('fazri-aruba-ap-zone-map')
+
+        // ── Simulators (reuse existing DB/Redis credentials) ──────────────────
+        // These feed the MovementCoordinator inside the simulator containers.
+        SIM_POSTGRES_SERVER   = credentials('fazri-postgres-server')
+        SIM_POSTGRES_USER     = credentials('fazri-postgres-user')
+        SIM_POSTGRES_PASSWORD = credentials('fazri-postgres-password')
+        SIM_POSTGRES_DB       = credentials('fazri-postgres-db')
+        SIM_REDIS_HOST        = credentials('fazri-redis-host')
+        SIM_REDIS_PORT        = credentials('fazri-redis-port')
+        SIM_NUM_ENTITIES      = '10'
     }
 
     stages {
@@ -482,6 +492,53 @@ pipeline {
                             echo "✗ go2rtc health check failed after 12s"
                             docker logs ${GO2RTC_CONTAINER} --tail=30
                             exit 1
+                        '''
+                    }
+                }
+
+                stage('Simulators') {
+                    when { expression { env.BUILD_BACKEND == 'true' } }
+                    steps {
+                        sh '''
+                            echo "Removing existing simulator containers..."
+                            docker rm -f fazri-hikvision-sim-${DEPLOY_ENV} 2>/dev/null || true
+                            docker rm -f fazri-aruba-sim-${DEPLOY_ENV}     2>/dev/null || true
+
+                            echo "Starting Hikvision simulator (movement coordinator)..."
+                            docker run -d \
+                                --name fazri-hikvision-sim-${DEPLOY_ENV} \
+                                --restart unless-stopped \
+                                --network ${NETWORK_NAME} \
+                                --no-healthcheck \
+                                -p 9011:9001 \
+                                -e HIKVISION_SIM_CONTINUOUS=1 \
+                                -e HIKVISION_SIM_COORDINATOR=1 \
+                                -e POSTGRES_SERVER="${SIM_POSTGRES_SERVER}" \
+                                -e POSTGRES_USER="${SIM_POSTGRES_USER}" \
+                                -e POSTGRES_PASSWORD="${SIM_POSTGRES_PASSWORD}" \
+                                -e POSTGRES_DB="${SIM_POSTGRES_DB}" \
+                                -e POSTGRES_PORT=5432 \
+                                -e REDIS_HOST="${SIM_REDIS_HOST}" \
+                                -e REDIS_PORT="${SIM_REDIS_PORT}" \
+                                -e SIM_NUM_ENTITIES="${SIM_NUM_ENTITIES}" \
+                                --entrypoint uvicorn \
+                                ${BACKEND_IMAGE}:${IMAGE_TAG} \
+                                simulators.hikvision_simulator:app --host 0.0.0.0 --port 9001
+
+                            echo "Starting Aruba simulator..."
+                            docker run -d \
+                                --name fazri-aruba-sim-${DEPLOY_ENV} \
+                                --restart unless-stopped \
+                                --network ${NETWORK_NAME} \
+                                --no-healthcheck \
+                                -p 9002:9002 \
+                                -e REDIS_HOST="${SIM_REDIS_HOST}" \
+                                -e REDIS_PORT="${SIM_REDIS_PORT}" \
+                                --entrypoint uvicorn \
+                                ${BACKEND_IMAGE}:${IMAGE_TAG} \
+                                simulators.aruba_simulator:app --host 0.0.0.0 --port 9002
+
+                            echo "✓ Simulators deployed"
                         '''
                     }
                 }

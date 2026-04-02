@@ -12,6 +12,8 @@ from __future__ import annotations
 
 import asyncio
 import csv
+import json
+import logging
 import os
 import random
 import sys
@@ -23,6 +25,8 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from fastapi import FastAPI, Query, HTTPException, status, Response
 from fastapi.responses import JSONResponse
+
+logger = logging.getLogger(__name__)
 
 # ---------------------------------------------------------------------------
 # Sample data setup
@@ -80,9 +84,26 @@ if not SAMPLE_DEVICES:
 
 _sessions: Dict[str, datetime] = {}  # token → expiry
 
-# Current client associations: mac → {ap, zone, assoc_time}
-_current_clients: Dict[str, Dict] = {}
-_last_movement: datetime = datetime.now(timezone.utc)
+# Module-level async Redis client (set on startup)
+_redis = None
+
+
+async def _get_redis():
+    """Return an async Redis client, or None if unavailable."""
+    try:
+        import redis.asyncio as aioredis
+        client = aioredis.Redis(
+            host=os.getenv("REDIS_HOST", "redis"),
+            port=int(os.getenv("REDIS_PORT", "6379")),
+            db=0,
+            socket_timeout=2,
+            socket_connect_timeout=2,
+        )
+        await client.ping()
+        return client
+    except Exception as exc:
+        logger.warning("Aruba sim: Redis unavailable (%s) — falling back to random clients", exc)
+        return None
 
 
 def _random_clients() -> List[Dict]:
@@ -117,23 +138,25 @@ def _random_clients() -> List[Dict]:
 
 app = FastAPI(title="Aruba AOS8 Simulator")
 
-# Cached client list, refreshed periodically to simulate movement
+# Cached client list — used as fallback when Redis is unavailable
 _cached_clients: List[Dict] = []
 
 
 @app.on_event("startup")
 async def init_clients() -> None:
-    global _cached_clients
+    global _redis, _cached_clients
+    _redis = await _get_redis()
+    # Pre-populate fallback cache; also start legacy random mover if Redis unavailable
     _cached_clients = _random_clients()
-    asyncio.create_task(_movement_simulator())
+    if _redis is None:
+        asyncio.create_task(_movement_simulator())
 
 
 async def _movement_simulator() -> None:
-    """Simulate clients moving between APs every 30-60 seconds."""
+    """Legacy random movement — only runs when Redis (coordinator) is unavailable."""
     global _cached_clients
     while True:
         await asyncio.sleep(random.uniform(30, 60))
-        # Move 10-20% of clients to different APs
         clients = list(_cached_clients)
         n_move = max(1, len(clients) // 8)
         for _ in range(n_move):
@@ -191,9 +214,53 @@ def _validate_session(token: str) -> None:
 
 @app.get("/v1/monitoring/client")
 async def get_clients(UIDARUBA: str = Query(default="")) -> dict:
-    """Return currently associated WiFi clients."""
+    """Return currently associated WiFi clients.
+
+    When Redis is available, reads coordinator positions so that WiFi events
+    always agree with RFID events (same entity, same zone).  Falls back to
+    the cached random client list when Redis is unavailable.
+    """
     _validate_session(UIDARUBA)
-    return {"Clients": _cached_clients}
+
+    if _redis is None:
+        return {"Clients": _cached_clients}
+
+    now = datetime.now(timezone.utc)
+    clients: List[Dict] = []
+    try:
+        raw_eids = await _redis.smembers("sim:active_entities")
+        for raw_eid in raw_eids:
+            eid = raw_eid.decode() if isinstance(raw_eid, bytes) else raw_eid
+            raw = await _redis.get(f"sim:entity:{eid}")
+            if not raw:
+                continue
+            info = json.loads(raw)
+            if info.get("traveling"):
+                continue
+            wifi_since = datetime.fromisoformat(info["since_wifi"])
+            if wifi_since > now:
+                continue  # entity's phone hasn't associated yet
+            zone_id = info["zone_id"]
+            ap_name = ZONE_TO_AP.get(zone_id, f"AP-{zone_id}-01")
+            name    = info.get("name", "")
+            clients.append({
+                "MAC":              info["mac"],  # verbatim lowercase from entity_identifiers
+                "Name":             f"{name.split()[0] if name else eid}-phone",
+                "IP":               f"10.1.{random.randint(1, 254)}.{random.randint(1, 254)}",
+                "AP name":          ap_name,
+                "ESSID":            "KIIT-Student",
+                "Status":           "Associated",
+                "Role":             "student",
+                "Phy":              random.choice(["ax-5GHz-40MHz", "ac-5GHz-80MHz"]),
+                "Signal":           str(random.randint(-75, -40)),
+                "Speed (mbps)":     "300",
+                "Association Time": info["since_wifi"],
+            })
+    except Exception as exc:
+        logger.warning("Aruba sim: Redis read failed (%s) — returning cached clients", exc)
+        return {"Clients": _cached_clients}
+
+    return {"Clients": clients}
 
 
 @app.get("/v1/monitoring/ap")
@@ -215,9 +282,10 @@ async def get_aps(UIDARUBA: str = Query(default="")) -> dict:
 
 @app.get("/health")
 async def health() -> dict:
+    coordinator_active = _redis is not None
     return {
         "status": "ok",
-        "clients_online": len(_cached_clients),
+        "coordinator_mode": coordinator_active,
         "active_sessions": len(_sessions),
     }
 
