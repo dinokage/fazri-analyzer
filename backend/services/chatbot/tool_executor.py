@@ -8,10 +8,8 @@ import logging
 
 from services.anomaly_detection import AnomalyDetectionService
 from services.entity_anomaly_detection import EntityAnomalyDetectionService
-from services.spatial_forecasting import SpatialForecastingService
 from services.graph_builder import get_graph_builder
 from services.timeline_service import TimelineService
-from services.pattern_detection import PatternDetector
 
 logger = logging.getLogger(__name__)
 
@@ -27,7 +25,6 @@ class ToolExecutor:
         # Initialize services lazily
         self._anomaly_service = None
         self._entity_anomaly_service = None
-        self._spatial_service = None
         self._graph_builder = None
         self._timeline_service = None
 
@@ -46,14 +43,6 @@ class ToolExecutor:
                 self.neo4j_uri, self.neo4j_user, self.neo4j_password
             )
         return self._entity_anomaly_service
-
-    @property
-    def spatial_service(self) -> SpatialForecastingService:
-        if self._spatial_service is None:
-            self._spatial_service = SpatialForecastingService(
-                self.neo4j_uri, self.neo4j_user, self.neo4j_password
-            )
-        return self._spatial_service
 
     @property
     def graph_builder(self):
@@ -199,83 +188,7 @@ class ToolExecutor:
 
     def _execute_get_zone_occupancy(self, params: Dict[str, Any]) -> Dict[str, Any]:
         """Execute get_zone_occupancy tool"""
-        zone_id = params.get("zone_id")
-        include_flow = params.get("include_flow", True)
-
-        try:
-            if zone_id:
-                # Get specific zone
-                zone_data = self.spatial_service.get_zone_details(zone_id)
-                if zone_data:
-                    occupancy = self.spatial_service.get_current_occupancy(zone_id)
-                    current = occupancy.get("current_occupancy", 0) if occupancy else 0
-                    capacity = zone_data.get("capacity", 0)
-                    return {
-                        "zone_id": zone_id,
-                        "zone_name": zone_data.get("name", zone_id),
-                        "current_occupancy": current,
-                        "capacity": capacity,
-                        "utilization_percent": round(
-                            (current / capacity) * 100, 1
-                        ) if capacity else 0,
-                        "last_updated": datetime.now().isoformat()
-                    }
-                else:
-                    return {"error": f"Zone {zone_id} not found"}
-            else:
-                # Get all zones
-                zones = self.spatial_service.get_all_zones()
-                zone_occupancies = []
-
-                for zone in zones:
-                    zid = zone.get("zone_id")
-                    occupancy = self.spatial_service.get_current_occupancy(zid)
-                    capacity = zone.get("capacity", 0)
-                    current = occupancy.get("current_occupancy", 0) if occupancy else 0
-
-                    zone_occupancies.append({
-                        "zone_id": zid,
-                        "zone_name": zone.get("name", zid),
-                        "zone_type": zone.get("zone_type"),
-                        "current_occupancy": current,
-                        "capacity": capacity,
-                        "utilization_percent": round((current / capacity) * 100, 1) if capacity else 0
-                    })
-
-                # Sort by utilization (highest first)
-                zone_occupancies.sort(key=lambda x: x["utilization_percent"], reverse=True)
-
-                # Find highest and lowest
-                highest = zone_occupancies[0] if zone_occupancies else None
-                lowest = zone_occupancies[-1] if zone_occupancies else None
-
-                return {
-                    "zones": zone_occupancies,
-                    "count": len(zone_occupancies),
-                    "summary": {
-                        "highest_occupancy": {
-                            "zone_id": highest["zone_id"],
-                            "zone_name": highest["zone_name"],
-                            "current_occupancy": highest["current_occupancy"],
-                            "capacity": highest["capacity"],
-                            "utilization_percent": highest["utilization_percent"]
-                        } if highest else None,
-                        "lowest_occupancy": {
-                            "zone_id": lowest["zone_id"],
-                            "zone_name": lowest["zone_name"],
-                            "current_occupancy": lowest["current_occupancy"],
-                            "capacity": lowest["capacity"],
-                            "utilization_percent": lowest["utilization_percent"]
-                        } if lowest else None,
-                        "total_capacity": sum(z["capacity"] for z in zone_occupancies),
-                        "total_occupancy": sum(z["current_occupancy"] for z in zone_occupancies)
-                    },
-                    "last_updated": datetime.now().isoformat()
-                }
-
-        except Exception as e:
-            logger.error(f"Error getting zone occupancy: {str(e)}")
-            return {"error": str(e)}
+        return {"error": "Spatial forecasting service removed. Zone data will be available in the new zone management system."}
 
     def _execute_search_entity(self, params: Dict[str, Any]) -> Dict[str, Any]:
         """Execute search_entity tool"""
@@ -1115,8 +1028,8 @@ class ToolExecutor:
                     "message": "Not enough historical data to make a prediction"
                 }
 
-            # Use PatternDetector for prediction
-            prediction = PatternDetector.predict_next_location(events, target_time)
+            # PatternDetector removed - return stub prediction
+            prediction = {"predicted_location": None, "confidence": 0.0, "method": "removed", "evidence": []}
 
             return {
                 "entity_id": entity_id,
@@ -1139,104 +1052,7 @@ class ToolExecutor:
 
     def _execute_get_zone_forecast(self, params: Dict[str, Any]) -> Dict[str, Any]:
         """Execute get_zone_forecast tool - predict future zone occupancy"""
-        zone_id = params.get("zone_id")
-        target_time_str = params.get("target_time", "in 1 hour")
-
-        if not zone_id:
-            return {"error": "zone_id is required"}
-
-        try:
-            # Parse target time
-            now = datetime.now(timezone.utc)
-
-            if "in " in target_time_str.lower():
-                # Parse "in X hours" or "in X minutes"
-                parts = target_time_str.lower().replace("in ", "").split()
-                try:
-                    amount = int(parts[0])
-                    if "hour" in parts[1]:
-                        target_time = now + timedelta(hours=amount)
-                    else:
-                        target_time = now + timedelta(minutes=amount)
-                except:
-                    target_time = now + timedelta(hours=1)
-            elif "tomorrow" in target_time_str.lower():
-                # Parse "tomorrow 10am"
-                target_time = now + timedelta(days=1)
-                if any(c.isdigit() for c in target_time_str):
-                    try:
-                        time_part = ''.join(c for c in target_time_str if c.isdigit() or c == ':')
-                        hour = int(time_part.split(':')[0] if ':' in time_part else time_part)
-                        if 'pm' in target_time_str.lower() and hour < 12:
-                            hour += 12
-                        target_time = target_time.replace(hour=hour, minute=0, second=0)
-                    except:
-                        pass
-            elif ":" in target_time_str or "am" in target_time_str.lower() or "pm" in target_time_str.lower():
-                # Parse time like "14:00" or "5pm"
-                try:
-                    time_str = target_time_str.lower().replace("am", "").replace("pm", "").strip()
-                    if ":" in time_str:
-                        hour, minute = map(int, time_str.split(":"))
-                    else:
-                        hour = int(time_str)
-                        minute = 0
-
-                    if "pm" in target_time_str.lower() and hour < 12:
-                        hour += 12
-
-                    target_time = now.replace(hour=hour, minute=minute, second=0, microsecond=0)
-                    if target_time < now:
-                        target_time += timedelta(days=1)  # Assume tomorrow if time passed
-                except:
-                    target_time = now + timedelta(hours=1)
-            else:
-                target_time = now + timedelta(hours=1)
-
-            # Get prediction from spatial service
-            prediction = self.spatial_service.predict_zone_occupancy(zone_id, target_time)
-
-            # Get zone details for context
-            zone_details = self.spatial_service.get_zone_details(zone_id)
-
-            if not zone_details:
-                return {"error": f"Zone {zone_id} not found"}
-
-            # Calculate expected status
-            capacity = zone_details.get("capacity", 100)
-            predicted_occupancy = prediction.get("predicted_occupancy", 0)
-            occupancy_rate = (predicted_occupancy / capacity * 100) if capacity > 0 else 0
-
-            if occupancy_rate >= 90:
-                expected_status = "very crowded"
-            elif occupancy_rate >= 70:
-                expected_status = "crowded"
-            elif occupancy_rate >= 50:
-                expected_status = "moderate"
-            elif occupancy_rate >= 25:
-                expected_status = "light"
-            else:
-                expected_status = "empty"
-
-            return {
-                "zone_id": zone_id,
-                "zone_name": zone_details.get("name", zone_id),
-                "target_time": target_time.isoformat(),
-                "forecast": {
-                    "predicted_occupancy": predicted_occupancy,
-                    "capacity": capacity,
-                    "occupancy_rate_percent": round(occupancy_rate, 1),
-                    "expected_status": expected_status,
-                    "confidence": prediction.get("confidence", 0)
-                },
-                "reasoning": prediction.get("reasoning", ""),
-                "data_points_used": prediction.get("data_points_used", 0),
-                "recommendation": self._get_occupancy_recommendation(expected_status, zone_details.get("name"))
-            }
-
-        except Exception as e:
-            logger.error(f"Error getting zone forecast: {str(e)}")
-            return {"error": str(e)}
+        return {"error": "Spatial forecasting service removed. Zone data will be available in the new zone management system."}
 
     def _get_occupancy_recommendation(self, status: str, zone_name: str) -> str:
         """Generate recommendation based on predicted occupancy"""
@@ -1251,81 +1067,7 @@ class ToolExecutor:
 
     def _execute_get_zone_history(self, params: Dict[str, Any]) -> Dict[str, Any]:
         """Execute get_zone_history tool - historical occupancy trends"""
-        zone_id = params.get("zone_id")
-        days = min(params.get("days", 7), 30)
-        include_hourly = params.get("include_hourly", True)
-
-        if not zone_id:
-            return {"error": "zone_id is required"}
-
-        try:
-            # Get historical data
-            history = self.spatial_service.get_historical_occupancy(zone_id, days)
-
-            if not history:
-                zone_details = self.spatial_service.get_zone_details(zone_id)
-                if not zone_details:
-                    return {"error": f"Zone {zone_id} not found"}
-                return {
-                    "zone_id": zone_id,
-                    "zone_name": zone_details.get("name", zone_id),
-                    "message": "No historical data available for this zone",
-                    "days_analyzed": days
-                }
-
-            # Get zone details
-            zone_details = self.spatial_service.get_zone_details(zone_id)
-
-            # Calculate statistics
-            all_occupancies = [h.get("avg_occupancy", 0) for h in history if h.get("avg_occupancy")]
-            max_occupancies = [h.get("max_occupancy", 0) for h in history if h.get("max_occupancy")]
-
-            avg_occupancy = sum(all_occupancies) / len(all_occupancies) if all_occupancies else 0
-            peak_occupancy = max(max_occupancies) if max_occupancies else 0
-
-            # Find peak hours
-            hourly_avgs = {}
-            for h in history:
-                hour = h.get("hour")
-                if hour is not None:
-                    if hour not in hourly_avgs:
-                        hourly_avgs[hour] = []
-                    hourly_avgs[hour].append(h.get("avg_occupancy", 0))
-
-            peak_hours = []
-            if hourly_avgs:
-                sorted_hours = sorted(
-                    [(hour, sum(occs)/len(occs)) for hour, occs in hourly_avgs.items()],
-                    key=lambda x: x[1],
-                    reverse=True
-                )
-                peak_hours = [{"hour": h, "avg_occupancy": round(o, 1)} for h, o in sorted_hours[:3]]
-
-            response = {
-                "zone_id": zone_id,
-                "zone_name": zone_details.get("name", zone_id) if zone_details else zone_id,
-                "capacity": zone_details.get("capacity") if zone_details else None,
-                "analysis_period": f"Last {days} days",
-                "statistics": {
-                    "average_occupancy": round(avg_occupancy, 1),
-                    "peak_occupancy": peak_occupancy,
-                    "data_points": len(history)
-                },
-                "peak_hours": peak_hours,
-                "insights": self._generate_zone_insights(avg_occupancy, peak_occupancy, zone_details)
-            }
-
-            if include_hourly and hourly_avgs:
-                response["hourly_breakdown"] = [
-                    {"hour": h, "average_occupancy": round(sum(occs)/len(occs), 1)}
-                    for h, occs in sorted(hourly_avgs.items())
-                ]
-
-            return response
-
-        except Exception as e:
-            logger.error(f"Error getting zone history: {str(e)}")
-            return {"error": str(e)}
+        return {"error": "Spatial forecasting service removed. Zone data will be available in the new zone management system."}
 
     def _generate_zone_insights(self, avg_occupancy: float, peak_occupancy: int, zone_details: Optional[Dict]) -> List[str]:
         """Generate insights from zone history"""
@@ -1350,61 +1092,7 @@ class ToolExecutor:
 
     def _execute_get_campus_summary(self, params: Dict[str, Any]) -> Dict[str, Any]:
         """Execute get_campus_summary tool - overall campus activity"""
-        include_zone_details = params.get("include_zone_details", True)
-
-        try:
-            # Get campus summary from spatial service
-            summary = self.spatial_service.get_campus_summary()
-
-            response = {
-                "timestamp": datetime.now().isoformat(),
-                "overall": {
-                    "total_zones": summary["summary"]["total_zones"],
-                    "total_capacity": summary["summary"]["total_capacity"],
-                    "current_occupancy": summary["summary"]["total_occupancy"],
-                    "occupancy_rate_percent": summary["summary"]["overall_occupancy_rate"],
-                    "status": summary["summary"]["status"]
-                },
-                "high_traffic_zones": [
-                    {
-                        "zone_id": z["zone_id"],
-                        "zone_name": z["zone_name"],
-                        "occupancy": z["current_occupancy"],
-                        "capacity": z["capacity"],
-                        "utilization": round(z["current_occupancy"] / z["capacity"] * 100, 1) if z["capacity"] > 0 else 0
-                    }
-                    for z in summary.get("high_traffic_zones", [])[:5]
-                ],
-                "underutilized_zones": [
-                    {
-                        "zone_id": z["zone_id"],
-                        "zone_name": z["zone_name"],
-                        "occupancy": z["current_occupancy"],
-                        "capacity": z["capacity"]
-                    }
-                    for z in summary.get("underutilized_zones", [])[:5]
-                ],
-                "alerts": self._generate_campus_alerts(summary)
-            }
-
-            if include_zone_details:
-                response["all_zones"] = [
-                    {
-                        "zone_id": z["zone_id"],
-                        "zone_name": z["zone_name"],
-                        "type": z.get("zone_type"),
-                        "occupancy": z["current_occupancy"],
-                        "capacity": z["capacity"],
-                        "utilization_percent": round(z["current_occupancy"] / z["capacity"] * 100, 1) if z["capacity"] > 0 else 0
-                    }
-                    for z in summary.get("zone_details", [])
-                ]
-
-            return response
-
-        except Exception as e:
-            logger.error(f"Error getting campus summary: {str(e)}")
-            return {"error": str(e)}
+        return {"error": "Spatial forecasting service removed. Zone data will be available in the new zone management system."}
 
     def _generate_campus_alerts(self, summary: Dict) -> List[str]:
         """Generate alerts based on campus summary"""
@@ -1488,8 +1176,8 @@ class ToolExecutor:
                     "minimum_required": 10
                 }
 
-            # Use PatternDetector to analyze routine
-            routine_analysis = PatternDetector.detect_routine(events, days)
+            # PatternDetector removed - return stub routine analysis
+            routine_analysis = {"typical_hours": {}, "routine_strength": 0.0}
 
             # Format typical hours for readability
             typical_schedule = []
@@ -1954,90 +1642,7 @@ class ToolExecutor:
 
     def _execute_get_zone_connections(self, params: Dict[str, Any]) -> Dict[str, Any]:
         """Execute get_zone_connections tool - find connected zones"""
-        zone_id = params.get("zone_id")
-        include_traffic = params.get("include_traffic", True)
-
-        if not zone_id:
-            return {"error": "zone_id is required"}
-
-        try:
-            # Get zone connections from spatial service
-            connections = self.spatial_service.get_zone_connections(zone_id)
-
-            # Get zone details
-            zone_details = self.spatial_service.get_zone_details(zone_id)
-
-            if not zone_details:
-                return {"error": f"Zone {zone_id} not found"}
-
-            # Get traffic data if requested
-            traffic_data = {}
-            if include_traffic and connections:
-                from neo4j import GraphDatabase
-                driver = GraphDatabase.driver(
-                    self.neo4j_uri,
-                    auth=(self.neo4j_user, self.neo4j_password)
-                )
-
-                # Get recent movement patterns between zones
-                last_24h = datetime.now(timezone.utc) - timedelta(hours=24)
-
-                with driver.session() as session:
-                    for conn in connections:
-                        connected_zone = conn.get("connected_zone_id")
-
-                        # Count movements between zones
-                        result = session.run("""
-                            MATCH (e:Entity)-[r1:SWIPED_CARD]->(z1:Zone {zone_id: $zone1})
-                            MATCH (e)-[r2:SWIPED_CARD]->(z2:Zone {zone_id: $zone2})
-                            WHERE r1.timestamp >= datetime($cutoff)
-                            AND r2.timestamp > r1.timestamp
-                            AND duration.between(r1.timestamp, r2.timestamp).hours < 1
-                            RETURN count(DISTINCT e) as travelers
-                        """, {
-                            "zone1": zone_id,
-                            "zone2": connected_zone,
-                            "cutoff": last_24h.isoformat()
-                        })
-
-                        record = result.single()
-                        traffic_data[connected_zone] = record["travelers"] if record else 0
-
-                driver.close()
-
-            # Format connections with traffic data
-            formatted_connections = []
-            for conn in connections:
-                connected_zone = conn.get("connected_zone_id")
-                formatted = {
-                    "zone_id": connected_zone,
-                    "zone_name": conn.get("connected_zone_name"),
-                    "distance_meters": conn.get("distance_meters"),
-                    "walking_time_minutes": conn.get("walking_time_minutes")
-                }
-
-                if include_traffic:
-                    formatted["travelers_last_24h"] = traffic_data.get(connected_zone, 0)
-
-                formatted_connections.append(formatted)
-
-            # Sort by traffic if available
-            if include_traffic:
-                formatted_connections.sort(key=lambda x: x.get("travelers_last_24h", 0), reverse=True)
-
-            return {
-                "zone_id": zone_id,
-                "zone_name": zone_details.get("name", zone_id),
-                "building": zone_details.get("building"),
-                "floor": zone_details.get("floor"),
-                "connected_zones": formatted_connections,
-                "total_connections": len(formatted_connections),
-                "insights": self._generate_connection_insights(formatted_connections, zone_details)
-            }
-
-        except Exception as e:
-            logger.error(f"Error getting zone connections: {str(e)}")
-            return {"error": str(e)}
+        return {"error": "Spatial forecasting service removed. Zone data will be available in the new zone management system."}
 
     def _generate_connection_insights(self, connections: List, zone_details: Dict) -> List[str]:
         """Generate insights about zone connections"""

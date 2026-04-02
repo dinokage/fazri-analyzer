@@ -10,8 +10,6 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { ArrowLeft, Building2, Users, MapPin, Clock, AlertCircle, Activity } from 'lucide-react';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { Progress } from '@/components/ui/progress';
-import { PredictiveZoneForecast } from '@/components/dashboard/predictive-zone-forecast';
-
 
 const zoneTypeColors: Record<string, string> = {
   LAB: '#3b82f6',
@@ -225,9 +223,6 @@ export default function ZoneDetailPage() {
           </CardContent>
         </Card>
       </div>
-
-      {/* Predictive Forecast Chart */}
-      <PredictiveZoneForecast zoneId={zoneId} />
 
       {/* Connected Zones */}
       {connections.length > 0 && (
