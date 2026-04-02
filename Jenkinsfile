@@ -292,13 +292,13 @@ pipeline {
                                     -e GO2RTC_RTSP_URL="rtsp://${GO2RTC_CONTAINER}:8554" \
                                     -e GO2RTC_ENABLED=true \
                                     -e HIKVISION_ENABLED="${HIKVISION_ENABLED}" \
-                                    -e HIKVISION_BASE_URL="${HIKVISION_BASE_URL}" \
+                                    -e HIKVISION_BASE_URL="http://fazri-hikvision-sim-${DEPLOY_ENV}:9001" \
                                     -e HIKVISION_USERNAME="${HIKVISION_USERNAME}" \
                                     -e HIKVISION_PASSWORD="${HIKVISION_PASSWORD}" \
                                     -e HIKVISION_POLL_INTERVAL_SECONDS="${HIKVISION_POLL_INTERVAL}" \
                                     -e HIKVISION_DOOR_ZONE_MAP="${HIKVISION_DOOR_ZONE_MAP}" \
                                     -e ARUBA_ENABLED="${ARUBA_ENABLED}" \
-                                    -e ARUBA_BASE_URL="${ARUBA_BASE_URL}" \
+                                    -e ARUBA_BASE_URL="http://fazri-aruba-sim-${DEPLOY_ENV}:9002" \
                                     -e ARUBA_USERNAME="${ARUBA_USERNAME}" \
                                     -e ARUBA_PASSWORD="${ARUBA_PASSWORD}" \
                                     -e ARUBA_POLL_INTERVAL_SECONDS="${ARUBA_POLL_INTERVAL}" \
