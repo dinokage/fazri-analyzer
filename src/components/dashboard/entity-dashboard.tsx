@@ -5,9 +5,9 @@ import { useEffect, useState } from 'react';
 import { EntityProfile } from './entity-profile';
 import { FaceRegistrationCard } from './face-registration-card';
 import { ActivityTimeline } from './activity-timeline';
-import { PredictionData, PredictiveInsights } from './predictive-insights';
 import { ActivityFrequency, HeatmapData } from './activity-frequency';
 import { AnomalyList } from './anomaly-list';
+import { MovementTimeline } from './movement-timeline';
 // import { CCTVSnapshots } from './cctv-snapshots';
 import { DashboardFilters } from './dashboard-filters';
 import { apiClient } from '@/lib/api-client';
@@ -56,7 +56,6 @@ export function EntityDashboard({ entityId }: { entityId: string }) {
   const [entity, setEntity] = useState<Entity | null>(null);
   // const [fusionReport, setFusionReport] = useState<any>(null);
   const [timeline, setTimeline] = useState<TimelineData | null>(null);
-  const [prediction, setPrediction] = useState<PredictionData | null>(null);
   const [heatmap, setHeatmap] = useState<HeatmapData | null>(null);
   const [anomalies, setAnomalies] = useState<Anomaly[] | null>(null);
   // const [patterns, setPatterns] = useState<any>(null);
@@ -78,7 +77,6 @@ export function EntityDashboard({ entityId }: { entityId: string }) {
       const results = await Promise.allSettled([
         apiClient.getEntity(entityId),
         apiClient.getTimelineWithGaps(entityId, 2), // This now returns the new format
-        apiClient.predictLocation(entityId),
         apiClient.getActivityHeatmap(entityId, 7),
         apiClient.getAnomaliesByEntity(entityId),
       ]);
@@ -98,29 +96,21 @@ export function EntityDashboard({ entityId }: { entityId: string }) {
         console.error('Timeline report fetch failed:', results[1].reason);
       }
 
-      // Process prediction
-      if (results[2].status === 'fulfilled') {
-        setPrediction(results[2].value);
-      } else {
-        errorList.push('Failed to load timeline data');
-        console.error('Prediction fetch failed:', results[2].reason);
-      }
-
       // Process heatmap
-      if (results[3].status === 'fulfilled') {
-        setHeatmap(results[3].value);
-        console.log('Heatmap data:', results[3].value);
+      if (results[2].status === 'fulfilled') {
+        setHeatmap(results[2].value);
+        console.log('Heatmap data:', results[2].value);
       } else {
-        console.error('Heatmap fetch failed:', results[3].reason);
+        console.error('Heatmap fetch failed:', results[2].reason);
       }
 
       // Process anomalies
-      if (results[4].status === 'fulfilled') {
-        const anomalyResponse = results[4].value;
+      if (results[3].status === 'fulfilled') {
+        const anomalyResponse = results[3].value;
         setAnomalies(anomalyResponse.data?.anomalies || []);
         console.log('Anomalies data:', anomalyResponse);
       } else {
-        console.error('Anomalies fetch failed:', results[4].reason);
+        console.error('Anomalies fetch failed:', results[3].reason);
       }
 
       if (errorList.length > 0) {
@@ -194,8 +184,8 @@ export function EntityDashboard({ entityId }: { entityId: string }) {
         {/* Right Column */}
         <div className="space-y-6">
           <AnomalyList anomalies={anomalies} loading={loading} />
-          <PredictiveInsights prediction={prediction} />
           <ActivityFrequency heatmap={heatmap} />
+          <MovementTimeline entityId={entityId} />
           {/* <CCTVSnapshots entityId={entityId} timeline={timeline} /> */}
         </div>
       </div>

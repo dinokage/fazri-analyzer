@@ -1,0 +1,186 @@
+###############################################################################
+# FAZRI — Integration test stack
+#
+# Usage:
+#   docker compose -f docker-compose.test.yml up -d
+#   cd backend && pytest tests/test_integration_e2e.py -v
+#   docker compose -f docker-compose.test.yml down -v   # tear down + wipe volumes
+###############################################################################
+
+services:
+
+  # ── Infrastructure ──────────────────────────────────────────────────────────
+
+  db:
+    image: postgres:15
+    container_name: fazri_test_db
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: testpassword
+      POSTGRES_DB: ethos_test
+    ports:
+      - "15432:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+    networks:
+      - fazri-test
+
+  pgvector:
+    image: pgvector/pgvector:pg17
+    container_name: fazri_test_pgvector
+    environment:
+      POSTGRES_USER: deepface
+      POSTGRES_PASSWORD: deepface
+      POSTGRES_DB: deepface
+    ports:
+      - "15433:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U deepface -d deepface"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+    networks:
+      - fazri-test
+
+  neo4j:
+    image: neo4j:5
+    container_name: fazri_test_neo4j
+    environment:
+      NEO4J_AUTH: neo4j/testpassword
+      NEO4J_dbms_memory_pagecache_size: 128M
+      NEO4J_dbms_memory_heap_initial__size: 256M
+      NEO4J_dbms_memory_heap_max__size: 512M
+    ports:
+      - "17474:7474"
+      - "17687:7687"
+    healthcheck:
+      test: ["CMD-SHELL", "cypher-shell -u neo4j -p testpassword 'RETURN 1' 2>/dev/null || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+    networks:
+      - fazri-test
+
+  redis:
+    image: redis:7-alpine
+    container_name: fazri_test_redis
+    ports:
+      - "16379:6379"
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+    networks:
+      - fazri-test
+
+  # ── Hardware simulators ──────────────────────────────────────────────────────
+
+  hikvision-sim:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      target: development
+    container_name: fazri_test_hikvision_sim
+    command: uvicorn simulators.hikvision_simulator:app --host 0.0.0.0 --port 9001
+    environment:
+      HIKVISION_SIM_CONTINUOUS: "1"
+    ports:
+      - "9001:9001"
+    networks:
+      - fazri-test
+
+  aruba-sim:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      target: development
+    container_name: fazri_test_aruba_sim
+    command: uvicorn simulators.aruba_simulator:app --host 0.0.0.0 --port 9002
+    ports:
+      - "9002:9002"
+    networks:
+      - fazri-test
+
+  # ── Backend ─────────────────────────────────────────────────────────────────
+
+  backend:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      target: development
+    container_name: fazri_test_backend
+    command: uvicorn main:app --host 0.0.0.0 --port 8000 --reload
+    environment:
+      # Database
+      POSTGRES_SERVER: db
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: testpassword
+      POSTGRES_DB: ethos_test
+      POSTGRES_PORT: 5432
+      # Neo4j
+      NEO4J_URI: neo4j://neo4j:7687
+      NEO4J_USER: neo4j
+      NEO4J_PASSWORD: testpassword
+      # Redis
+      REDIS_HOST: redis
+      REDIS_PORT: 6379
+      # Auth (JWKS not available in tests — use HS256 test bypass)
+      AUTH_SERVICE_URL: http://localhost:3000
+      BETTER_AUTH_SECRET: test-better-auth-secret
+      TESTING: "true"
+      TEST_JWT_SECRET: "fazri-integration-test-jwt-secret"
+      # Hikvision simulator
+      HIKVISION_ENABLED: "true"
+      HIKVISION_BASE_URL: http://hikvision-sim:9001
+      HIKVISION_USERNAME: admin
+      HIKVISION_PASSWORD: admin
+      HIKVISION_POLL_INTERVAL_SECONDS: "5"
+      HIKVISION_DOOR_ZONE_MAP: '{"1":"LIB_ENT","2":"LAB_101","3":"CAFETERIA","4":"ADMIN_BLK"}'
+      # Aruba simulator
+      ARUBA_ENABLED: "true"
+      ARUBA_BASE_URL: http://aruba-sim:9002
+      ARUBA_USERNAME: admin
+      ARUBA_PASSWORD: admin
+      ARUBA_POLL_INTERVAL_SECONDS: "10"
+      ARUBA_AP_ZONE_MAP: '{"AP-LIB-1":"LIB_ENT","AP-LAB-1":"LAB_101","AP-CAFE-1":"CAFETERIA","AP-ADMIN-1":"ADMIN_BLK"}'
+      # DeepFace (disabled in test — no GPU in CI)
+      DEEPFACE_ENABLED: "false"
+      # go2rtc (disabled in test)
+      GO2RTC_ENABLED: "false"
+      # Misc
+      ALERT_SYSTEM_ENABLED: "true"
+      SECRET_KEY: "test-secret-key-for-integration-testing"
+      LOG_LEVEL: WARNING
+    ports:
+      - "18000:8000"
+    depends_on:
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      neo4j:
+        condition: service_healthy
+      hikvision-sim:
+        condition: service_started
+      aruba-sim:
+        condition: service_started
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 30s
+    networks:
+      - fazri-test
+
+networks:
+  fazri-test:
+    driver: bridge
+
+volumes:
+  test_db_data:
+  test_neo4j_data:

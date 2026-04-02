@@ -6,6 +6,7 @@ from typing import Optional, List
 from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
+from config import settings
 from services.entity_resolver import get_resolver
 from services.confidence_scorer import ConfidenceScorer
 from models.entity import Entity
@@ -235,6 +236,98 @@ async def list_entities(
         "limit": limit,
         "entities": entities
     }
+
+@router.get("/{entity_id}/timeline")
+async def get_entity_sensor_timeline(
+    entity_id: str,
+    since: Optional[str] = Query(None, description="ISO 8601 start timestamp (default: 7 days ago)"),
+    limit: int = Query(200, ge=1, le=500),
+    current_user: AuthenticatedUser = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """
+    Return the chronological sensor event history for one entity across all modalities.
+    Also returns recent alert IDs associated with this entity so the frontend can
+    highlight anomaly-triggering events.
+    """
+    from datetime import datetime, timezone, timedelta
+    from models.db.sensor_events import SensorEventRecord
+    from models.db.alerts import Alert
+
+    # ── Students may only view their own timeline ─────────────────────────────
+    if current_user.role.value == "student" and current_user.entity_id != entity_id:
+        raise PermissionDeniedError("You can only access your own timeline")
+
+    # ── Resolve since timestamp ───────────────────────────────────────────────
+    if since:
+        try:
+            since_dt = datetime.fromisoformat(since.replace("Z", "+00:00"))
+        except ValueError:
+            raise HTTPException(status_code=400, detail="Invalid 'since' timestamp")
+    else:
+        since_dt = datetime.now(timezone.utc) - timedelta(days=7)
+
+    if since_dt.tzinfo is None:
+        since_dt = since_dt.replace(tzinfo=timezone.utc)
+
+    # ── Sensor events for this entity ─────────────────────────────────────────
+    rows = (
+        db.query(SensorEventRecord)
+        .filter(SensorEventRecord.resolved_entity_id == entity_id)
+        .filter(SensorEventRecord.timestamp >= since_dt)
+        .order_by(SensorEventRecord.timestamp.asc())
+        .limit(limit)
+        .all()
+    )
+
+    # ── Recent alerts referencing this entity ─────────────────────────────────
+    alert_rows = []
+    if settings.ALERT_SYSTEM_ENABLED:
+        try:
+            alert_rows = (
+                db.query(Alert.id, Alert.anomaly_type, Alert.created_at)
+                .filter(Alert.affected_entities.contains([entity_id]))
+                .filter(Alert.created_at >= since_dt)
+                .order_by(Alert.created_at.asc())
+                .all()
+            )
+        except Exception:
+            alert_rows = []
+
+    # Build a simple set of (zone, ~minute) buckets that had alerts so the
+    # frontend can flag nearby events without needing a direct FK.
+    alert_windows = [
+        {
+            "alert_id": str(a.id),
+            "anomaly_type": a.anomaly_type,
+            "timestamp": a.created_at.isoformat() if a.created_at else None,
+        }
+        for a in alert_rows
+    ]
+
+    events_out = [
+        {
+            "event_id": r.event_id,
+            "sensor_type": r.sensor_type,
+            "event_type": r.event_type,
+            "timestamp": r.timestamp.isoformat() if r.timestamp else None,
+            "zone_id": r.zone_id,
+            "building": r.building,
+            "floor": r.floor,
+            "confidence": r.confidence,
+            "source_device_id": r.source_device_id,
+        }
+        for r in rows
+    ]
+
+    return {
+        "entity_id": entity_id,
+        "since": since_dt.isoformat(),
+        "total": len(events_out),
+        "events": events_out,
+        "alerts": alert_windows,
+    }
+
 
 @router.get("/{entity_id}/fusion-report")
 async def get_entity_fusion_report(
