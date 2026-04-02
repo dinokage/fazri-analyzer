@@ -326,6 +326,9 @@ app.include_router(events_router)
 from routes.system_routes import router as system_router
 app.include_router(system_router)
 
+from routes.spatial_routes import router as spatial_router
+app.include_router(spatial_router)
+
 # Include alert system routers
 if settings.ALERT_SYSTEM_ENABLED:
     app.include_router(alert_router)
