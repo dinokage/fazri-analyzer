@@ -81,13 +81,13 @@ def _make_event(entity: dict, zone_id: str, granted: bool = True) -> dict:
     }
 
 
-def _events_to_xml(events: list, total_matched: int) -> str:
+def _events_to_xml(events: list, total_matched: int, max_results: int = 20) -> str:
     """Render a list of event dicts as Hikvision ISAPI AcsEventSearchResult XML."""
     root = ET.Element("AcsEventSearchResult")
     root.set("xmlns", "http://www.hikvision.com/ver20/XMLSchema")
 
     status_el = ET.SubElement(root, "responseStatusStrg")
-    status_el.text = "NO MORE" if len(events) < 50 else "MORE"
+    status_el.text = "NO MORE" if len(events) < max_results else "MORE"
 
     num_el = ET.SubElement(root, "numOfMatches")
     num_el.text = str(len(events))
@@ -181,21 +181,51 @@ async def search_acs_events(request: Request) -> Response:
     body = await request.body()
     search_position = 0
     max_results = 20
+    start_time: Optional[datetime] = None
+    end_time: Optional[datetime] = None
 
     try:
         tree = ET.fromstring(body)
         ns = {"h": "http://www.hikvision.com/ver20/XMLSchema"}
-        pos_el = tree.find(".//searchPosition") or tree.find(".//h:searchPosition", ns)
+        # Fix: client sends <searchResultPosition>, not <searchPosition>
+        pos_el = tree.find(".//searchResultPosition") or tree.find(".//h:searchResultPosition", ns)
         max_el = tree.find(".//maxResults") or tree.find(".//h:maxResults", ns)
+        start_el = tree.find(".//startTime") or tree.find(".//h:startTime", ns)
+        end_el = tree.find(".//endTime") or tree.find(".//h:endTime", ns)
         if pos_el is not None:
             search_position = int(pos_el.text or 0)
         if max_el is not None:
             max_results = int(max_el.text or 20)
+        if start_el is not None and start_el.text:
+            try:
+                start_time = datetime.fromisoformat(start_el.text.replace("Z", "+00:00"))
+            except ValueError:
+                pass
+        if end_el is not None and end_el.text:
+            try:
+                end_time = datetime.fromisoformat(end_el.text.replace("Z", "+00:00"))
+            except ValueError:
+                pass
     except Exception:
         pass
 
-    page = _events[search_position: search_position + max_results]
-    xml_body = _events_to_xml(page, len(_events))
+    # Apply time filter so re-polls don't return already-ingested events
+    filtered = _events
+    if start_time or end_time:
+        filtered = []
+        for ev in _events:
+            try:
+                ev_dt = datetime.fromisoformat(ev["datetime"].replace("Z", "+00:00"))
+                if start_time and ev_dt < start_time:
+                    continue
+                if end_time and ev_dt > end_time:
+                    continue
+                filtered.append(ev)
+            except (ValueError, KeyError):
+                filtered.append(ev)
+
+    page = filtered[search_position: search_position + max_results]
+    xml_body = _events_to_xml(page, len(filtered), max_results)
     return Response(content=xml_body, media_type="application/xml")
 
 
