@@ -7,8 +7,8 @@ from fastapi import FastAPI, Depends, Request, status
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 
-import entity_routes, graph_routes, spatial_routes, anomaly_routes, chat_routes
-from routes import alert_router, staff_router, notification_router, demo_router, webhook_router
+import entity_routes, graph_routes, anomaly_routes, chat_routes
+from routes import alert_router, staff_router, notification_router, demo_router, webhook_router, import_router
 from routes.gitlab_routes import router as gitlab_router
 from config import settings
 from auth.dependencies import get_current_user
@@ -192,11 +192,35 @@ async def lifespan(app: FastAPI):
         except Exception as e:
             logger.error(f"Failed to start DeepFace batch sync: {e}")
 
+    # Start Hikvision RFID poller if enabled
+    _hikvision_task = None
+    if settings.HIKVISION_ENABLED:
+        try:
+            from services.hikvision_poller import run_hikvision_poller
+            _hikvision_task = asyncio.create_task(run_hikvision_poller())
+            logger.info("Hikvision poller started")
+        except Exception as e:
+            logger.error(f"Failed to start Hikvision poller: {e}")
+
+    # Start Aruba WiFi poller if enabled
+    _aruba_task = None
+    if settings.ARUBA_ENABLED:
+        try:
+            from services.aruba_poller import run_aruba_poller
+            _aruba_task = asyncio.create_task(run_aruba_poller())
+            logger.info("Aruba WiFi poller started")
+        except Exception as e:
+            logger.error(f"Failed to start Aruba poller: {e}")
+
     yield
 
-    # Shutdown — cancel the batch sync task cleanly
+    # Shutdown — cancel background tasks cleanly
     if _batch_sync_task and not _batch_sync_task.done():
         _batch_sync_task.cancel()
+    if _hikvision_task and not _hikvision_task.done():
+        _hikvision_task.cancel()
+    if _aruba_task and not _aruba_task.done():
+        _aruba_task.cancel()
         try:
             await _batch_sync_task
         except asyncio.CancelledError:
@@ -291,10 +315,16 @@ async def value_error_handler(request: Request, exc: ValueError):
 # Include existing routers
 app.include_router(entity_routes.router)
 app.include_router(graph_routes.router)
-app.include_router(spatial_routes.router)
 app.include_router(anomaly_routes.router)
 app.include_router(chat_routes.router)
 app.include_router(gitlab_router)
+app.include_router(import_router)
+
+from routes.events_routes import router as events_router
+app.include_router(events_router)
+
+from routes.system_routes import router as system_router
+app.include_router(system_router)
 
 # Include alert system routers
 if settings.ALERT_SYSTEM_ENABLED:

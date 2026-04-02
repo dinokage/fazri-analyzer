@@ -41,6 +41,21 @@ def _decode(token: str, jwks: dict) -> Dict[str, Any]:
     )
 
 def decode_jwt_token(token: str) -> Dict[str, Any]:
+    # Test-only bypass: accept HS256 tokens when TESTING=true.
+    # This path is unreachable unless the setting is explicitly set.
+    if settings.TESTING and settings.TEST_JWT_SECRET:
+        try:
+            return jwt.decode(
+                token,
+                settings.TEST_JWT_SECRET,
+                algorithms=["HS256"],
+                options={"verify_exp": True, "verify_aud": False},
+            )
+        except ExpiredSignatureError as e:
+            raise TokenExpiredError() from e
+        except JWTError:
+            pass  # fall through to RS256 path
+
     try:
         jwks = _get_jwks()
         return _decode(token, jwks)
