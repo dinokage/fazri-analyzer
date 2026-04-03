@@ -14,6 +14,7 @@ from __future__ import annotations
 
 import asyncio
 import hashlib
+import logging
 import os
 import random
 import sys
@@ -25,6 +26,8 @@ from typing import Optional
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 import json
+
+logger = logging.getLogger(__name__)
 
 from fastapi import FastAPI, Request, Response, HTTPException, status
 from fastapi.responses import PlainTextResponse
