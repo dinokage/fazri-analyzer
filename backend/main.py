@@ -7,7 +7,7 @@ from fastapi import FastAPI, Depends, Request, status
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 
-import entity_routes, graph_routes, anomaly_routes, chat_routes
+import entity_routes, graph_routes, chat_routes
 from routes import alert_router, staff_router, notification_router, demo_router, webhook_router, import_router
 from routes.gitlab_routes import router as gitlab_router
 from config import settings
@@ -315,7 +315,6 @@ async def value_error_handler(request: Request, exc: ValueError):
 # Include existing routers
 app.include_router(entity_routes.router)
 app.include_router(graph_routes.router)
-app.include_router(anomaly_routes.router)
 app.include_router(chat_routes.router)
 app.include_router(gitlab_router)
 app.include_router(import_router)
