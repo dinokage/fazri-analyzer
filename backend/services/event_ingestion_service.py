@@ -109,7 +109,7 @@ class EventIngestionService:
         resolved: Optional[ResolvedEvent] = None
         if profile is not None:
             resolved = ResolvedEvent(
-                **event.model_dump(),
+                **event.model_dump(exclude={"resolved_entity_id"}),
                 resolved_entity_id=profile.entity_id,
                 entity_name=profile.name,
                 entity_role=profile.role,
