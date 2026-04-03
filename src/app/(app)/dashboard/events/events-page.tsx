@@ -305,7 +305,7 @@ export default function EventsPage() {
                       {ev.resolved_entity_id ? (
                         <button
                           onClick={() =>
-                            router.push(`/dashboard/entity/${ev.resolved_entity_id}`)
+                            router.push(`/dashboard/${ev.resolved_entity_id}`)
                           }
                           className="text-blue-400 hover:text-blue-300 hover:underline font-medium"
                         >

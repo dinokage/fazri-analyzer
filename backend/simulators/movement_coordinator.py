@@ -147,10 +147,7 @@ def _load_entities_from_csv() -> List[Dict]:
                 entity_id = row.get("entity_id", "")
                 name      = row.get("name", "")
                 if card_id and dh and entity_id:
-                    mac = ":".join(
-                        dh.lstrip("DH")[:12].ljust(12, "0")[j:j + 2].lower()
-                        for j in range(0, 12, 2)
-                    )
+                    mac = dh.lower()  # matches LOWER(identifier_value) from the DB path
                     entities.append({"entity_id": entity_id, "card_id": card_id, "mac": mac, "name": name})
     except Exception as exc:
         logger.warning("MovementCoordinator: CSV fallback failed: %s", exc)
