@@ -30,6 +30,8 @@ router = APIRouter(prefix="/api/v1/system", tags=["system"])
 # Module start time for uptime calculation
 _START_TIME = time.monotonic()
 
+_pgvector_engine = None
+
 
 # ---------------------------------------------------------------------------
 # Response schemas
@@ -69,19 +71,21 @@ async def _probe_postgres(db: Session) -> ServiceHealth:
 
 
 async def _probe_pgvector() -> ServiceHealth:
+    global _pgvector_engine
     t0 = time.monotonic()
     try:
-        from sqlalchemy import create_engine
-        engine = create_engine(settings.DEEPFACE_POSTGRES_URI, connect_args={"connect_timeout": 3})
-        with engine.connect() as conn:
-            # DeepFace uses a "face_embeddings" table or similar — try a generic query
+        if _pgvector_engine is None:
+            from sqlalchemy import create_engine
+            _pgvector_engine = create_engine(
+                settings.DEEPFACE_POSTGRES_URI, connect_args={"connect_timeout": 3}
+            )
+        with _pgvector_engine.connect() as conn:
             try:
                 row = conn.execute(text("SELECT COUNT(*) FROM face_embeddings")).scalar()
                 label = f"face_embeddings: {row} enrolled"
             except Exception:
                 conn.execute(text("SELECT 1"))
                 label = "connected"
-        engine.dispose()
         ms = round((time.monotonic() - t0) * 1000, 1)
         return ServiceHealth(status="up", latency_ms=ms, details=label)
     except Exception as exc:
@@ -203,7 +207,7 @@ async def _probe_aruba() -> ServiceHealth:
         return ServiceHealth(status="degraded", error=str(exc))
 
 
-async def _probe_go2rtc(db: Session) -> ServiceHealth:
+async def _probe_go2rtc() -> ServiceHealth:
     if not settings.GO2RTC_ENABLED:
         return ServiceHealth(status="disabled", details="GO2RTC_ENABLED=false")
     t0 = time.monotonic()
@@ -244,7 +248,7 @@ async def system_health(
         _probe_deepface(),
         _probe_hikvision(),
         _probe_aruba(),
-        _probe_go2rtc(db),
+        _probe_go2rtc(),
         return_exceptions=False,
     )
 

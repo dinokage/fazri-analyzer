@@ -7,7 +7,6 @@ entity_id is the primary key and the canonical cross-table reference.
 
 import sqlalchemy as sa
 from sqlalchemy import Column, DateTime, JSON, String
-from sqlalchemy.dialects.postgresql import UUID
 
 from database.connection import Base
 

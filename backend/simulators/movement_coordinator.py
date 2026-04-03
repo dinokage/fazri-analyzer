@@ -119,7 +119,6 @@ def _load_entities_from_db() -> List[Dict]:
                     LIMIT  100
                 """)
                 rows = cur.fetchall()
-        conn.close()
         entities = [
             {"entity_id": r[0], "card_id": r[1], "mac": r[2], "name": r[3] or ""}
             for r in rows
@@ -246,7 +245,7 @@ async def run_coordinator(redis) -> None:
         if acquired:
             break
         logger.debug("MovementCoordinator: lock held by another instance — retrying in 5s")
-        await asyncio.sleep(5)
+        await asyncio.sleep(5 + random.uniform(0, 1))
 
     logger.info(
         "MovementCoordinator started — %d entities active (leader elected)",

@@ -290,8 +290,11 @@ def get_hikvision_client() -> HikvisionISAPIClient:
         door_zone_map: Dict[str, str] = {}
         try:
             door_zone_map = json.loads(settings.HIKVISION_DOOR_ZONE_MAP)
-        except Exception:
-            pass
+        except Exception as e:
+            logger.warning(
+                "Failed to parse HIKVISION_DOOR_ZONE_MAP JSON: %s | value: %r",
+                e, settings.HIKVISION_DOOR_ZONE_MAP,
+            )
 
         _hikvision_client = HikvisionISAPIClient(
             base_url=settings.HIKVISION_BASE_URL,

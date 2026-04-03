@@ -96,7 +96,7 @@ Find the door number for each reader in the Hikvision web panel:
 - Note the door number (1, 2, 3...) for each physical door
 
 Then set the mapping in `.env.prod`:
-```
+```env
 HIKVISION_DOOR_ZONE_MAP={"1":"LIB_ENT","2":"LAB_CSE_1F","3":"CAFETERIA","4":"ADMIN_LOBBY"}
 ```
 
@@ -107,7 +107,7 @@ Get AP names from the Aruba controller:
 - Note the AP name (e.g., `AP-LIB-1F-01`) for APs in each zone
 
 Then set the mapping in `.env.prod`:
-```
+```env
 ARUBA_AP_ZONE_MAP={"AP-LIB-1F-01":"LIB_ENT","AP-CSE-1F-01":"LAB_CSE_1F","AP-CAFE-01":"CAFETERIA"}
 ```
 
@@ -157,7 +157,7 @@ You should see XML with the device model and serial number. If you get a 401, ch
 ### 3c. Enable polling
 
 Edit `.env.prod`:
-```
+```env
 HIKVISION_ENABLED=true
 HIKVISION_BASE_URL=http://192.168.1.64
 HIKVISION_USERNAME=admin
@@ -201,7 +201,7 @@ You should get a response with `"status":"Success"` and a `UIDARUBA` token.
 ### 4c. Enable polling
 
 Edit `.env.prod`:
-```
+```env
 ARUBA_ENABLED=true
 ARUBA_BASE_URL=https://192.168.1.1
 ARUBA_USERNAME=fazri_readonly
@@ -230,7 +230,7 @@ docker compose -f docker-compose.prod.yml restart backend
 2. Go to **Camera Streams** (in the sidebar)
 3. Click **Add Stream**
 4. Enter the RTSP URL of your camera, e.g.:
-   ```
+   ```bash
    rtsp://admin:password@192.168.1.101:554/Streaming/Channels/101
    ```
 5. Set the Zone ID for this camera (e.g., `LIB_ENT`)
@@ -335,7 +335,7 @@ curl http://localhost:8000/api/v1/system/health
 | `GET /api/v1/system/health` | All subsystem statuses |
 
 ### Log file locations (inside backend container)
-```
+```bash
 /app/logs/          — application logs
 /var/log/nginx/     — nginx access and error logs (in nginx container)
 ```
@@ -344,16 +344,6 @@ curl http://localhost:8000/api/v1/system/health
 If you need to re-import the entity database from scratch:
 ```bash
 # WARNING: This deletes all existing entity data
-docker compose -f docker-compose.prod.yml exec backend \
-  python -c "
-from database.connection import get_db
-from models.db.entity_profiles import EntityProfile
-from models.db.entity_identifiers import EntityIdentifier
-db = next(get_db())
-db.query(EntityIdentifier).delete()
-db.query(EntityProfile).delete()
-db.commit()
-print('Entity tables cleared')
-"
+docker compose -f docker-compose.prod.yml exec backend python scripts/reset_entity_data.py --confirm
 # Then re-run the import
 ```

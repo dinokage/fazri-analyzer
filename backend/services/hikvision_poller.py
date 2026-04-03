@@ -40,7 +40,7 @@ async def run_hikvision_poller() -> None:
     # Bootstrap: go back 5 minutes on first poll
     last_seen_ts = datetime.now(timezone.utc) - timedelta(minutes=5)
 
-    stats = {"polled": 0, "resolved": 0, "anomalies": 0, "poll_cycles": 0}
+    stats = {"polled": 0, "resolved": 0, "poll_cycles": 0}
     last_stats_log = datetime.now(timezone.utc)
 
     logger.info(
@@ -56,8 +56,8 @@ async def run_hikvision_poller() -> None:
         _redis = aioredis.Redis(
             host=settings.REDIS_HOST, port=settings.REDIS_PORT, db=0, socket_timeout=1
         )
-    except Exception:
-        pass
+    except Exception as e:
+        logger.debug("Redis init failed for hikvision_poller: %s", e, exc_info=True)
 
     while True:
         try:
@@ -88,8 +88,8 @@ async def run_hikvision_poller() -> None:
                 try:
                     await _redis.set("hikvision:last_poll", now.isoformat(), ex=300)
                     await _redis.set("hikvision:events_today", stats["polled"], ex=86400)
-                except Exception:
-                    pass
+                except Exception as e:
+                    logger.debug("Redis status write failed in hikvision_poller: %s", e)
 
             # Log aggregate stats every 60 seconds
             if (now - last_stats_log).total_seconds() >= 60:

@@ -87,6 +87,7 @@ class EventIngestionService:
     ) -> None:
         self.db = db
         self.resolver = entity_resolver or get_entity_resolution_service()
+        self._background_tasks: set = set()
 
     # ------------------------------------------------------------------
     # Public API
@@ -143,7 +144,13 @@ class EventIngestionService:
             await self._run_anomaly_detection(resolved, profile)
 
         # Step 5: Neo4j graph projection (fire-and-forget)
-        asyncio.create_task(self._project_to_graph(resolved))
+        task = asyncio.create_task(self._project_to_graph(resolved))
+        self._background_tasks.add(task)
+        task.add_done_callback(self._background_tasks.discard)
+        task.add_done_callback(
+            lambda t: logger.warning("Neo4j projection failed: %s", t.exception())
+            if not t.cancelled() and t.exception() is not None else None
+        )
 
         return resolved
 
@@ -370,23 +377,23 @@ class EventIngestionService:
                     ),
                 )
             else:
-                # Generic sensor event projection
-                await asyncio.get_running_loop().run_in_executor(
-                    None,
-                    lambda: graph_svc.project_sensor_event(
-                        entity_id=resolved.resolved_entity_id,
-                        zone_id=resolved.zone_id,
-                        timestamp=resolved.timestamp,
-                        sensor_type=resolved.sensor_type.value,
-                        event_id=resolved.event_id,
-                    ),
-                )
-        except AttributeError:
-            # project_sensor_event may not exist yet — CCTV path covers Week 2
-            logger.debug(
-                "Neo4j projection skipped for sensor_type=%s (method not found)",
-                resolved.sensor_type,
-            )
+                project_fn = getattr(graph_svc, "project_sensor_event", None)
+                if project_fn is not None:
+                    await asyncio.get_running_loop().run_in_executor(
+                        None,
+                        lambda: project_fn(
+                            entity_id=resolved.resolved_entity_id,
+                            zone_id=resolved.zone_id,
+                            timestamp=resolved.timestamp,
+                            sensor_type=resolved.sensor_type.value,
+                            event_id=resolved.event_id,
+                        ),
+                    )
+                else:
+                    logger.debug(
+                        "Neo4j projection skipped for sensor_type=%s (method not found)",
+                        resolved.sensor_type,
+                    )
         except Exception as exc:
             logger.warning(
                 "Neo4j projection failed for event %s: %s — continuing",

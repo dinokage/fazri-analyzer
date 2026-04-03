@@ -97,6 +97,7 @@ async def client():
 # ---------------------------------------------------------------------------
 
 
+@pytest.mark.order(1)
 @pytest.mark.asyncio
 async def test_backend_health(client: httpx.AsyncClient):
     """Backend must be reachable before any other test runs."""
@@ -119,6 +120,7 @@ async def test_backend_health(client: httpx.AsyncClient):
 # ---------------------------------------------------------------------------
 
 
+@pytest.mark.order(2)
 @pytest.mark.asyncio
 async def test_seed_entity_data(client: httpx.AsyncClient):
     """POST the augmented CSV to /api/v1/import/sap-csv and assert entities seeded."""
@@ -143,6 +145,7 @@ async def test_seed_entity_data(client: httpx.AsyncClient):
 # ---------------------------------------------------------------------------
 
 
+@pytest.mark.order(3)
 @pytest.mark.asyncio
 async def test_wait_for_poller_events(engine):
     """
@@ -171,6 +174,7 @@ async def test_wait_for_poller_events(engine):
 # ---------------------------------------------------------------------------
 
 
+@pytest.mark.order(4)
 def test_rfid_events_in_db(engine):
     with engine.connect() as conn:
         count = conn.execute(
@@ -179,6 +183,7 @@ def test_rfid_events_in_db(engine):
     assert count > 0, "No RFID events found in sensor_events"
 
 
+@pytest.mark.order(5)
 def test_wifi_events_in_db(engine):
     with engine.connect() as conn:
         count = conn.execute(
@@ -187,6 +192,7 @@ def test_wifi_events_in_db(engine):
     assert count > 0, "No WIFI events found in sensor_events"
 
 
+@pytest.mark.order(6)
 def test_some_events_resolved(engine):
     """At least one event should have been entity-resolved (resolved_entity_id != NULL)."""
     with engine.connect() as conn:
@@ -201,6 +207,7 @@ def test_some_events_resolved(engine):
     )
 
 
+@pytest.mark.order(7)
 def test_entity_profiles_seeded(engine):
     with engine.connect() as conn:
         count = conn.execute(
@@ -232,6 +239,7 @@ def known_entity_id(engine) -> str:
 # ---------------------------------------------------------------------------
 
 
+@pytest.mark.order(8)
 @pytest.mark.asyncio
 async def test_events_api_returns_mixed_types(client: httpx.AsyncClient):
     """GET /api/v1/events must return events from multiple sensor types."""
@@ -249,6 +257,7 @@ async def test_events_api_returns_mixed_types(client: httpx.AsyncClient):
     )
 
 
+@pytest.mark.order(9)
 @pytest.mark.asyncio
 async def test_entity_timeline_api(
     client: httpx.AsyncClient, known_entity_id: str
@@ -272,6 +281,7 @@ async def test_entity_timeline_api(
     assert timestamps == sorted(timestamps), "Timeline events are not sorted ASC"
 
 
+@pytest.mark.order(10)
 @pytest.mark.asyncio
 async def test_events_filter_by_sensor_type(client: httpx.AsyncClient):
     """Filtering by sensor_type=RFID must return only RFID events."""
@@ -287,6 +297,7 @@ async def test_events_filter_by_sensor_type(client: httpx.AsyncClient):
         assert types == {"RFID"}, f"Non-RFID events returned: {types}"
 
 
+@pytest.mark.order(11)
 @pytest.mark.asyncio
 async def test_events_filter_resolved_only(client: httpx.AsyncClient):
     """resolved=true filter must return only events with a resolved entity."""

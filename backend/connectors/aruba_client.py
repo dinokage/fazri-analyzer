@@ -8,6 +8,7 @@ change), and returns SensorEvents.
 
 from __future__ import annotations
 
+import asyncio
 import json
 import logging
 from datetime import datetime, timezone
@@ -51,6 +52,7 @@ class ArubaAOS8Client:
         self._password = password
         self.ap_zone_map: Dict[str, str] = ap_zone_map or {}
         self._token: Optional[str] = None
+        self._login_lock = asyncio.Lock()
 
     # ------------------------------------------------------------------
     # Public API
@@ -172,8 +174,12 @@ class ArubaAOS8Client:
             )
             if resp.status_code == 401:
                 logger.info("Aruba token expired — re-logging in")
+                async with self._login_lock:
+                    if self._token is None:
+                        token = await self.login()
+                    else:
+                        token = self._token
                 self._token = None
-                token = await self.login()
                 resp = await client.get(
                     f"{self.base_url}/v1/monitoring/client",
                     params={"UIDARUBA": token},
@@ -237,8 +243,11 @@ def get_aruba_client() -> ArubaAOS8Client:
         ap_zone_map: Dict[str, str] = {}
         try:
             ap_zone_map = json.loads(settings.ARUBA_AP_ZONE_MAP)
-        except Exception:
-            pass
+        except Exception as e:
+            logger.warning(
+                "Failed to parse ARUBA_AP_ZONE_MAP JSON: %s | value: %r",
+                e, settings.ARUBA_AP_ZONE_MAP,
+            )
 
         _aruba_client = ArubaAOS8Client(
             base_url=settings.ARUBA_BASE_URL,

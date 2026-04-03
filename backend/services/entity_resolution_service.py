@@ -23,6 +23,7 @@ from typing import List, Optional
 from functools import lru_cache
 
 from sqlalchemy import func, text
+from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.orm import Session
 
 from database.connection import SessionLocal
@@ -314,8 +315,6 @@ class EntityResolutionService:
                     # Upsert each non-empty identifier using INSERT … ON CONFLICT
                     # to avoid duplicate-key errors when the same identifier
                     # value appears multiple times within one batch.
-                    from sqlalchemy.dialects.postgresql import insert as pg_insert
-
                     now = datetime.now(timezone.utc)
                     for col, id_type in identifier_columns.items():
                         value = (row.get(col) or "").strip()

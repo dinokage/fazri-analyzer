@@ -10,7 +10,6 @@ import uuid
 
 import sqlalchemy as sa
 from sqlalchemy import (
-    Boolean,
     Column,
     DateTime,
     Float,

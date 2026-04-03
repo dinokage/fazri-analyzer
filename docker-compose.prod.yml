@@ -134,7 +134,7 @@ services:
 
   go2rtc:
     <<: *restart
-    image: alexxit/go2rtc:latest
+    image: alexxit/go2rtc:v1.9.7
     container_name: fazri_go2rtc
     ports:
       - "1984:1984"    # HTTP API + WebUI + HLS + snapshots
@@ -227,7 +227,7 @@ services:
     networks:
       - fazri-prod
     healthcheck:
-      test: ["CMD", "nginx", "-t"]
+      test: ["CMD", "wget", "-q", "--spider", "http://localhost/"]
       interval: 30s
       timeout: 5s
       retries: 3

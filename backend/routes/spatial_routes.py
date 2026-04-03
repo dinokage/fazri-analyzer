@@ -29,6 +29,8 @@ from scripts.sample_zones import ZONES_DATA
 
 logger = logging.getLogger(__name__)
 
+MAX_HOURS_BACK = 168  # 7 days
+
 router = APIRouter(prefix="/api/v1/spatial", tags=["spatial"])
 
 # ─── In-memory zone index ────────────────────────────────────────────────────
@@ -140,6 +142,11 @@ async def get_zone_history(
     current_user: AuthenticatedUser = Depends(require_staff()),
 ) -> Dict:
     """Return hourly event counts for the zone over the past N hours."""
+    if hours_back <= 0 or hours_back > MAX_HOURS_BACK:
+        raise HTTPException(
+            status_code=400,
+            detail=f"hours_back must be between 1 and {MAX_HOURS_BACK}",
+        )
     if zone_id not in _ZONES:
         raise HTTPException(status_code=404, detail=f"Zone '{zone_id}' not found")
 

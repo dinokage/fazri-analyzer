@@ -106,7 +106,7 @@ class ToolExecutor:
 
     def _execute_get_anomalies(self, params: Dict[str, Any]) -> Dict[str, Any]:
         """Execute get_anomalies tool"""
-        raise NotImplementedError("This tool is disabled pending pipeline migration.")
+        return {"error": "This tool is disabled pending pipeline migration."}
 
     def _execute_get_zone_occupancy(self, params: Dict[str, Any]) -> Dict[str, Any]:
         """Execute get_zone_occupancy tool"""
@@ -450,38 +450,11 @@ class ToolExecutor:
 
     def _execute_get_entity_risk_profile(self, params: Dict[str, Any]) -> Dict[str, Any]:
         """Execute get_entity_risk_profile tool - comprehensive security assessment"""
-        raise NotImplementedError("This tool is disabled pending pipeline migration.")
-
-    def _get_risk_recommendations(self, risk_level: str, anomaly_types: Dict) -> List[str]:
-        """Generate recommendations based on risk level and anomaly types"""
-        recommendations = []
-
-        if risk_level in ["critical", "high"]:
-            recommendations.append("Immediate security review recommended")
-
-        if "impossible_travel" in anomaly_types:
-            recommendations.append("Investigate potential card cloning or sharing")
-
-        if "off_hours_access" in anomaly_types:
-            recommendations.append("Review after-hours access authorization")
-
-        if "role_violation" in anomaly_types or "department_violation" in anomaly_types:
-            recommendations.append("Verify access permissions are up to date")
-
-        if "entry_without_exit" in anomaly_types or "exit_without_entry" in anomaly_types:
-            recommendations.append("Check for tailgating or badge sharing behavior")
-
-        if "curfew_violation" in anomaly_types:
-            recommendations.append("Follow up with residential life/warden")
-
-        if not recommendations:
-            recommendations.append("No immediate action required - continue monitoring")
-
-        return recommendations
+        return {"error": "This tool is disabled pending pipeline migration."}
 
     def _execute_get_security_violations(self, params: Dict[str, Any]) -> Dict[str, Any]:
         """Execute get_security_violations tool - categorized security violations"""
-        raise NotImplementedError("This tool is disabled pending pipeline migration.")
+        return {"error": "This tool is disabled pending pipeline migration."}
 
     def _execute_find_entities_at_location(self, params: Dict[str, Any]) -> Dict[str, Any]:
         """Execute find_entities_at_location tool - who was at a location at a time"""
@@ -793,64 +766,13 @@ class ToolExecutor:
         """Execute get_zone_forecast tool - predict future zone occupancy"""
         return {"error": "Spatial forecasting service removed. Zone data will be available in the new zone management system."}
 
-    def _get_occupancy_recommendation(self, status: str, zone_name: str) -> str:
-        """Generate recommendation based on predicted occupancy"""
-        recommendations = {
-            "very crowded": f"{zone_name} is expected to be very crowded. Consider alternative spaces or visit at a different time.",
-            "crowded": f"{zone_name} will likely be busy. Plan for limited seating/space.",
-            "moderate": f"{zone_name} should have decent availability.",
-            "light": f"{zone_name} is expected to have plenty of space available.",
-            "empty": f"{zone_name} should be mostly empty - great time to visit."
-        }
-        return recommendations.get(status, "No specific recommendation.")
-
     def _execute_get_zone_history(self, params: Dict[str, Any]) -> Dict[str, Any]:
         """Execute get_zone_history tool - historical occupancy trends"""
         return {"error": "Spatial forecasting service removed. Zone data will be available in the new zone management system."}
 
-    def _generate_zone_insights(self, avg_occupancy: float, peak_occupancy: int, zone_details: Optional[Dict]) -> List[str]:
-        """Generate insights from zone history"""
-        insights = []
-
-        capacity = zone_details.get("capacity", 100) if zone_details else 100
-        avg_rate = (avg_occupancy / capacity * 100) if capacity > 0 else 0
-        peak_rate = (peak_occupancy / capacity * 100) if capacity > 0 else 0
-
-        if avg_rate < 30:
-            insights.append("This zone is generally underutilized - consider for alternative uses or events")
-        elif avg_rate > 70:
-            insights.append("This zone is heavily used - may need capacity management")
-
-        if peak_rate > 90:
-            insights.append("Zone reaches near-capacity during peak times - monitor for overcrowding")
-
-        if not insights:
-            insights.append("Zone utilization is within normal range")
-
-        return insights
-
     def _execute_get_campus_summary(self, params: Dict[str, Any]) -> Dict[str, Any]:
         """Execute get_campus_summary tool - overall campus activity"""
         return {"error": "Spatial forecasting service removed. Zone data will be available in the new zone management system."}
-
-    def _generate_campus_alerts(self, summary: Dict) -> List[str]:
-        """Generate alerts based on campus summary"""
-        alerts = []
-
-        high_traffic = summary.get("high_traffic_zones", [])
-        if len(high_traffic) >= 3:
-            alerts.append(f"High traffic in {len(high_traffic)} zones - monitor for overcrowding")
-
-        overall_rate = summary["summary"]["overall_occupancy_rate"]
-        if overall_rate > 80:
-            alerts.append("Campus is at high capacity - consider crowd management")
-        elif overall_rate < 20:
-            alerts.append("Campus occupancy is unusually low")
-
-        if not alerts:
-            alerts.append("No immediate alerts - campus activity is normal")
-
-        return alerts
 
     def _execute_detect_routine_patterns(self, params: Dict[str, Any]) -> Dict[str, Any]:
         """Execute detect_routine_patterns tool - analyze entity behavior patterns"""
@@ -971,34 +893,7 @@ class ToolExecutor:
 
     def _execute_get_anomaly_trends(self, params: Dict[str, Any]) -> Dict[str, Any]:
         """Execute get_anomaly_trends tool - analyze anomaly patterns over time"""
-        raise NotImplementedError("This tool is disabled pending pipeline migration.")
-
-    def _generate_trend_insights(self, anomalies: List, trends: List, group_by: str, days: int) -> List[str]:
-        """Generate insights from anomaly trends"""
-        insights = []
-
-        total = len(anomalies)
-        critical_count = sum(1 for a in anomalies if a.get("severity") == "critical")
-
-        if critical_count > 0:
-            insights.append(f"Alert: {critical_count} critical security incidents detected")
-
-        avg_per_day = total / days
-        if avg_per_day > 10:
-            insights.append(f"High anomaly rate: {avg_per_day:.1f} incidents per day")
-        elif avg_per_day < 1:
-            insights.append("Low anomaly rate - security posture is good")
-
-        if group_by == "hour" and trends:
-            peak_hour = max(trends, key=lambda x: x["count"])
-            insights.append(f"Peak incident time: {peak_hour['group']} ({peak_hour['count']} incidents)")
-
-        if group_by == "zone" and trends:
-            top_zone = trends[0] if trends else None
-            if top_zone and top_zone["count"] > total * 0.3:
-                insights.append(f"Hotspot: {top_zone['group']} accounts for {top_zone['count']} incidents")
-
-        return insights
+        return {"error": "This tool is disabled pending pipeline migration."}
 
     def _execute_get_activity_gaps(self, params: Dict[str, Any]) -> Dict[str, Any]:
         """Execute get_activity_gaps tool - find gaps in entity's timeline"""
@@ -1275,24 +1170,3 @@ class ToolExecutor:
         """Execute get_zone_connections tool - find connected zones"""
         return {"error": "Spatial forecasting service removed. Zone data will be available in the new zone management system."}
 
-    def _generate_connection_insights(self, connections: List, zone_details: Dict) -> List[str]:
-        """Generate insights about zone connections"""
-        insights = []
-
-        if not connections:
-            insights.append("This zone has no recorded connections to other zones")
-            return insights
-
-        insights.append(f"Connected to {len(connections)} nearby zones")
-
-        # Find busiest connection
-        if connections and connections[0].get("travelers_last_24h", 0) > 0:
-            busiest = connections[0]
-            insights.append(f"Highest traffic to/from: {busiest['zone_name']} ({busiest['travelers_last_24h']} people in 24h)")
-
-        # Check for close connections
-        close_zones = [c for c in connections if c.get("walking_time_minutes", 99) <= 2]
-        if close_zones:
-            insights.append(f"{len(close_zones)} zones within 2-minute walk")
-
-        return insights

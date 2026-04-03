@@ -169,7 +169,7 @@ class DeepFaceAnomalyAnalyzer:
         # Import here to avoid circular imports at module load time
         try:
             from config.zone_matrix import zone_matrix as _zm
-        except Exception:
+        except ImportError:
             _zm = None
 
         now = datetime.now(timezone.utc)
@@ -197,26 +197,19 @@ class DeepFaceAnomalyAnalyzer:
             elapsed_seconds = int((now - prev_ts).total_seconds())
 
             # Determine whether this elapsed time is physically impossible
-            if _zm is not None:
-                impossible = _zm.is_impossible_travel(
-                    prev_zone, current_zone_id, elapsed_seconds
-                )
-            else:
-                # Fallback: flat config value (unknown zones path)
-                fallback_window = timedelta(
-                    minutes=settings.DEEPFACE_IMPOSSIBLE_TRAVEL_MINUTES
-                )
-                impossible = prev_ts >= (now - fallback_window)
+            min_travel = (
+                _zm.get_min_travel_time(prev_zone, current_zone_id)
+                if _zm is not None
+                else None
+            )
+            if min_travel is None:
+                min_travel = settings.DEEPFACE_IMPOSSIBLE_TRAVEL_MINUTES * 60
+            is_impossible = elapsed_seconds < min_travel
 
-            if impossible:
+            if is_impossible:
                 entity_id = entity.get("entity_id", "unknown")
                 entity_name = entity.get("name", entity_id)
                 minutes_ago = elapsed_seconds // 60
-                min_travel = (
-                    _zm.get_min_travel_time(prev_zone, current_zone_id)
-                    if _zm is not None
-                    else settings.DEEPFACE_IMPOSSIBLE_TRAVEL_MINUTES * 60
-                )
                 return {
                     "anomaly_type": "impossible_travel",
                     "severity": "critical",

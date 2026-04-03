@@ -70,6 +70,7 @@ _serial_counter = 1000
 
 # Module-level async Redis client (initialised on startup)
 _redis = None
+_background_tasks: list = []
 
 
 async def _get_redis():
@@ -240,8 +241,8 @@ async def search_acs_events(request: Request) -> Response:
                 end_time = datetime.fromisoformat(end_el.text.replace("Z", "+00:00"))
             except ValueError:
                 pass
-    except Exception:
-        pass
+    except Exception as exc:
+        logger.debug("Failed to parse XML body: %s | excerpt: %s", exc, body[:200])
 
     # Apply time filter so re-polls don't return already-ingested events
     filtered = _events
@@ -322,7 +323,9 @@ async def _coordinator_driven_generator() -> None:
     Fires RFID ACCESS_GRANTED at `since_rfid` time using the entity's real
     card_id from entity_identifiers — making events resolvable by the backend.
     """
+    global _redis
     last_zone: dict = {}  # entity_id → last zone an RFID event was fired for
+    consecutive_failures = 0
 
     while True:
         now = datetime.now(timezone.utc)
@@ -351,8 +354,14 @@ async def _coordinator_driven_generator() -> None:
                     last_zone[eid] = zone
                     if len(_events) > 10_000:
                         del _events[:5_000]
+            consecutive_failures = 0
         except Exception as exc:
+            consecutive_failures += 1
             logger.warning("Hikvision sim coordinator generator error: %s", exc)
+            if consecutive_failures >= 5:
+                logger.warning("Attempting Redis reconnect after %d consecutive failures", consecutive_failures)
+                _redis = await _get_redis()
+                consecutive_failures = 0
 
         await asyncio.sleep(3)
 
@@ -366,15 +375,21 @@ async def maybe_start_continuous() -> None:
     coordinator = os.getenv("HIKVISION_SIM_COORDINATOR", "").lower() in ("1", "true", "yes")
 
     if coordinator and _redis is not None:
-        # This instance owns the movement coordinator
         from simulators.movement_coordinator import run_coordinator
-        asyncio.create_task(run_coordinator(_redis))
+        _background_tasks.append(asyncio.create_task(run_coordinator(_redis)))
 
     if continuous:
         if _redis is not None:
-            asyncio.create_task(_coordinator_driven_generator())
+            _background_tasks.append(asyncio.create_task(_coordinator_driven_generator()))
         else:
-            asyncio.create_task(_continuous_generator())
+            _background_tasks.append(asyncio.create_task(_continuous_generator()))
+
+@app.on_event("shutdown")
+async def shutdown_simulators() -> None:
+    for task in _background_tasks:
+        task.cancel()
+    if _background_tasks:
+        await asyncio.gather(*_background_tasks, return_exceptions=True)
 
 
 if __name__ == "__main__":

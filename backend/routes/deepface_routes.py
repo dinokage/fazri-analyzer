@@ -40,8 +40,8 @@ from auth.models import AuthenticatedUser
 from config import settings
 from database.connection import get_db
 from models.db.camera_streams import CameraStream, CameraStreamStatus
-from models.db.alerts import AlertSeverity, ActorType
-from models.schemas.alerts import AlertCreate, AlertSeverityEnum, LocationSchema
+
+
 from models.schemas.deepface import (
     FaceRegistrationResponse,
     FaceSearchResponse,
@@ -147,129 +147,6 @@ def _go2rtc_register_url(stream_id: str, rtsp_url: str) -> str:
 
 
 # ============================================================================
-
-
-def _create_alert_from_anomaly(
-    anomaly: Dict[str, Any],
-    entity: Optional[Dict[str, Any]],
-    zone_id: str,
-    match_data: Optional[Dict[str, Any]],
-    payload: WebhookPayload,
-    db: Session,
-) -> None:
-    """
-    Translate an anomaly dict into an Alert record and auto-assign it.
-
-    Mirrors the two-step pattern from alert_routes.py lines 118-143:
-      1. AlertService.create_alert()
-      2. AssignmentEngine.assign_alert() or assign_critical_alert()
-    """
-    severity_map = {
-        "low": AlertSeverityEnum.LOW,
-        "medium": AlertSeverityEnum.MEDIUM,
-        "high": AlertSeverityEnum.HIGH,
-        "critical": AlertSeverityEnum.CRITICAL,
-    }
-    severity = severity_map.get(anomaly.get("severity", "medium"), AlertSeverityEnum.MEDIUM)
-
-    affected = [entity["entity_id"]] if entity else []
-
-    evidence: Dict[str, Any] = {
-        "face_recognition": {
-            "stream_id": payload.stream_id,
-            "timestamp": payload.timestamp.isoformat(),
-            "frames_processed": payload.frames_processed,
-            "rtsp_url": payload.rtsp_url,
-        },
-        "cctv_frames": {
-            "stream_id": payload.stream_id,
-            "faces_found": payload.faces_found,
-        },
-        "anomaly_details": anomaly.get("details", {}),
-    }
-
-    if match_data:
-        evidence["face_recognition"].update({
-            "distance": match_data.get("distance"),
-            "confidence": match_data.get("confidence"),
-            "threshold": match_data.get("threshold"),
-            "facial_area": match_data.get("facial_area"),
-        })
-
-    alert_data = AlertCreate(
-        anomaly_type=anomaly["anomaly_type"],
-        title=f"Face Recognition Alert: {anomaly['anomaly_type'].replace('_', ' ').title()}",
-        description=anomaly["description"],
-        severity=severity,
-        location=LocationSchema(zone_id=zone_id),
-        affected_entities=affected,
-        data_sources=["CCTV"],
-        evidence=evidence,
-        is_mock=False,
-    )
-
-    alert_service = AlertService(db)
-    alert = alert_service.create_alert(
-        alert_data=alert_data,
-        actor_type=ActorType.SYSTEM,
-    )
-
-    assignment_engine = AssignmentEngine(db)
-    if alert.severity == AlertSeverity.CRITICAL:
-        assigned = assignment_engine.assign_critical_alert(alert, max_assignees=3)
-        if assigned:
-            logger.info(
-                "Critical deepface alert %s auto-assigned to %d staff",
-                alert.id,
-                len(assigned),
-            )
-    else:
-        assigned = assignment_engine.assign_alert(alert)
-        if assigned:
-            logger.info(
-                "Deepface alert %s auto-assigned to %s",
-                alert.id,
-                assigned.name,
-            )
-
-    db.refresh(alert)
-
-    # Web Push to all subscribed browser sessions
-    try:
-        from services.push_service import send_push_to_all
-        send_push_to_all(
-            db=db,
-            title=alert_data.title,
-            body=alert_data.description[:120],
-            url=f"/dashboard/alerts/{alert.id}",
-        )
-    except Exception as exc:
-        logger.warning("Web Push delivery error: %s", exc)
-
-    # Fire Discord webhook (non-blocking best-effort)
-    if settings.DISCORD_WEBHOOK_URL:
-        severity_colors = {
-            "low": 3447003,       # blue
-            "medium": 16776960,   # yellow
-            "high": 16744272,     # orange
-            "critical": 15158332, # red
-        }
-        color = severity_colors.get(anomaly.get("severity", "medium"), 15158332)
-        discord_payload = {
-            "content": "🚨 **Unknown Face Detected**",
-            "embeds": [{
-                "title": alert_data.title,
-                "description": alert_data.description[:500],
-                "color": color,
-                "fields": [
-                    {"name": "Severity", "value": anomaly.get("severity", "medium").upper(), "inline": True},
-                    {"name": "Zone", "value": zone_id, "inline": True},
-                    {"name": "Alert ID", "value": str(alert.id), "inline": False},
-                ],
-                "timestamp": datetime.now(timezone.utc).isoformat(),
-            }],
-        }
-        asyncio.create_task(_post_discord_webhook(settings.DISCORD_WEBHOOK_URL, discord_payload))
 
 
 def _stream_to_response(stream: CameraStream) -> StreamResponse:
@@ -452,8 +329,8 @@ async def deepface_webhook(
                     _json.dumps(detection_overlays),
                     ex=10,  # 10s TTL — auto-expires when stream goes idle
                 )
-            except Exception:
-                pass  # best-effort
+            except Exception as exc:
+                logger.debug("Best-effort cache failed: %s", exc, exc_info=True)
 
     # ── 6. Update last_event_at on the camera stream record ───────────────────
     cam_stream.last_event_at = datetime.now(timezone.utc)

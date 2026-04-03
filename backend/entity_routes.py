@@ -441,15 +441,15 @@ async def get_entity_sensor_timeline(
     from models.db.alerts import Alert
 
     # ── Students may only view their own timeline ─────────────────────────────
-    if current_user.role.value == "student" and current_user.entity_id != entity_id:
+    if current_user.role == UserRole.STUDENT and current_user.entity_id != entity_id:
         raise PermissionDeniedError("You can only access your own timeline")
 
     # ── Resolve since timestamp ───────────────────────────────────────────────
     if since:
         try:
             since_dt = datetime.fromisoformat(since.replace("Z", "+00:00"))
-        except ValueError:
-            raise HTTPException(status_code=400, detail="Invalid 'since' timestamp")
+        except ValueError as e:
+            raise HTTPException(status_code=400, detail="Invalid 'since' timestamp") from e
     else:
         since_dt = datetime.now(timezone.utc) - timedelta(days=7)
 

@@ -93,8 +93,7 @@ def run_import(
     error_messages: List[str] = []
 
     if not os.path.exists(csv_path):
-        logger.error("CSV file not found: %s", csv_path)
-        sys.exit(1)
+        raise FileNotFoundError(f"CSV file not found: {csv_path}")
 
     if dry_run:
         logger.info("[DRY RUN] Previewing import from: %s", csv_path)
@@ -177,10 +176,14 @@ if __name__ == "__main__":
             logger.error("Invalid --mapping JSON: %s", exc)
             sys.exit(1)
 
-    result = run_import(
-        csv_path=args.csv_path,
-        column_map=column_map,
-        dry_run=args.dry_run,
-        batch_size=args.batch_size,
-    )
+    try:
+        result = run_import(
+            csv_path=args.csv_path,
+            column_map=column_map,
+            dry_run=args.dry_run,
+            batch_size=args.batch_size,
+        )
+    except FileNotFoundError as exc:
+        logger.error(str(exc))
+        sys.exit(1)
     print(json.dumps(result, indent=2))

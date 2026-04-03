@@ -1,3 +1,4 @@
+import logging
 import threading
 import requests
 from jose import jwt, JWTError, ExpiredSignatureError
@@ -5,6 +6,8 @@ from typing import Dict, Any
 
 from config import settings
 from auth.exceptions import TokenExpiredError, InvalidTokenError, AuthServiceUnavailableError
+
+logger = logging.getLogger(__name__)
 
 _jwks_cache: dict | None = None
 _jwks_lock = threading.Lock()
@@ -44,6 +47,7 @@ def decode_jwt_token(token: str) -> Dict[str, Any]:
     # Test-only bypass: accept HS256 tokens when TESTING=true.
     # This path is unreachable unless the setting is explicitly set.
     if settings.TESTING and settings.TEST_JWT_SECRET:
+        logger.debug("HS256 test-only path activated")
         try:
             return jwt.decode(
                 token,
@@ -53,8 +57,9 @@ def decode_jwt_token(token: str) -> Dict[str, Any]:
             )
         except ExpiredSignatureError as e:
             raise TokenExpiredError() from e
-        except JWTError:
-            pass  # fall through to RS256 path
+        except JWTError as exc:
+            logger.debug("HS256 decode fallthrough: %s", exc)
+            # fall through to RS256 path
 
     try:
         jwks = _get_jwks()

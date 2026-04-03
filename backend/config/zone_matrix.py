@@ -23,11 +23,6 @@ import math
 from dataclasses import dataclass, field
 from typing import Dict, List, Optional, Tuple
 
-# ---------------------------------------------------------------------------
-# Zone source data — imported once at module load
-# ---------------------------------------------------------------------------
-from scripts.sample_zones import ZONES_DATA
-
 # Walking parameters
 _WALKING_SPEED_MS = 1.4          # metres per second (≈ 5 km/h)
 _PATH_TORTUOSITY = 1.4           # straight-line × factor = real path length
@@ -193,6 +188,10 @@ class ZoneMatrixConfig:
 
     @staticmethod
     def _load_zones() -> Dict[str, ZoneConfig]:
+        try:
+            from scripts.sample_zones import ZONES_DATA
+        except ImportError:
+            ZONES_DATA = []
         zones: Dict[str, ZoneConfig] = {}
         for z in ZONES_DATA:
             coords = z.get("coordinates", {})

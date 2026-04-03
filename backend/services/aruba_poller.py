@@ -54,8 +54,12 @@ async def run_aruba_poller() -> None:
         _redis = aioredis.Redis(
             host=settings.REDIS_HOST, port=settings.REDIS_PORT, db=0, socket_timeout=1
         )
-    except Exception:
-        pass
+    except Exception as e:
+        _redis = None
+        logger.debug(
+            "Redis init failed for aruba_poller (host=%s, port=%s): %s",
+            settings.REDIS_HOST, settings.REDIS_PORT, e, exc_info=True
+        )
 
     while True:
         try:
@@ -69,12 +73,9 @@ async def run_aruba_poller() -> None:
                 )
 
                 if movement_events:
-                    db = SessionLocal()
-                    try:
+                    with SessionLocal() as db:
                         svc = get_event_ingestion_service(db)
                         results = await svc.ingest_batch(movement_events)
-                    finally:
-                        db.close()
 
                     resolved_count = sum(1 for r in results if r is not None)
                     stats["polled"] += len(movement_events)
@@ -89,8 +90,8 @@ async def run_aruba_poller() -> None:
                 try:
                     await _redis.set("aruba:last_poll", now.isoformat(), ex=300)
                     await _redis.set("aruba:clients_online", len(current_events), ex=300)
-                except Exception:
-                    pass
+                except Exception as e:
+                    logger.debug("Redis status write failed in aruba_poller: %s", e)
 
             # Log aggregate stats every 60 seconds
             if (now - last_stats_log).total_seconds() >= 60:

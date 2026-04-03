@@ -86,6 +86,7 @@ _sessions: Dict[str, datetime] = {}  # token → expiry
 
 # Module-level async Redis client (set on startup)
 _redis = None
+_movement_task: Optional[asyncio.Task] = None
 
 
 async def _get_redis():
@@ -144,12 +145,22 @@ _cached_clients: List[Dict] = []
 
 @app.on_event("startup")
 async def init_clients() -> None:
-    global _redis, _cached_clients
+    global _redis, _cached_clients, _movement_task
     _redis = await _get_redis()
     # Pre-populate fallback cache; also start legacy random mover if Redis unavailable
     _cached_clients = _random_clients()
     if _redis is None:
-        asyncio.create_task(_movement_simulator())
+        _movement_task = asyncio.create_task(_movement_simulator())
+
+@app.on_event("shutdown")
+async def shutdown_clients() -> None:
+    global _movement_task
+    if _movement_task and not _movement_task.done():
+        _movement_task.cancel()
+        try:
+            await _movement_task
+        except asyncio.CancelledError:
+            pass
 
 
 async def _movement_simulator() -> None:
@@ -226,8 +237,8 @@ async def get_clients(UIDARUBA: str = Query(default="")) -> dict:
         try:
             if await _redis.exists("sim:aruba:paused"):
                 return {"Clients": []}
-        except Exception:
-            pass
+        except Exception as e:
+            logger.debug("Redis exists check for sim:aruba:paused failed: %s", e)
 
     if _redis is None:
         return {"Clients": _cached_clients}
@@ -244,7 +255,18 @@ async def get_clients(UIDARUBA: str = Query(default="")) -> dict:
             info = json.loads(raw)
             if info.get("traveling"):
                 continue
-            wifi_since = datetime.fromisoformat(info["since_wifi"])
+            # Validate required fields
+            if not all(k in info for k in ("zone_id", "since_wifi", "mac")):
+                logger.debug("Aruba sim: skipping entity %s — missing required fields", eid)
+                continue
+            if not info["mac"]:
+                logger.debug("Aruba sim: skipping entity %s — empty mac", eid)
+                continue
+            try:
+                wifi_since = datetime.fromisoformat(info["since_wifi"])
+            except ValueError:
+                logger.debug("Aruba sim: skipping entity %s — invalid since_wifi: %r", eid, info["since_wifi"])
+                continue
             if wifi_since > now:
                 continue  # entity's phone hasn't associated yet
             zone_id = info["zone_id"]
