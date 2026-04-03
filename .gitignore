@@ -56,3 +56,20 @@ next-env.d.ts
 .sentryclirc
 .sentry-*
 sentry-debug-files/
+
+# ML model artifacts
+*.pkl
+*.pickle
+*.h5
+*.pt
+*.onnx
+
+# Large data files
+*.csv.gz
+
+# Synthetic / augmented data (large CSVs, not for version control)
+backend/augmented/
+
+# Credentials (belt-and-suspenders)
+*credentials*.json
+!*credentials*.json.example
