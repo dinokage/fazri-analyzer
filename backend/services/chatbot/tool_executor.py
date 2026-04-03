@@ -6,8 +6,6 @@ from typing import Dict, Any, Optional, List
 from datetime import datetime, timedelta, timezone
 import logging
 
-from services.anomaly_detection import AnomalyDetectionService
-from services.entity_anomaly_detection import EntityAnomalyDetectionService
 from services.graph_builder import get_graph_builder
 from services.timeline_service import TimelineService
 
@@ -23,26 +21,8 @@ class ToolExecutor:
         self.neo4j_password = neo4j_password
 
         # Initialize services lazily
-        self._anomaly_service = None
-        self._entity_anomaly_service = None
         self._graph_builder = None
         self._timeline_service = None
-
-    @property
-    def anomaly_service(self) -> AnomalyDetectionService:
-        if self._anomaly_service is None:
-            self._anomaly_service = AnomalyDetectionService(
-                self.neo4j_uri, self.neo4j_user, self.neo4j_password
-            )
-        return self._anomaly_service
-
-    @property
-    def entity_anomaly_service(self) -> EntityAnomalyDetectionService:
-        if self._entity_anomaly_service is None:
-            self._entity_anomaly_service = EntityAnomalyDetectionService(
-                self.neo4j_uri, self.neo4j_user, self.neo4j_password
-            )
-        return self._entity_anomaly_service
 
     @property
     def graph_builder(self):
@@ -126,65 +106,7 @@ class ToolExecutor:
 
     def _execute_get_anomalies(self, params: Dict[str, Any]) -> Dict[str, Any]:
         """Execute get_anomalies tool"""
-        time_range = params.get("time_range", "today")
-        start_time, end_time = self._get_time_range(time_range)
-
-        limit = min(params.get("limit", 10), 50)
-        zone_id = params.get("zone_id")
-        severity = params.get("severity")
-        anomaly_type = params.get("anomaly_type")
-        entity_id = params.get("entity_id")
-
-        # Get anomalies from the service
-        anomalies = self.anomaly_service.detect_all_anomalies(
-            start_date=start_time.strftime("%Y-%m-%d"),
-            end_date=end_time.strftime("%Y-%m-%d"),
-            include_entity_anomalies=True
-        )
-
-        # Apply filters
-        if zone_id:
-            anomalies = [a for a in anomalies if a.get("location") == zone_id]
-        if severity:
-            anomalies = [a for a in anomalies if a.get("severity") == severity]
-        if anomaly_type:
-            anomalies = [a for a in anomalies if a.get("type") == anomaly_type]
-        if entity_id:
-            anomalies = [a for a in anomalies if a.get("entity_id") == entity_id]
-
-        # Limit results
-        anomalies = anomalies[:limit]
-
-        # Format for readability
-        formatted_anomalies = []
-        for a in anomalies:
-            timestamp = a.get("timestamp")
-            if hasattr(timestamp, "isoformat"):
-                timestamp = timestamp.isoformat()
-
-            formatted_anomalies.append({
-                "id": a.get("id"),
-                "type": a.get("type"),
-                "severity": a.get("severity"),
-                "location": a.get("location"),
-                "timestamp": timestamp,
-                "description": a.get("description"),
-                "entity_id": a.get("entity_id"),
-                "entity_name": a.get("entity_name")
-            })
-
-        return {
-            "anomalies": formatted_anomalies,
-            "count": len(formatted_anomalies),
-            "total_found": len(anomalies),
-            "time_range": time_range,
-            "filters_applied": {
-                "zone_id": zone_id,
-                "severity": severity,
-                "anomaly_type": anomaly_type,
-                "entity_id": entity_id
-            }
-        }
+        raise NotImplementedError("This tool is disabled pending pipeline migration.")
 
     def _execute_get_zone_occupancy(self, params: Dict[str, Any]) -> Dict[str, Any]:
         """Execute get_zone_occupancy tool"""
@@ -528,115 +450,7 @@ class ToolExecutor:
 
     def _execute_get_entity_risk_profile(self, params: Dict[str, Any]) -> Dict[str, Any]:
         """Execute get_entity_risk_profile tool - comprehensive security assessment"""
-        entity_id = params.get("entity_id")
-        days = min(params.get("days", 30), 90)
-
-        if not entity_id:
-            return {"error": "entity_id is required"}
-
-        try:
-            from neo4j import GraphDatabase
-            driver = GraphDatabase.driver(
-                self.neo4j_uri,
-                auth=(self.neo4j_user, self.neo4j_password)
-            )
-
-            # Get entity profile
-            profile = self.entity_anomaly_service.get_entity_profile(entity_id)
-            if not profile:
-                return {"error": f"Entity {entity_id} not found"}
-
-            # Get anomalies for this entity
-            start_time = datetime.now(timezone.utc) - timedelta(days=days)
-            end_time = datetime.now(timezone.utc)
-
-            anomalies = self.entity_anomaly_service.detect_entity_anomalies(
-                start_time, end_time, entity_id
-            )
-
-            # Categorize anomalies by type
-            anomaly_by_type = {}
-            severity_counts = {"critical": 0, "high": 0, "medium": 0, "low": 0}
-
-            for anomaly in anomalies:
-                atype = anomaly.get("type", "unknown")
-                if atype not in anomaly_by_type:
-                    anomaly_by_type[atype] = []
-                anomaly_by_type[atype].append(anomaly)
-
-                severity = anomaly.get("severity", "low")
-                if severity in severity_counts:
-                    severity_counts[severity] += 1
-
-            # Calculate risk score (0-100)
-            risk_score = min(100, (
-                severity_counts["critical"] * 25 +
-                severity_counts["high"] * 15 +
-                severity_counts["medium"] * 5 +
-                severity_counts["low"] * 1
-            ))
-
-            # Determine risk level
-            if risk_score >= 70:
-                risk_level = "critical"
-            elif risk_score >= 40:
-                risk_level = "high"
-            elif risk_score >= 15:
-                risk_level = "medium"
-            else:
-                risk_level = "low"
-
-            # Get activity stats
-            with driver.session() as session:
-                stats_result = session.run("""
-                    MATCH (e:Entity {entity_id: $entity_id})-[r:SWIPED_CARD]->(z:Zone)
-                    WHERE r.timestamp >= datetime($start_time)
-                    RETURN count(r) as total_swipes,
-                           count(DISTINCT z.zone_id) as zones_visited,
-                           count(DISTINCT date(r.timestamp)) as active_days
-                """, {
-                    "entity_id": entity_id,
-                    "start_time": start_time.isoformat()
-                })
-
-                stats = stats_result.single()
-
-            driver.close()
-
-            # Build response
-            recent_anomalies = sorted(anomalies, key=lambda x: x.get("timestamp", ""), reverse=True)[:5]
-
-            return {
-                "entity_id": entity_id,
-                "name": profile.get("name"),
-                "role": profile.get("role"),
-                "department": profile.get("department"),
-                "risk_assessment": {
-                    "risk_score": risk_score,
-                    "risk_level": risk_level,
-                    "total_anomalies": len(anomalies),
-                    "severity_breakdown": severity_counts,
-                    "anomaly_types": {k: len(v) for k, v in anomaly_by_type.items()}
-                },
-                "activity_stats": {
-                    "total_swipes": stats["total_swipes"] if stats else 0,
-                    "zones_visited": stats["zones_visited"] if stats else 0,
-                    "active_days": stats["active_days"] if stats else 0,
-                    "analysis_period_days": days
-                },
-                "recent_anomalies": [{
-                    "type": a.get("type"),
-                    "severity": a.get("severity"),
-                    "location": a.get("location"),
-                    "timestamp": a.get("timestamp"),
-                    "description": a.get("description")
-                } for a in recent_anomalies],
-                "recommendations": self._get_risk_recommendations(risk_level, anomaly_by_type)
-            }
-
-        except Exception as e:
-            logger.error(f"Error getting entity risk profile: {str(e)}")
-            return {"error": str(e)}
+        raise NotImplementedError("This tool is disabled pending pipeline migration.")
 
     def _get_risk_recommendations(self, risk_level: str, anomaly_types: Dict) -> List[str]:
         """Generate recommendations based on risk level and anomaly types"""
@@ -667,82 +481,7 @@ class ToolExecutor:
 
     def _execute_get_security_violations(self, params: Dict[str, Any]) -> Dict[str, Any]:
         """Execute get_security_violations tool - categorized security violations"""
-        category = params.get("category", "all")
-        time_range = params.get("time_range", "today")
-        severity_filter = params.get("severity")
-        limit = min(params.get("limit", 20), 50)
-
-        start_time, end_time = self._get_time_range(time_range)
-
-        # Map categories to anomaly types
-        category_mapping = {
-            "impossible_travel": ["impossible_travel"],
-            "off_hours": ["off_hours_access"],
-            "role_violations": ["role_violation", "department_violation"],
-            "tailgating": ["entry_without_exit", "exit_without_entry", "consecutive_same_direction"],
-            "curfew": ["curfew_violation"],
-            "all": None  # No filter
-        }
-
-        try:
-            # Get all anomalies
-            anomalies = self.entity_anomaly_service.detect_entity_anomalies(start_time, end_time)
-
-            # Filter by category
-            if category != "all" and category in category_mapping:
-                allowed_types = category_mapping[category]
-                anomalies = [a for a in anomalies if a.get("type") in allowed_types]
-
-            # Filter by severity
-            severity_order = ["low", "medium", "high", "critical"]
-            if severity_filter and severity_filter in severity_order:
-                min_index = severity_order.index(severity_filter)
-                anomalies = [a for a in anomalies if severity_order.index(a.get("severity", "low")) >= min_index]
-
-            # Sort by severity (critical first) then by timestamp
-            anomalies.sort(key=lambda x: (
-                -severity_order.index(x.get("severity", "low")),
-                x.get("timestamp", "")
-            ), reverse=True)
-
-            # Limit results
-            anomalies = anomalies[:limit]
-
-            # Format response
-            formatted = []
-            for a in anomalies:
-                formatted.append({
-                    "id": a.get("id"),
-                    "type": a.get("type"),
-                    "severity": a.get("severity"),
-                    "entity_id": a.get("entity_id"),
-                    "entity_name": a.get("entity_name"),
-                    "location": a.get("location"),
-                    "timestamp": a.get("timestamp"),
-                    "description": a.get("description"),
-                    "recommended_actions": a.get("recommended_actions", [])[:2]  # Top 2 actions
-                })
-
-            # Summary by type
-            type_summary = {}
-            for a in anomalies:
-                atype = a.get("type", "unknown")
-                type_summary[atype] = type_summary.get(atype, 0) + 1
-
-            return {
-                "violations": formatted,
-                "count": len(formatted),
-                "category": category,
-                "time_range": time_range,
-                "severity_filter": severity_filter,
-                "summary_by_type": type_summary,
-                "critical_count": sum(1 for a in anomalies if a.get("severity") == "critical"),
-                "high_count": sum(1 for a in anomalies if a.get("severity") == "high")
-            }
-
-        except Exception as e:
-            logger.error(f"Error getting security violations: {str(e)}")
-            return {"error": str(e)}
+        raise NotImplementedError("This tool is disabled pending pipeline migration.")
 
     def _execute_find_entities_at_location(self, params: Dict[str, Any]) -> Dict[str, Any]:
         """Execute find_entities_at_location tool - who was at a location at a time"""
@@ -1232,115 +971,7 @@ class ToolExecutor:
 
     def _execute_get_anomaly_trends(self, params: Dict[str, Any]) -> Dict[str, Any]:
         """Execute get_anomaly_trends tool - analyze anomaly patterns over time"""
-        time_range = params.get("time_range", "last_week")
-        group_by = params.get("group_by", "day")
-        zone_filter = params.get("zone_id")
-
-        # Map time range to days
-        time_range_days = {
-            "last_24h": 1,
-            "last_week": 7,
-            "last_month": 30
-        }
-        days = time_range_days.get(time_range, 7)
-
-        start_time = datetime.now(timezone.utc) - timedelta(days=days)
-        end_time = datetime.now(timezone.utc)
-
-        try:
-            # Get all anomalies for the period
-            anomalies = self.entity_anomaly_service.detect_entity_anomalies(start_time, end_time)
-
-            # Filter by zone if specified
-            if zone_filter:
-                anomalies = [a for a in anomalies if a.get("location") == zone_filter]
-
-            if not anomalies:
-                return {
-                    "time_range": time_range,
-                    "group_by": group_by,
-                    "zone_filter": zone_filter,
-                    "total_anomalies": 0,
-                    "message": "No anomalies found in the specified time range"
-                }
-
-            # Group anomalies based on requested grouping
-            grouped_data = {}
-
-            for anomaly in anomalies:
-                timestamp = anomaly.get("timestamp", "")
-
-                if group_by == "hour":
-                    try:
-                        dt = datetime.fromisoformat(timestamp.replace("Z", "+00:00"))
-                        key = f"{dt.hour}:00"
-                    except:
-                        key = "unknown"
-                elif group_by == "day":
-                    try:
-                        dt = datetime.fromisoformat(timestamp.replace("Z", "+00:00"))
-                        key = dt.strftime("%Y-%m-%d")
-                    except:
-                        key = "unknown"
-                elif group_by == "type":
-                    key = anomaly.get("type", "unknown")
-                elif group_by == "zone":
-                    key = anomaly.get("location", "unknown")
-                elif group_by == "severity":
-                    key = anomaly.get("severity", "unknown")
-                else:
-                    key = "all"
-
-                if key not in grouped_data:
-                    grouped_data[key] = {"count": 0, "critical": 0, "high": 0, "medium": 0, "low": 0}
-
-                grouped_data[key]["count"] += 1
-                severity = anomaly.get("severity", "low")
-                if severity in grouped_data[key]:
-                    grouped_data[key][severity] += 1
-
-            # Sort and format
-            if group_by in ["hour", "day"]:
-                sorted_keys = sorted(grouped_data.keys())
-            else:
-                sorted_keys = sorted(grouped_data.keys(), key=lambda x: grouped_data[x]["count"], reverse=True)
-
-            trends = [
-                {"group": k, **grouped_data[k]}
-                for k in sorted_keys
-            ]
-
-            # Calculate summary statistics
-            total = len(anomalies)
-            critical_count = sum(1 for a in anomalies if a.get("severity") == "critical")
-            high_count = sum(1 for a in anomalies if a.get("severity") == "high")
-
-            # Find most common type
-            type_counts = {}
-            for a in anomalies:
-                t = a.get("type", "unknown")
-                type_counts[t] = type_counts.get(t, 0) + 1
-            most_common_type = max(type_counts.items(), key=lambda x: x[1]) if type_counts else ("none", 0)
-
-            return {
-                "time_range": time_range,
-                "group_by": group_by,
-                "zone_filter": zone_filter,
-                "summary": {
-                    "total_anomalies": total,
-                    "critical_count": critical_count,
-                    "high_count": high_count,
-                    "most_common_type": most_common_type[0],
-                    "most_common_count": most_common_type[1],
-                    "average_per_day": round(total / days, 1)
-                },
-                "trends": trends,
-                "insights": self._generate_trend_insights(anomalies, trends, group_by, days)
-            }
-
-        except Exception as e:
-            logger.error(f"Error getting anomaly trends: {str(e)}")
-            return {"error": str(e)}
+        raise NotImplementedError("This tool is disabled pending pipeline migration.")
 
     def _generate_trend_insights(self, anomalies: List, trends: List, group_by: str, days: int) -> List[str]:
         """Generate insights from anomaly trends"""
