@@ -215,14 +215,20 @@ async def lifespan(app: FastAPI):
     yield
 
     # Shutdown — cancel background tasks cleanly
+    tasks_to_cancel = []
     if _batch_sync_task and not _batch_sync_task.done():
         _batch_sync_task.cancel()
+        tasks_to_cancel.append(_batch_sync_task)
     if _hikvision_task and not _hikvision_task.done():
         _hikvision_task.cancel()
+        tasks_to_cancel.append(_hikvision_task)
     if _aruba_task and not _aruba_task.done():
         _aruba_task.cancel()
+        tasks_to_cancel.append(_aruba_task)
+
+    for task in tasks_to_cancel:
         try:
-            await _batch_sync_task
+            await task
         except asyncio.CancelledError:
             pass
 
