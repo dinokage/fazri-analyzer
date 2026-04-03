@@ -214,10 +214,18 @@ async def search_acs_events(request: Request) -> Response:
         tree = ET.fromstring(body)
         ns = {"h": "http://www.hikvision.com/ver20/XMLSchema"}
         # Fix: client sends <searchResultPosition>, not <searchPosition>
-        pos_el = tree.find(".//searchResultPosition") or tree.find(".//h:searchResultPosition", ns)
-        max_el = tree.find(".//maxResults") or tree.find(".//h:maxResults", ns)
-        start_el = tree.find(".//startTime") or tree.find(".//h:startTime", ns)
-        end_el = tree.find(".//endTime") or tree.find(".//h:endTime", ns)
+        pos_el = tree.find(".//searchResultPosition")
+        if pos_el is None:
+            pos_el = tree.find(".//h:searchResultPosition", ns)
+        max_el = tree.find(".//maxResults")
+        if max_el is None:
+            max_el = tree.find(".//h:maxResults", ns)
+        start_el = tree.find(".//startTime")
+        if start_el is None:
+            start_el = tree.find(".//h:startTime", ns)
+        end_el = tree.find(".//endTime")
+        if end_el is None:
+            end_el = tree.find(".//h:endTime", ns)
         if pos_el is not None:
             search_position = int(pos_el.text or 0)
         if max_el is not None:

@@ -191,19 +191,19 @@ docker compose -f docker-compose.prod.yml restart backend
 
 ```bash
 # Get API token
-curl -k -X POST http://ARUBA_IP/v1/api/login \
-  -H "Content-Type: application/json" \
-  -d '{"username":"YOUR_USER","password":"YOUR_PASSWORD"}'
+# IMPORTANT: Use HTTPS — credentials are sent as query parameters per the AOS8 API spec
+# and will appear in plaintext in HTTP access logs if TLS is not enforced.
+curl -X POST "https://ARUBA_IP/v1/api/login?username=YOUR_USER&password=YOUR_PASSWORD"
 ```
 
-You should get a response with `"status":"Success"` and an `"access_token"`.
+You should get a response with `"status":"Success"` and a `UIDARUBA` token.
 
 ### 4c. Enable polling
 
 Edit `.env.prod`:
 ```
 ARUBA_ENABLED=true
-ARUBA_BASE_URL=http://192.168.1.1
+ARUBA_BASE_URL=https://192.168.1.1
 ARUBA_USERNAME=fazri_readonly
 ARUBA_PASSWORD=your_aruba_password
 ARUBA_POLL_INTERVAL_SECONDS=30

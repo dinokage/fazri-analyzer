@@ -205,7 +205,7 @@ class Settings(BaseSettings):
     # When TESTING=true the JWT decoder also accepts HS256 tokens signed with
     # TEST_JWT_SECRET so integration tests can run without a live auth service.
     TESTING: bool = False
-    TEST_JWT_SECRET: str = "test-secret-do-not-use-in-production"
+    TEST_JWT_SECRET: str = ""
 
     model_config = ConfigDict(
         env_file=".env",

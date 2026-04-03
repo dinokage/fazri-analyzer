@@ -221,10 +221,10 @@ class HikvisionISAPIClient:
         if info_el is None:
             return events, has_more
 
-        for acs_ev in (
-            info_el.findall("h:AcsEvent", _HIKVISION_NS)
-            or info_el.findall("AcsEvent")
-        ):
+        acs_events = info_el.findall("h:AcsEvent", _HIKVISION_NS)
+        if not acs_events:
+            acs_events = info_el.findall("AcsEvent")
+        for acs_ev in acs_events:
             ev = self._parse_single_event(acs_ev)
             if ev is not None:
                 events.append(ev)

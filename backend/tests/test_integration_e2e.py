@@ -44,9 +44,9 @@ DB_URL = os.getenv(
     "postgresql://postgres:testpassword@localhost:15432/ethos_test",
 )
 
-CSV_PATH = (
-    Path(__file__).parent.parent / "augmented" / "student_staff_profiles.csv"
-)
+_AUGMENTED_CSV = Path(__file__).parent.parent / "augmented" / "student_staff_profiles.csv"
+_FIXTURE_CSV   = Path(__file__).parent / "fixtures" / "test_profiles.csv"
+CSV_PATH = _AUGMENTED_CSV if _AUGMENTED_CSV.exists() else _FIXTURE_CSV
 
 # ---------------------------------------------------------------------------
 # Helpers

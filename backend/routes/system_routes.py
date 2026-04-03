@@ -13,7 +13,7 @@ from datetime import datetime, timezone, timedelta
 from typing import Any, Optional
 
 import httpx
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
 from sqlalchemy.orm import Session
 from sqlalchemy import text

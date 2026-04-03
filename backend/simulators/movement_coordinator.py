@@ -266,4 +266,5 @@ async def run_coordinator(redis) -> None:
     except asyncio.CancelledError:
         for t in tasks:
             t.cancel()
+        await asyncio.gather(*tasks, return_exceptions=True)
         raise

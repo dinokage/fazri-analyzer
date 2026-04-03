@@ -334,7 +334,7 @@ class EventIngestionService:
             try:
                 from services.webhook_service import WebhookService
                 wh_svc = WebhookService(self.db)
-                await asyncio.get_event_loop().run_in_executor(
+                await asyncio.get_running_loop().run_in_executor(
                     None,
                     lambda: wh_svc.dispatch_alert(alert),
                 )
@@ -358,7 +358,7 @@ class EventIngestionService:
             graph_svc = _get_cctv_graph_service()
 
             if resolved.sensor_type == SensorType.CAMERA:
-                await asyncio.get_event_loop().run_in_executor(
+                await asyncio.get_running_loop().run_in_executor(
                     None,
                     lambda: graph_svc.create_detected_in(
                         entity_id=resolved.resolved_entity_id,
@@ -371,7 +371,7 @@ class EventIngestionService:
                 )
             else:
                 # Generic sensor event projection
-                await asyncio.get_event_loop().run_in_executor(
+                await asyncio.get_running_loop().run_in_executor(
                     None,
                     lambda: graph_svc.project_sensor_event(
                         entity_id=resolved.resolved_entity_id,
