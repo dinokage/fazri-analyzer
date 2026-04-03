@@ -341,6 +341,8 @@ if settings.ALERT_SYSTEM_ENABLED:
     app.include_router(notification_router)
     app.include_router(demo_router)
     app.include_router(webhook_router)
+    from routes.anomaly_routes import router as anomaly_router
+    app.include_router(anomaly_router)
     logger.info("Alert system routes registered")
 
 # Include DeepFace integration routes

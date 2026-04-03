@@ -52,14 +52,13 @@ class DeepFaceBatchSync:
     timestamp newer than the watermark are processed.
     """
 
-    # Column names expected in the DeepFace face_embeddings table.
-    # Adjust if the DeepFace server schema differs.
+    # Column names in the DeepFace pgvector face_embeddings table.
+    # Schema: id, identity_name, embedding, det_score, created_at
+    # Note: stream_id, zone_id, frame_id are backend-side camera context and
+    # are not stored in pgvector — rows without zone_id are skipped below.
     TABLE = "face_embeddings"
-    COL_LABEL = "img_name"        # = entity_id in our system
+    COL_LABEL = "identity_name"   # entity identifier stored at registration
     COL_CREATED_AT = "created_at"
-    COL_STREAM_ID = "stream_id"   # may be NULL for registered faces
-    COL_ZONE_ID = "zone_id"       # may be NULL
-    COL_FRAME_ID = "frame_id"     # may be NULL
 
     def __init__(self) -> None:
         self._last_synced_at: Optional[datetime] = None
@@ -139,9 +138,9 @@ class DeepFaceBatchSync:
 
         for row in rows:
             entity_id: Optional[str] = row.get(self.COL_LABEL)
-            zone_id: Optional[str] = row.get(self.COL_ZONE_ID)
-            stream_id: Optional[str] = row.get(self.COL_STREAM_ID)
-            frame_id: Optional[str] = row.get(self.COL_FRAME_ID)
+            zone_id: Optional[str] = None   # not stored in pgvector
+            stream_id: Optional[str] = None  # not stored in pgvector
+            frame_id: Optional[str] = None   # not stored in pgvector
             created_at: Optional[datetime] = row.get(self.COL_CREATED_AT)
 
             # Skip rows that lack the minimum fields to create a useful edge
@@ -205,7 +204,7 @@ class DeepFaceBatchSync:
                 with conn.cursor() as cur:
                     cur.execute(
                         f"""
-                        SELECT img_name, created_at, stream_id, zone_id, frame_id
+                        SELECT identity_name, created_at
                         FROM {self.TABLE}
                         WHERE created_at > %s
                         ORDER BY created_at ASC

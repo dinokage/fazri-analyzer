@@ -105,7 +105,10 @@ services:
       redis:
         condition: service_healthy
     networks:
-      - fazri-test
+      fazri-test: {}
+      backend_fazri-network:
+        aliases:
+          - hikvision-sim
 
   aruba-sim:
     build:
@@ -123,7 +126,10 @@ services:
       redis:
         condition: service_healthy
     networks:
-      - fazri-test
+      fazri-test: {}
+      backend_fazri-network:
+        aliases:
+          - aruba-sim
 
   # ── Backend ─────────────────────────────────────────────────────────────────
 
@@ -200,6 +206,8 @@ services:
 networks:
   fazri-test:
     driver: bridge
+  backend_fazri-network:
+    external: true
 
 volumes:
   test_db_data:
