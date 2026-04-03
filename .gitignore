@@ -73,3 +73,26 @@ backend/augmented/
 # Credentials (belt-and-suspenders)
 *credentials*.json
 !*credentials*.json.example
+
+# Python
+__pycache__/
+*.pyc
+*.pyo
+*.egg-info/
+.eggs/
+*.egg
+.venv/
+venv/
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+
+# OS
+Thumbs.db
+
+# Docker / misc logs
+*.log
