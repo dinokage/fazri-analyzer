@@ -311,36 +311,38 @@ class EntityResolutionService:
                         )
                         stats["created"] += 1
 
-                    # Upsert each non-empty identifier
+                    # Upsert each non-empty identifier using INSERT … ON CONFLICT
+                    # to avoid duplicate-key errors when the same identifier
+                    # value appears multiple times within one batch.
+                    from sqlalchemy.dialects.postgresql import insert as pg_insert
+
                     now = datetime.now(timezone.utc)
                     for col, id_type in identifier_columns.items():
                         value = (row.get(col) or "").strip()
                         if not value:
                             continue
-                        existing_id = (
-                            db.query(EntityIdentifier)
-                            .filter_by(
+                        stmt = (
+                            pg_insert(EntityIdentifier)
+                            .values(
+                                entity_id=entity_id,
                                 identifier_type=id_type,
                                 identifier_value=value,
+                                source="sap_import",
+                                confidence=1.0,
+                                first_seen=now,
+                                last_seen=now,
+                                active=True,
                             )
-                            .first()
+                            .on_conflict_do_update(
+                                constraint="uq_entity_identifiers_type_value",
+                                set_={
+                                    "entity_id": entity_id,
+                                    "last_seen": now,
+                                    "active": True,
+                                },
+                            )
                         )
-                        if existing_id:
-                            existing_id.entity_id = entity_id
-                            existing_id.last_seen = now
-                        else:
-                            db.add(
-                                EntityIdentifier(
-                                    entity_id=entity_id,
-                                    identifier_type=id_type,
-                                    identifier_value=value,
-                                    source="sap_import",
-                                    confidence=1.0,
-                                    first_seen=now,
-                                    last_seen=now,
-                                    active=True,
-                                )
-                            )
+                        db.execute(stmt)
 
                     # Commit in batches of 500 to avoid one giant transaction
                     if (stats["created"] + stats["updated"]) % 500 == 0:
