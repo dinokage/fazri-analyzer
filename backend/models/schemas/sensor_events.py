@@ -139,45 +139,6 @@ class SensorEvent(BaseModel):
         description="Connector-specific extension fields",
     )
 
-    # ------------------------------------------------------------------
-    # Factory stubs — implemented in Week 2 connectors
-    # ------------------------------------------------------------------
-
-    @classmethod
-    def from_hikvision_access(cls, raw: dict) -> "SensorEvent":
-        """
-        Normalize a raw Hikvision ISAPI AcsEvent dict into a SensorEvent.
-
-        Implemented in ``backend/connectors/hikvision_client.py`` (Week 2).
-        """
-        raise NotImplementedError(
-            "from_hikvision_access is not yet implemented. "
-            "Implement it in backend/connectors/hikvision_client.py."
-        )
-
-    @classmethod
-    def from_aruba_association(cls, raw: dict) -> "SensorEvent":
-        """
-        Normalize a raw Aruba AOS8 client association dict into a SensorEvent.
-
-        Implemented in ``backend/connectors/aruba_client.py`` (Week 2).
-        """
-        raise NotImplementedError(
-            "from_aruba_association is not yet implemented. "
-            "Implement it in backend/connectors/aruba_client.py."
-        )
-
-    @classmethod
-    def from_deepface_match(cls, raw: dict) -> "SensorEvent":
-        """
-        Normalize a raw DeepFace webhook match dict into a SensorEvent.
-
-        Implemented in ``backend/routes/deepface_routes.py`` (Week 2, Task 2.3).
-        """
-        raise NotImplementedError(
-            "from_deepface_match is not yet implemented. "
-            "Implement it in backend/routes/deepface_routes.py."
-        )
 
 
 # ---------------------------------------------------------------------------
