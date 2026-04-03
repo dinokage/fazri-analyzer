@@ -265,15 +265,29 @@ class EntityResolutionService:
 
         Returns a dict with keys: created, updated, skipped.
         """
-        # Column → identifier_type mapping
-        identifier_columns = {
-            "student_id": "student_id",
-            "staff_id": "staff_id",
-            "card_id": "card_id",
-            "device_hash": "mac_address",
-            "face_id": "face_id",
-            "email": "email",
-        }
+        # Column → identifier_type mapping.
+        # When a custom mapping is supplied the CSV columns are remapped to
+        # FAZRI field names first, so identifier lookups use FAZRI names.
+        # When no mapping is given the augmented CSV already uses the expected
+        # column names, so we keep the original "device_hash" key.
+        if mapping:
+            identifier_columns = {
+                "student_id":  "student_id",
+                "staff_id":    "staff_id",
+                "card_id":     "card_id",
+                "mac_address": "mac_address",
+                "face_id":     "face_id",
+                "email":       "email",
+            }
+        else:
+            identifier_columns = {
+                "student_id":  "student_id",
+                "staff_id":    "staff_id",
+                "card_id":     "card_id",
+                "device_hash": "mac_address",
+                "face_id":     "face_id",
+                "email":       "email",
+            }
 
         own_session = db is None
         if own_session:
@@ -283,7 +297,17 @@ class EntityResolutionService:
         try:
             with open(csv_path, newline="", encoding="utf-8") as fh:
                 reader = csv.DictReader(fh)
-                for row in reader:
+                for raw_row in reader:
+                    # Apply column mapping if provided
+                    if mapping:
+                        row: dict = {}
+                        for col, value in raw_row.items():
+                            fazri_field = mapping.get(col.strip().lower())
+                            if fazri_field and str(value).strip():
+                                row[fazri_field] = str(value).strip()
+                    else:
+                        row = raw_row
+
                     entity_id = (row.get("entity_id") or "").strip()
                     if not entity_id:
                         stats["skipped"] += 1

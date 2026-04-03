@@ -29,6 +29,7 @@ import logging
 import os
 import random
 import sys
+import uuid as _uuid_mod
 from datetime import datetime, timezone, timedelta
 from typing import Dict, List
 from urllib.parse import unquote
@@ -239,9 +240,10 @@ async def run_coordinator(redis) -> None:
 
     active_entities = random.sample(entities, min(NUM_ENTITIES, len(entities)))
 
-    # Compete for coordinator lock
+    # Compete for coordinator lock using a unique token to prevent blind refreshes
+    lock_token = str(_uuid_mod.uuid4()).encode()
     while True:
-        acquired = await redis.set(LOCK_KEY, "1", nx=True, ex=LOCK_TTL)
+        acquired = await redis.set(LOCK_KEY, lock_token, nx=True, ex=LOCK_TTL)
         if acquired:
             break
         logger.debug("MovementCoordinator: lock held by another instance — retrying in 5s")
@@ -257,10 +259,17 @@ async def run_coordinator(redis) -> None:
         for entity in active_entities
     ]
 
-    # Refresh the lock on a dead-man's timer
+    # Refresh the lock — verify token ownership before extending
     try:
         while True:
             await asyncio.sleep(20)
+            current = await redis.get(LOCK_KEY)
+            if current != lock_token:
+                logger.warning("MovementCoordinator: lost lock ownership — shutting down")
+                for t in tasks:
+                    t.cancel()
+                await asyncio.gather(*tasks, return_exceptions=True)
+                return
             await redis.expire(LOCK_KEY, LOCK_TTL)
     except asyncio.CancelledError:
         for t in tasks:

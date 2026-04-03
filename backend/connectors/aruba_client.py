@@ -193,6 +193,8 @@ class ArubaAOS8Client:
                 return None
 
             ap_name = raw.get("AP name", "")
+            if not ap_name:
+                return None
             zone_id = self.ap_zone_map.get(ap_name, f"AP_{ap_name}")
 
             assoc_time_str = raw.get("Association Time", "")

@@ -198,11 +198,7 @@ class EventIngestionService:
             metadata_=metadata,
         )
         self.db.add(record)
-        try:
-            self.db.commit()
-        except Exception:
-            self.db.rollback()
-            raise
+        self.db.flush()
 
     async def _run_anomaly_detection(
         self,
@@ -259,9 +255,9 @@ class EventIngestionService:
             )
 
             if anomaly:
-                logger.info(
-                    "Anomaly detected for %s in zone %s: %s",
-                    resolved.resolved_entity_id,
+                logger.debug(
+                    "Anomaly detected for entity=%s in zone %s: %s",
+                    _hash_id(resolved.resolved_entity_id),
                     resolved.zone_id,
                     anomaly["anomaly_type"],
                 )
@@ -289,11 +285,11 @@ class EventIngestionService:
 
         # Atomic cooldown gate — returns True only when freshly created
         if not set_alert_cooldown(anomaly_type, source_device, entity_key):
-            logger.info(
+            logger.debug(
                 "Alert suppressed (cooldown): %s source=%s entity=%s",
                 anomaly_type,
-                source_device,
-                entity_key,
+                _hash_id(source_device),
+                _hash_id(entity_key),
             )
             return
 

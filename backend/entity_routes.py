@@ -77,7 +77,6 @@ def _profile_to_entity_dict(
     identifiers: List[EntityIdentifier],
 ) -> dict:
     """Build an Entity-compatible response dict from DB data."""
-    now = datetime.now(timezone.utc).isoformat()
     return {
         "entity_id": profile.entity_id,
         "name": profile.name,
@@ -86,16 +85,16 @@ def _profile_to_entity_dict(
         "department": profile.department,
         "confidence_score": 1.0,
         "linked_entity_ids": [],
-        "created_at": now,
-        "updated_at": now,
+        "created_at": profile.created_at.isoformat() if profile.created_at else None,
+        "updated_at": profile.updated_at.isoformat() if profile.updated_at else None,
         "identifiers": [
             {
                 "type": i.identifier_type,
                 "value": i.identifier_value,
                 "source": i.source,
                 "confidence": i.confidence,
-                "first_seen": i.first_seen.isoformat() if i.first_seen else now,
-                "last_seen": i.last_seen.isoformat() if i.last_seen else now,
+                "first_seen": i.first_seen.isoformat() if i.first_seen else None,
+                "last_seen": i.last_seen.isoformat() if i.last_seen else None,
             }
             for i in identifiers
         ],
@@ -155,6 +154,9 @@ async def search_entity(
     profile = svc.resolve(request.identifier_type, request.identifier_value, db=db)
     if profile is None:
         raise HTTPException(status_code=404, detail="Entity not found")
+
+    if current_user.role == UserRole.STUDENT and current_user.entity_id != profile.entity_id:
+        raise PermissionDeniedError("You can only access your own data")
 
     identifiers = _identifiers_for_entity(profile.entity_id, db)
     entity_dict = _profile_to_entity_dict(profile, identifiers)

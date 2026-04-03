@@ -106,6 +106,10 @@ class HikvisionISAPIClient:
         Handles pagination automatically (responseStatusStrg == "MORE").
         Retries with exponential backoff on connection errors (3 attempts).
         """
+        if since.tzinfo is None:
+            raise ValueError("'since' must be timezone-aware")
+        since = since.astimezone(timezone.utc)
+
         if self._device_serial is None:
             await self._fetch_device_info()
 
@@ -246,7 +250,12 @@ class HikvisionISAPIClient:
                 if ts.tzinfo is None:
                     ts = ts.replace(tzinfo=timezone.utc)
             except ValueError:
-                ts = datetime.now(timezone.utc)
+                logger.debug(
+                    "Hikvision: skipping event with unparseable timestamp %r (serialNo=%s)",
+                    raw_ts,
+                    _find_text(el, "serialNo") or "?",
+                )
+                return None
 
             minor = _find_text(el, "minor") or "1"
             event_type = _MINOR_TO_EVENT_TYPE.get(minor, EventType.ACCESS_GRANTED)

@@ -289,6 +289,8 @@ async def get_clients(UIDARUBA: str = Query(default="")) -> dict:
         logger.warning("Aruba sim: Redis read failed (%s) — returning cached clients", exc)
         return {"Clients": _cached_clients}
 
+    global _cached_clients
+    _cached_clients = clients  # keep last good state for fallback
     return {"Clients": clients}
 
 

@@ -94,6 +94,7 @@ async def _probe_pgvector() -> ServiceHealth:
 
 async def _probe_neo4j() -> ServiceHealth:
     t0 = time.monotonic()
+    driver = None
     try:
         from neo4j import AsyncGraphDatabase
         driver = AsyncGraphDatabase.driver(
@@ -104,11 +105,13 @@ async def _probe_neo4j() -> ServiceHealth:
             result = await session.run("MATCH (n) RETURN count(n) AS cnt")
             record = await result.single()
             cnt = record["cnt"] if record else 0
-        await driver.close()
         ms = round((time.monotonic() - t0) * 1000, 1)
         return ServiceHealth(status="up", latency_ms=ms, details=f"{cnt:,} nodes")
     except Exception as exc:
         return ServiceHealth(status="down", error=str(exc))
+    finally:
+        if driver:
+            await driver.close()
 
 
 async def _probe_redis() -> ServiceHealth:
@@ -271,19 +274,17 @@ async def system_health(
     }
 
     # Determine overall status
-    # Critical services: postgres, redis — if down → unhealthy
-    # Non-critical: any down → degraded
+    # Critical services: postgres, redis — if down/degraded → unhealthy/degraded
+    # Non-critical: any down or degraded → degraded
     critical = {"postgres", "redis"}
-    has_critical_down = any(
-        services[s].status == "down" for s in critical
-    )
-    has_any_down = any(
-        v.status == "down" for v in services.values()
-    )
+    has_critical_down = any(services[s].status == "down" for s in critical)
+    has_critical_degraded = any(services[s].status == "degraded" for s in critical)
+    has_any_down = any(v.status == "down" for v in services.values())
+    has_any_degraded = any(v.status == "degraded" for v in services.values())
 
     if has_critical_down:
         overall = "unhealthy"
-    elif has_any_down:
+    elif has_critical_degraded or has_any_down or has_any_degraded:
         overall = "degraded"
     else:
         overall = "healthy"

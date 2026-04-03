@@ -121,6 +121,12 @@ services:
         condition: service_healthy
     networks:
       - fazri-prod
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 60s
     # Uncomment if GPU is available:
     # deploy:
     #   resources:
@@ -179,7 +185,7 @@ services:
       pgvector:
         condition: service_healthy
       deepface-server:
-        condition: service_started
+        condition: service_healthy
     networks:
       - fazri-prod
     healthcheck:
@@ -197,7 +203,7 @@ services:
       context: .
       dockerfile: Dockerfile.prod
       args:
-        NEXT_PUBLIC_FASTAPI_BASE_URL: ${NEXT_PUBLIC_FASTAPI_BASE_URL:-/api-proxy}
+        NEXT_PUBLIC_FASTAPI_BASE_URL: ${NEXT_PUBLIC_FASTAPI_BASE_URL:-/api}
     container_name: fazri_frontend
     environment:
       NEXTAUTH_URL: ${NEXTAUTH_URL}

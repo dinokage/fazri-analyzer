@@ -62,16 +62,17 @@ def _zone_occupancy_dict(zone_id: str, db: Session) -> Dict:
         text("""
             WITH latest AS (
                 SELECT DISTINCT ON (resolved_entity_id)
-                    resolved_entity_id, zone_id
+                    resolved_entity_id, zone_id, event_type
                 FROM sensor_events
                 WHERE resolved_entity_id IS NOT NULL
                   AND timestamp >= :since
-                  AND event_type IN (
-                    'ACCESS_GRANTED', 'DEVICE_ASSOCIATED', 'ENTRY', 'FACE_RECOGNIZED'
-                  )
                 ORDER BY resolved_entity_id, timestamp DESC
             )
-            SELECT COUNT(*) FROM latest WHERE zone_id = :zone_id
+            SELECT COUNT(*) FROM latest
+            WHERE zone_id = :zone_id
+              AND event_type IN (
+                'ACCESS_GRANTED', 'DEVICE_ASSOCIATED', 'ENTRY', 'FACE_RECOGNIZED'
+              )
         """),
         {"zone_id": zone_id, "since": since},
     ).scalar() or 0
@@ -231,17 +232,17 @@ async def get_campus_summary(
         text("""
             WITH latest AS (
                 SELECT DISTINCT ON (resolved_entity_id)
-                    resolved_entity_id, zone_id
+                    resolved_entity_id, zone_id, event_type
                 FROM sensor_events
                 WHERE resolved_entity_id IS NOT NULL
                   AND timestamp >= :since
-                  AND event_type IN (
-                    'ACCESS_GRANTED', 'DEVICE_ASSOCIATED', 'ENTRY', 'FACE_RECOGNIZED'
-                  )
                 ORDER BY resolved_entity_id, timestamp DESC
             )
             SELECT zone_id, COUNT(*) AS cnt
             FROM latest
+            WHERE event_type IN (
+                'ACCESS_GRANTED', 'DEVICE_ASSOCIATED', 'ENTRY', 'FACE_RECOGNIZED'
+            )
             GROUP BY zone_id
         """),
         {"since": since},

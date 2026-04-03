@@ -12,9 +12,6 @@ Usage
     # Preview what would be imported
     python scripts/sap_csv_import.py augmented/student_staff_profiles.csv --dry-run
 
-    # Custom batch size
-    python scripts/sap_csv_import.py data.csv --batch-size 200
-
     # Custom column mapping (JSON)
     python scripts/sap_csv_import.py data.csv --mapping '{"empNo":"entity_id","fullName":"name"}'
 """
@@ -164,7 +161,8 @@ if __name__ == "__main__":
     if args.mapping:
         try:
             overrides = json.loads(args.mapping)
-            column_map = {**DEFAULT_COLUMN_MAP, **overrides}
+            overrides_normalized = {k.strip().lower(): v for k, v in overrides.items()}
+            column_map = {**DEFAULT_COLUMN_MAP, **overrides_normalized}
         except json.JSONDecodeError as exc:
             logger.error("Invalid --mapping JSON: %s", exc)
             sys.exit(1)

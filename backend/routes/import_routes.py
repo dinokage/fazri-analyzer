@@ -62,9 +62,10 @@ async def import_sap_csv(
             detail="File must be a .csv file",
         )
 
-    # Write uploaded bytes to a temp file so EntityResolutionService can open it
-    contents = await file.read()
-    if not contents:
+    # Stream the upload into a temp file to avoid buffering the entire file in memory
+    _CHUNK = 64 * 1024  # 64 KB
+    first_chunk = await file.read(_CHUNK)
+    if not first_chunk:
         raise HTTPException(
             status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
             detail="Uploaded file is empty",
@@ -75,7 +76,12 @@ async def import_sap_csv(
         with tempfile.NamedTemporaryFile(
             mode="wb", suffix=".csv", delete=False
         ) as tmp:
-            tmp.write(contents)
+            tmp.write(first_chunk)
+            while True:
+                chunk = await file.read(_CHUNK)
+                if not chunk:
+                    break
+                tmp.write(chunk)
             tmp_path = tmp.name
 
         from services.entity_resolution_service import get_entity_resolution_service

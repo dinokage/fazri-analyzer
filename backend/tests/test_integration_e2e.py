@@ -152,6 +152,7 @@ async def test_wait_for_poller_events(engine):
     Poll the sensor_events table every 2 s for up to 60 s, waiting until
     at least one RFID event and one WIFI event have been ingested.
     """
+    started_at = datetime.now(timezone.utc)
     deadline = time.time() + 60
     with engine.connect() as conn:
         while time.time() < deadline:
@@ -160,8 +161,10 @@ async def test_wait_for_poller_events(engine):
                     "SELECT "
                     "COUNT(*) FILTER (WHERE sensor_type = 'RFID') AS rfid_count, "
                     "COUNT(*) FILTER (WHERE sensor_type = 'WIFI') AS wifi_count "
-                    "FROM sensor_events"
-                )
+                    "FROM sensor_events "
+                    "WHERE created_at >= :started_at"
+                ),
+                {"started_at": started_at},
             ).fetchone()
             if row and row.rfid_count > 0 and row.wifi_count > 0:
                 return
