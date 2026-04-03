@@ -99,6 +99,12 @@ services:
       SIM_NUM_ENTITIES: "10"
     ports:
       - "9011:9001"
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:9001/health"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+      start_period: 15s
     depends_on:
       db:
         condition: service_healthy
@@ -122,6 +128,12 @@ services:
       REDIS_PORT: ${SIM_REDIS_PORT:-6379}
     ports:
       - "9002:9002"
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:9002/health"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+      start_period: 15s
     depends_on:
       redis:
         condition: service_healthy
@@ -191,9 +203,9 @@ services:
       neo4j:
         condition: service_healthy
       hikvision-sim:
-        condition: service_started
+        condition: service_healthy
       aruba-sim:
-        condition: service_started
+        condition: service_healthy
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
       interval: 10s

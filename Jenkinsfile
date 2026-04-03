@@ -538,7 +538,45 @@ pipeline {
                                 ${BACKEND_IMAGE}:${IMAGE_TAG} \
                                 simulators.aruba_simulator:app --host 0.0.0.0 --port 9002
 
-                            echo "✓ Simulators deployed"
+                            if ! docker ps --format '{{.Names}}' | grep -q "^fazri-hikvision-sim-${DEPLOY_ENV}$"; then
+                                echo "✗ Hikvision simulator container failed to start"
+                                docker logs fazri-hikvision-sim-${DEPLOY_ENV} 2>&1 || true
+                                exit 1
+                            fi
+                            for i in $(seq 1 12); do
+                                if docker exec fazri-hikvision-sim-${DEPLOY_ENV} \
+                                    curl -sf http://localhost:9001/health > /dev/null 2>&1; then
+                                    echo "✓ Hikvision simulator is healthy"
+                                    break
+                                fi
+                                if [ $i -eq 12 ]; then
+                                    echo "✗ Hikvision simulator health check failed after 60s"
+                                    docker logs fazri-hikvision-sim-${DEPLOY_ENV} --tail=50
+                                    exit 1
+                                fi
+                                echo "Hikvision sim attempt ${i}/12 — waiting..."
+                                sleep 5
+                            done
+
+                            if ! docker ps --format '{{.Names}}' | grep -q "^fazri-aruba-sim-${DEPLOY_ENV}$"; then
+                                echo "✗ Aruba simulator container failed to start"
+                                docker logs fazri-aruba-sim-${DEPLOY_ENV} 2>&1 || true
+                                exit 1
+                            fi
+                            for i in $(seq 1 12); do
+                                if docker exec fazri-aruba-sim-${DEPLOY_ENV} \
+                                    curl -sf http://localhost:9002/health > /dev/null 2>&1; then
+                                    echo "✓ Aruba simulator is healthy"
+                                    break
+                                fi
+                                if [ $i -eq 12 ]; then
+                                    echo "✗ Aruba simulator health check failed after 60s"
+                                    docker logs fazri-aruba-sim-${DEPLOY_ENV} --tail=50
+                                    exit 1
+                                fi
+                                echo "Aruba sim attempt ${i}/12 — waiting..."
+                                sleep 5
+                            done
                         '''
                     }
                 }

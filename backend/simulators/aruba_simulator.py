@@ -231,6 +231,7 @@ async def get_clients(UIDARUBA: str = Query(default="")) -> dict:
     always agree with RFID events (same entity, same zone).  Falls back to
     the cached random client list when Redis is unavailable.
     """
+    global _cached_clients
     _validate_session(UIDARUBA)
 
     if _redis is not None:
@@ -289,7 +290,6 @@ async def get_clients(UIDARUBA: str = Query(default="")) -> dict:
         logger.warning("Aruba sim: Redis read failed (%s) — returning cached clients", exc)
         return {"Clients": _cached_clients}
 
-    global _cached_clients
     _cached_clients = clients  # keep last good state for fallback
     return {"Clients": clients}
 
