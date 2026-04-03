@@ -45,7 +45,9 @@ _HIKVISION_NS = {"h": "http://www.hikvision.com/ver20/XMLSchema"}
 
 def _find_text(el: ET.Element, tag: str) -> Optional[str]:
     """Find a child element's text, trying both namespaced and bare forms."""
-    child = el.find(f"h:{tag}", _HIKVISION_NS) or el.find(tag)
+    child = el.find(f"h:{tag}", _HIKVISION_NS)
+    if child is None:
+        child = el.find(tag)
     return child.text if child is not None else None
 
 
@@ -213,10 +215,9 @@ class HikvisionISAPIClient:
         ).upper()
         has_more = status_str == "MORE"
 
-        info_el = (
-            root.find("h:AcsEventInfo", _HIKVISION_NS)
-            or root.find("AcsEventInfo")
-        )
+        info_el = root.find("h:AcsEventInfo", _HIKVISION_NS)
+        if info_el is None:
+            info_el = root.find("AcsEventInfo")
         if info_el is None:
             return events, has_more
 
