@@ -102,8 +102,8 @@ async def import_sap_csv(
         logger.error("SAP CSV import failed: %s", exc, exc_info=True)
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"Import failed: {exc}",
-        )
+            detail="Import failed",
+        ) from exc
     finally:
         if tmp_path and os.path.exists(tmp_path):
             os.unlink(tmp_path)

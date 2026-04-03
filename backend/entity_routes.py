@@ -477,7 +477,8 @@ async def get_entity_sensor_timeline(
                 .order_by(Alert.created_at.asc())
                 .all()
             )
-        except Exception:
+        except Exception as e:
+            logger.warning("Alert query failed for entity %s since %s: %s", entity_id, since_dt, e)
             alert_rows = []
 
     alert_windows = [

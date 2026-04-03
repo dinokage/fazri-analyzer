@@ -111,12 +111,18 @@ async def list_events(
 
     if since:
         if since.tzinfo is None:
-            since = since.replace(tzinfo=timezone.utc)
+            raise HTTPException(
+                status_code=400,
+                detail="'since' must be timezone-aware (e.g. 2024-01-01T00:00:00Z)",
+            )
         query = query.filter(SensorEventRecord.timestamp >= since)
 
     if until:
         if until.tzinfo is None:
-            until = until.replace(tzinfo=timezone.utc)
+            raise HTTPException(
+                status_code=400,
+                detail="'until' must be timezone-aware (e.g. 2024-01-01T00:00:00Z)",
+            )
         query = query.filter(SensorEventRecord.timestamp <= until)
 
     # ── Count + paginate ──────────────────────────────────────────────────────

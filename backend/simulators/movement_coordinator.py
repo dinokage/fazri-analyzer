@@ -214,8 +214,8 @@ async def _entity_task(entity: Dict, redis) -> None:
             traveling_pos = dict(position)
             traveling_pos["traveling"] = True
             await redis.set(ENTITY_KEY.format(eid), json.dumps(traveling_pos), ex=DATA_TTL)
-        except Exception:
-            pass
+        except Exception as e:
+            logger.debug("Failed to write traveling state for %s: %s", eid, e, exc_info=True)
 
         await asyncio.sleep(travel_secs)
         current_zone = next_zone

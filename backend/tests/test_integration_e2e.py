@@ -165,7 +165,7 @@ async def test_wait_for_poller_events(engine):
             ).fetchone()
             if row and row.rfid_count > 0 and row.wifi_count > 0:
                 return
-            time.sleep(2)
+            await asyncio.sleep(2)
     pytest.fail("Pollers did not produce RFID and WIFI events within 60 s")
 
 

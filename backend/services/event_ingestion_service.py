@@ -42,6 +42,12 @@ from services.entity_resolution_service import (
 
 logger = logging.getLogger(__name__)
 
+
+def _hash_id(value: str) -> str:
+    import hashlib
+    return hashlib.sha256(value.encode()).hexdigest()[:12]
+
+
 # ---------------------------------------------------------------------------
 # Lazy imports — avoid circular dependencies and optional heavy deps
 # ---------------------------------------------------------------------------
@@ -116,20 +122,19 @@ class EventIngestionService:
                 entity_role=profile.role,
                 entity_department=profile.department,
             )
-            log_name = profile.name or profile.entity_id
-            logger.info(
-                "Event %s resolved → %s (%s) zone=%s",
+            logger.debug(
+                "Event %s resolved → entity=%s (%s) zone=%s",
                 event.event_id,
-                log_name,
+                _hash_id(profile.entity_id),
                 event.sensor_type,
                 event.zone_id,
             )
         else:
-            logger.info(
+            logger.debug(
                 "Event %s unresolved — identifier_type=%s value=%s zone=%s",
                 event.event_id,
                 event.identifier_type,
-                event.raw_identifier,
+                _hash_id(event.raw_identifier),
                 event.zone_id,
             )
 
@@ -340,11 +345,15 @@ class EventIngestionService:
             # Dispatch outgoing webhook if configured
             try:
                 from services.webhook_service import WebhookService
-                wh_svc = WebhookService(self.db)
-                await asyncio.get_running_loop().run_in_executor(
-                    None,
-                    lambda: wh_svc.dispatch_alert(alert),
-                )
+                payload = {
+                    "alert_id": str(alert.id),
+                    "anomaly_type": alert.anomaly_type,
+                    "severity": alert.severity,
+                    "zone_id": resolved.zone_id,
+                    "entity_id": resolved.resolved_entity_id,
+                    "timestamp": resolved.timestamp.isoformat(),
+                }
+                WebhookService.dispatch_event("alert.created", payload)
             except Exception as wh_exc:
                 logger.warning("Webhook dispatch failed: %s", wh_exc)
 

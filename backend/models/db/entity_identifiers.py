@@ -12,7 +12,6 @@ from sqlalchemy import (
     Column,
     DateTime,
     Float,
-    Index,
     String,
     UniqueConstraint,
 )
@@ -68,11 +67,8 @@ class EntityIdentifier(Base):
             "identifier_value",
             name="uq_entity_identifiers_type_value",
         ),
-        Index(
-            "ix_entity_identifiers_type_value",
-            "identifier_type",
-            "identifier_value",
-        ),
+        # ix_entity_identifiers_type_value omitted: the UNIQUE constraint above
+        # already creates a B-tree index on (identifier_type, identifier_value).
     )
 
     def __repr__(self) -> str:

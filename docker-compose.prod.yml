@@ -137,10 +137,10 @@ services:
     image: alexxit/go2rtc:v1.9.7
     container_name: fazri_go2rtc
     ports:
-      - "1984:1984"    # HTTP API + WebUI + HLS + snapshots
-      - "8554:8554"    # RTSP relay (DeepFace consumes here)
-      - "8555:8555/tcp"  # WebRTC/ICE TCP
-      - "8555:8555/udp"  # WebRTC/ICE UDP
+      - "8555:8555/tcp"  # WebRTC/ICE TCP (public — required for browser WebRTC)
+      - "8555:8555/udp"  # WebRTC/ICE UDP (public — required for browser WebRTC)
+      # 1984 (HTTP API/WebUI) and 8554 (RTSP relay) are intentionally not exposed:
+      # backend and DeepFace reach go2rtc via the internal Docker network service name.
     volumes:
       - ./go2rtc.yaml:/config/go2rtc.yaml:ro
     networks:

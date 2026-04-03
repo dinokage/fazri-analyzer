@@ -66,7 +66,8 @@ DDL_INDEXES = [
     "CREATE INDEX IF NOT EXISTS ix_entity_identifiers_entity_id   ON entity_identifiers (entity_id);",
     "CREATE INDEX IF NOT EXISTS ix_entity_identifiers_type        ON entity_identifiers (identifier_type);",
     "CREATE INDEX IF NOT EXISTS ix_entity_identifiers_value       ON entity_identifiers (identifier_value);",
-    "CREATE INDEX IF NOT EXISTS ix_entity_identifiers_type_value  ON entity_identifiers (identifier_type, identifier_value);",
+    # ix_entity_identifiers_type_value intentionally omitted:
+    # the UNIQUE constraint uq_entity_identifiers_type_value already creates a B-tree index.
 ]
 
 
@@ -101,8 +102,10 @@ def _seed_from_csv(csv_path: Optional[str]) -> None:
         csv_path = os.path.join(here, "augmented", "student_staff_profiles.csv")
 
     if not os.path.exists(csv_path):
-        logger.warning("CSV not found at %s — skipping seed.", csv_path)
-        return
+        raise FileNotFoundError(
+            f"Seed CSV not found: {csv_path}. "
+            "Provide --csv <path> or place the file at the default location."
+        )
 
     from services.entity_resolution_service import get_entity_resolution_service
 

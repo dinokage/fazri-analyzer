@@ -113,18 +113,19 @@ async def _probe_neo4j() -> ServiceHealth:
 
 async def _probe_redis() -> ServiceHealth:
     t0 = time.monotonic()
+    import redis.asyncio as aioredis
+    r = aioredis.Redis(host=settings.REDIS_HOST, port=settings.REDIS_PORT, db=0, socket_timeout=2)
     try:
-        import redis.asyncio as aioredis
-        r = aioredis.Redis(host=settings.REDIS_HOST, port=settings.REDIS_PORT, db=0, socket_timeout=2)
         await r.ping()
         info = await r.info("memory")
         used = info.get("used_memory_human", "?")
         max_mem = info.get("maxmemory_human", "unlimited")
-        await r.aclose()
         ms = round((time.monotonic() - t0) * 1000, 1)
         return ServiceHealth(status="up", latency_ms=ms, details=f"memory: {used} / {max_mem}")
     except Exception as exc:
         return ServiceHealth(status="down", error=str(exc))
+    finally:
+        await r.aclose()
 
 
 async def _probe_deepface() -> ServiceHealth:
@@ -152,13 +153,13 @@ async def _probe_deepface() -> ServiceHealth:
 async def _probe_hikvision() -> ServiceHealth:
     if not settings.HIKVISION_ENABLED:
         return ServiceHealth(status="disabled", details="HIKVISION_ENABLED=false")
+    import redis.asyncio as aioredis
+    r = None
     try:
-        import redis.asyncio as aioredis
         r = aioredis.Redis(host=settings.REDIS_HOST, port=settings.REDIS_PORT, db=0, socket_timeout=1)
         last_poll_ts = await r.get("hikvision:last_poll")
         events_today = await r.get("hikvision:events_today")
         paused = bool(await r.exists("sim:hikvision:paused"))
-        await r.aclose()
 
         if last_poll_ts:
             last_poll_dt = datetime.fromisoformat(last_poll_ts.decode())
@@ -176,18 +177,21 @@ async def _probe_hikvision() -> ServiceHealth:
         )
     except Exception as exc:
         return ServiceHealth(status="degraded", error=str(exc))
+    finally:
+        if r:
+            await r.aclose()
 
 
 async def _probe_aruba() -> ServiceHealth:
     if not settings.ARUBA_ENABLED:
         return ServiceHealth(status="disabled", details="ARUBA_ENABLED=false")
+    import redis.asyncio as aioredis
+    r = None
     try:
-        import redis.asyncio as aioredis
         r = aioredis.Redis(host=settings.REDIS_HOST, port=settings.REDIS_PORT, db=0, socket_timeout=1)
         last_poll_ts = await r.get("aruba:last_poll")
         clients_online = await r.get("aruba:clients_online")
         paused = bool(await r.exists("sim:aruba:paused"))
-        await r.aclose()
 
         if last_poll_ts:
             last_poll_dt = datetime.fromisoformat(last_poll_ts.decode())
@@ -205,6 +209,9 @@ async def _probe_aruba() -> ServiceHealth:
         )
     except Exception as exc:
         return ServiceHealth(status="degraded", error=str(exc))
+    finally:
+        if r:
+            await r.aclose()
 
 
 async def _probe_go2rtc() -> ServiceHealth:

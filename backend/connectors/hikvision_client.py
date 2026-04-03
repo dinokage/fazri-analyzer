@@ -12,7 +12,8 @@ from __future__ import annotations
 
 import json
 import logging
-import xml.etree.ElementTree as ET
+import uuid as _uuid
+from defusedxml import ElementTree as ET
 from datetime import datetime, timezone
 from typing import Dict, List, Optional
 
@@ -130,11 +131,11 @@ class HikvisionISAPIClient:
                     content_type="application/xml",
                 )
 
-                batch, more = self._parse_events(resp.text)
+                batch, raw_count, more = self._parse_events(resp.text)
                 events.extend(batch)
-                position += len(batch)
+                position += raw_count  # advance by raw AcsEvent count, not parsed count
 
-                if not more or not batch:
+                if not more:
                     break
 
         logger.debug("Hikvision poll: fetched %d events since %s", len(events), since)
@@ -201,14 +202,14 @@ class HikvisionISAPIClient:
                 delay *= 2
         raise RuntimeError("Exhausted retries")  # never reached
 
-    def _parse_events(self, xml_text: str) -> tuple[List[SensorEvent], bool]:
-        """Parse XML response → (list of SensorEvents, has_more)."""
+    def _parse_events(self, xml_text: str) -> tuple[List[SensorEvent], int, bool]:
+        """Parse XML response → (list of SensorEvents, raw_element_count, has_more)."""
         events: List[SensorEvent] = []
         try:
             root = ET.fromstring(xml_text)
         except ET.ParseError as exc:
             logger.error("Failed to parse Hikvision XML: %s", exc)
-            return events, False
+            return events, 0, False
 
         status_str = (
             _find_text(root, "responseStatusStrg") or ""
@@ -219,17 +220,18 @@ class HikvisionISAPIClient:
         if info_el is None:
             info_el = root.find("AcsEventInfo")
         if info_el is None:
-            return events, has_more
+            return events, 0, has_more
 
         acs_events = info_el.findall("h:AcsEvent", _HIKVISION_NS)
         if not acs_events:
             acs_events = info_el.findall("AcsEvent")
+        raw_count = len(acs_events)  # count before filtering out None results
         for acs_ev in acs_events:
             ev = self._parse_single_event(acs_ev)
             if ev is not None:
                 events.append(ev)
 
-        return events, has_more
+        return events, raw_count, has_more
 
     def _parse_single_event(self, el: ET.Element) -> Optional[SensorEvent]:
         """Normalise a single AcsEvent XML element into a SensorEvent."""
@@ -252,7 +254,14 @@ class HikvisionISAPIClient:
             door_no = _find_text(el, "doorNo") or "1"
             zone_id = self.door_zone_map.get(door_no, f"DOOR_{door_no}")
 
+            serial_no = _find_text(el, "serialNo") or ""
+            event_id = str(_uuid.uuid5(
+                _uuid.NAMESPACE_DNS,
+                f"{self._device_serial or 'unknown'}:{serial_no}",
+            ))
+
             return SensorEvent(
+                event_id=event_id,
                 sensor_type=SensorType.RFID,
                 event_type=event_type,
                 timestamp=ts,

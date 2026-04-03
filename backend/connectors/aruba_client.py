@@ -175,11 +175,8 @@ class ArubaAOS8Client:
             if resp.status_code == 401:
                 logger.info("Aruba token expired — re-logging in")
                 async with self._login_lock:
-                    if self._token is None:
-                        token = await self.login()
-                    else:
-                        token = self._token
-                self._token = None
+                    token = await self.login()
+                    self._token = token
                 resp = await client.get(
                     f"{self.base_url}/v1/monitoring/client",
                     params={"UIDARUBA": token},

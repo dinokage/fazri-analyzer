@@ -51,7 +51,8 @@ CREATE TABLE IF NOT EXISTS sensor_events (
 
 DDL_INDEXES = [
     # Single-column indexes (covering the most common lookups)
-    "CREATE INDEX IF NOT EXISTS ix_sensor_events_event_id          ON sensor_events (event_id);",
+    # ix_sensor_events_event_id intentionally omitted: the UNIQUE constraint
+    # uq_sensor_events_event_id already creates a B-tree index on event_id.
     "CREATE INDEX IF NOT EXISTS ix_sensor_events_sensor_type       ON sensor_events (sensor_type);",
     "CREATE INDEX IF NOT EXISTS ix_sensor_events_timestamp         ON sensor_events (timestamp);",
     "CREATE INDEX IF NOT EXISTS ix_sensor_events_zone_id           ON sensor_events (zone_id);",

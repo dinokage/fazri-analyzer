@@ -48,6 +48,8 @@ class EntityProfileDTO:
     email: Optional[str] = None
     department: Optional[str] = None
     authorized_zones: List[str] = field(default_factory=list)
+    created_at: Optional[datetime] = None
+    updated_at: Optional[datetime] = None
 
     @classmethod
     def from_orm(cls, row: EntityProfile) -> "EntityProfileDTO":
@@ -58,6 +60,8 @@ class EntityProfileDTO:
             email=row.email,
             department=row.department,
             authorized_zones=row.authorized_zones or [],
+            created_at=row.created_at,
+            updated_at=row.updated_at,
         )
 
 

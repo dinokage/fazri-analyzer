@@ -109,7 +109,7 @@ async def _get_redis():
 
 def _random_clients() -> List[Dict]:
     """Return a randomised subset of device clients, each on a random AP."""
-    n = random.randint(10, min(40, len(SAMPLE_DEVICES)))
+    n = random.randint(min(10, len(SAMPLE_DEVICES)), min(40, len(SAMPLE_DEVICES)))
     selected = random.sample(SAMPLE_DEVICES, n)
     now = datetime.now(timezone.utc)
     clients = []
@@ -296,13 +296,15 @@ async def get_clients(UIDARUBA: str = Query(default="")) -> dict:
 async def get_aps(UIDARUBA: str = Query(default="")) -> dict:
     """Return list of access points."""
     _validate_session(UIDARUBA)
+    clients_resp = await get_clients(UIDARUBA=UIDARUBA)
+    current_clients = clients_resp.get("Clients", [])
     aps = [
         {
             "Name": ap_name,
             "Zone": zone,
             "Status": "Up",
             "IP": f"10.10.{i}.1",
-            "Clients": sum(1 for c in _cached_clients if c["AP name"] == ap_name),
+            "Clients": sum(1 for c in current_clients if c["AP name"] == ap_name),
         }
         for i, (zone, ap_name) in enumerate(ZONE_TO_AP.items())
     ]

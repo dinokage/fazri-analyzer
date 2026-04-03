@@ -56,15 +56,22 @@ def _occupancy_status(rate: float) -> str:
 
 
 def _zone_occupancy_dict(zone_id: str, db: Session) -> Dict:
-    """Count distinct resolved entities seen in a zone within the presence window."""
+    """Count entities whose *latest* event in the window places them in this zone."""
     since = datetime.now(timezone.utc) - timedelta(minutes=_PRESENCE_WINDOW_MINUTES)
     count = db.execute(
         text("""
-            SELECT COUNT(DISTINCT resolved_entity_id)
-            FROM sensor_events
-            WHERE zone_id        = :zone_id
-              AND timestamp      >= :since
-              AND resolved_entity_id IS NOT NULL
+            WITH latest AS (
+                SELECT DISTINCT ON (resolved_entity_id)
+                    resolved_entity_id, zone_id
+                FROM sensor_events
+                WHERE resolved_entity_id IS NOT NULL
+                  AND timestamp >= :since
+                  AND event_type IN (
+                    'ACCESS_GRANTED', 'DEVICE_ASSOCIATED', 'ENTRY', 'FACE_RECOGNIZED'
+                  )
+                ORDER BY resolved_entity_id, timestamp DESC
+            )
+            SELECT COUNT(*) FROM latest WHERE zone_id = :zone_id
         """),
         {"zone_id": zone_id, "since": since},
     ).scalar() or 0
@@ -218,15 +225,23 @@ async def get_campus_summary(
     """Aggregate real-time occupancy across all zones."""
     since = datetime.now(timezone.utc) - timedelta(minutes=_PRESENCE_WINDOW_MINUTES)
 
-    # Fetch all zone occupancy counts in one query
+    # Fetch occupancy counts using latest-event-per-entity so entities moving
+    # between zones are counted only in their current zone.
     rows = db.execute(
         text("""
-            SELECT
-                zone_id,
-                COUNT(DISTINCT resolved_entity_id) AS cnt
-            FROM sensor_events
-            WHERE timestamp            >= :since
-              AND resolved_entity_id   IS NOT NULL
+            WITH latest AS (
+                SELECT DISTINCT ON (resolved_entity_id)
+                    resolved_entity_id, zone_id
+                FROM sensor_events
+                WHERE resolved_entity_id IS NOT NULL
+                  AND timestamp >= :since
+                  AND event_type IN (
+                    'ACCESS_GRANTED', 'DEVICE_ASSOCIATED', 'ENTRY', 'FACE_RECOGNIZED'
+                  )
+                ORDER BY resolved_entity_id, timestamp DESC
+            )
+            SELECT zone_id, COUNT(*) AS cnt
+            FROM latest
             GROUP BY zone_id
         """),
         {"since": since},

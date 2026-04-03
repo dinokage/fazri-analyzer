@@ -133,7 +133,7 @@ services:
       dockerfile: Dockerfile
       target: development
     container_name: fazri_test_backend
-    command: uvicorn main:app --host 0.0.0.0 --port 8000 --reload
+    command: uvicorn main:app --host 0.0.0.0 --port 8000
     environment:
       # Database
       POSTGRES_SERVER: db

@@ -81,7 +81,6 @@ def run_import(
     csv_path: str,
     column_map: Optional[Dict[str, str]] = None,
     dry_run: bool = False,
-    batch_size: int = 100,
 ) -> Dict[str, int]:
     """
     Import entities from a CSV file.
@@ -126,7 +125,7 @@ def run_import(
 
     try:
         # The service's bulk_import_from_csv handles everything
-        result = svc.bulk_import_from_csv(csv_path, mapping=None, db=db)
+        result = svc.bulk_import_from_csv(csv_path, mapping=mapping, db=db)
         stats["created"] = result["created"]
         stats["updated"] = result["updated"]
         stats["skipped"] = result["skipped"]
@@ -154,12 +153,6 @@ if __name__ == "__main__":
         help="Preview what would be imported without writing to the database",
     )
     parser.add_argument(
-        "--batch-size",
-        type=int,
-        default=100,
-        help="Number of rows to commit in each database batch (default: 100)",
-    )
-    parser.add_argument(
         "--mapping",
         type=str,
         default=None,
@@ -181,7 +174,6 @@ if __name__ == "__main__":
             csv_path=args.csv_path,
             column_map=column_map,
             dry_run=args.dry_run,
-            batch_size=args.batch_size,
         )
     except FileNotFoundError as exc:
         logger.error(str(exc))
