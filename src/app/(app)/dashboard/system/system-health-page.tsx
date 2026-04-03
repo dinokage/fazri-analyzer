@@ -15,6 +15,8 @@ import {
   XCircle,
   AlertTriangle,
   Clock,
+  PauseCircle,
+  PlayCircle,
 } from 'lucide-react';
 import { apiClient } from '@/lib/api-client';
 import { Button } from '@/components/ui/button';
@@ -27,6 +29,7 @@ interface ServiceHealth {
   details?: string | null;
   last_poll?: string | null;
   error?: string | null;
+  paused?: boolean | null;
 }
 
 interface SystemHealthData {
@@ -69,8 +72,9 @@ function statusColor(status: ServiceHealth['status']): string {
   }
 }
 
-function statusDot(status: ServiceHealth['status']): string {
-  switch (status) {
+function statusDot(health: ServiceHealth): string {
+  if (health.paused === true) return 'bg-orange-500';
+  switch (health.status) {
     case 'up':       return 'bg-green-500';
     case 'polling':  return 'bg-blue-500 animate-pulse';
     case 'degraded': return 'bg-yellow-500';
@@ -117,23 +121,35 @@ function OverallBanner({ status }: { status: SystemHealthData['status'] }) {
 
 // ─── Service Card ─────────────────────────────────────────────────────────────
 
-function ServiceCard({ name, health }: { name: string; health: ServiceHealth }) {
+function ServiceCard({
+  name,
+  health,
+  onTogglePause,
+  toggling,
+}: {
+  name: string;
+  health: ServiceHealth;
+  onTogglePause?: () => Promise<void>;
+  toggling?: boolean;
+}) {
   const meta = SERVICE_META[name] ?? { label: name, icon: <Database className="h-5 w-5" /> };
-  const dotCls = statusDot(health.status);
+  const isPaused = health.paused === true;
+  const dotCls = statusDot(health);
   const colorCls = statusColor(health.status);
+  const statusLabel = isPaused ? 'paused' : health.status;
 
   return (
     <div className="bg-[#1c1c24] border border-gray-800 rounded-lg p-4 flex flex-col gap-2">
       {/* Header */}
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-2 text-gray-300">
-          <span className={colorCls}>{meta.icon}</span>
+          <span className={isPaused ? 'text-orange-400' : colorCls}>{meta.icon}</span>
           <span className="text-sm font-medium">{meta.label}</span>
         </div>
         <div className="flex items-center gap-1.5">
           <div className={`h-2 w-2 rounded-full ${dotCls}`} />
-          <span className={`text-xs font-medium capitalize ${colorCls}`}>
-            {health.status}
+          <span className={`text-xs font-medium capitalize ${isPaused ? 'text-orange-400' : colorCls}`}>
+            {statusLabel}
           </span>
         </div>
       </div>
@@ -164,7 +180,9 @@ function ServiceCard({ name, health }: { name: string; health: ServiceHealth }) 
       <div className="mt-1 h-1 rounded-full bg-gray-800 overflow-hidden">
         <div
           className={`h-full rounded-full ${
-            health.status === 'up' || health.status === 'polling'
+            isPaused
+              ? 'bg-orange-500 w-1/2'
+              : health.status === 'up' || health.status === 'polling'
               ? 'bg-green-500 w-full'
               : health.status === 'degraded'
               ? 'bg-yellow-500 w-3/4'
@@ -174,6 +192,24 @@ function ServiceCard({ name, health }: { name: string; health: ServiceHealth }) 
           }`}
         />
       </div>
+
+      {/* Simulator toggle */}
+      {onTogglePause != null && (
+        <button
+          onClick={onTogglePause}
+          disabled={toggling}
+          className={`mt-1 flex items-center justify-center gap-1.5 text-xs px-2 py-1 rounded border transition-colors disabled:opacity-50 ${
+            health.paused
+              ? 'border-green-700 text-green-400 hover:bg-green-900/20'
+              : 'border-orange-700 text-orange-400 hover:bg-orange-900/20'
+          }`}
+        >
+          {isPaused
+            ? <><PlayCircle className="h-3.5 w-3.5" /> {toggling ? 'Resuming…' : 'Resume'}</>
+            : <><PauseCircle className="h-3.5 w-3.5" /> {toggling ? 'Pausing…' : 'Pause'}</>
+          }
+        </button>
+      )}
     </div>
   );
 }
@@ -185,6 +221,7 @@ export default function SystemHealthPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [lastRefresh, setLastRefresh] = useState<Date | null>(null);
+  const [toggling, setToggling] = useState<Record<string, boolean>>({});
   const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
   const fetchHealth = useCallback(async () => {
@@ -199,6 +236,19 @@ export default function SystemHealthPage() {
       setLoading(false);
     }
   }, []);
+
+  const toggleSimulator = async (sim: 'hikvision' | 'aruba') => {
+    const paused = data?.services[sim]?.paused;
+    setToggling(t => ({ ...t, [sim]: true }));
+    try {
+      await apiClient.controlSimulator(sim, paused ? 'resume' : 'pause');
+      await fetchHealth();
+    } catch (e) {
+      console.error('Simulator toggle failed:', e);
+    } finally {
+      setToggling(t => ({ ...t, [sim]: false }));
+    }
+  };
 
   useEffect(() => {
     fetchHealth();
@@ -271,7 +321,17 @@ export default function SystemHealthPage() {
       {!loading && data && (
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
           {Object.entries(data.services).map(([name, health]) => (
-            <ServiceCard key={name} name={name} health={health} />
+            <ServiceCard
+              key={name}
+              name={name}
+              health={health}
+              onTogglePause={
+                (name === 'hikvision' || name === 'aruba') && health.status !== 'disabled'
+                  ? () => toggleSimulator(name as 'hikvision' | 'aruba')
+                  : undefined
+              }
+              toggling={toggling[name]}
+            />
           ))}
         </div>
       )}

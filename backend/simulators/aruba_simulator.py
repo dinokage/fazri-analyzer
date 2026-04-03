@@ -222,6 +222,13 @@ async def get_clients(UIDARUBA: str = Query(default="")) -> dict:
     """
     _validate_session(UIDARUBA)
 
+    if _redis is not None:
+        try:
+            if await _redis.exists("sim:aruba:paused"):
+                return {"Clients": []}
+        except Exception:
+            pass
+
     if _redis is None:
         return {"Clients": _cached_clients}
 

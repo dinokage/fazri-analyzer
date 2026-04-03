@@ -319,6 +319,9 @@ async def _coordinator_driven_generator() -> None:
     while True:
         now = datetime.now(timezone.utc)
         try:
+            if await _redis.exists("sim:hikvision:paused"):
+                await asyncio.sleep(3)
+                continue
             raw_eids = await _redis.smembers("sim:active_entities")
             for raw_eid in raw_eids:
                 eid = raw_eid.decode() if isinstance(raw_eid, bytes) else raw_eid

@@ -42,6 +42,7 @@ class ServiceHealth(BaseModel):
     details: Optional[str] = None
     last_poll: Optional[str] = None
     error: Optional[str] = None
+    paused: Optional[bool] = None  # set only for simulator-backed services
 
 
 class SystemHealthResponse(BaseModel):
@@ -148,11 +149,11 @@ async def _probe_hikvision() -> ServiceHealth:
     if not settings.HIKVISION_ENABLED:
         return ServiceHealth(status="disabled", details="HIKVISION_ENABLED=false")
     try:
-        # Check the poller's last-seen watermark stored in Redis (set by hikvision_poller.py)
         import redis.asyncio as aioredis
         r = aioredis.Redis(host=settings.REDIS_HOST, port=settings.REDIS_PORT, db=0, socket_timeout=1)
         last_poll_ts = await r.get("hikvision:last_poll")
         events_today = await r.get("hikvision:events_today")
+        paused = bool(await r.exists("sim:hikvision:paused"))
         await r.aclose()
 
         if last_poll_ts:
@@ -167,6 +168,7 @@ async def _probe_hikvision() -> ServiceHealth:
             status="polling",
             last_poll=age_str,
             details=f"events today: {events:,}",
+            paused=paused,
         )
     except Exception as exc:
         return ServiceHealth(status="degraded", error=str(exc))
@@ -180,6 +182,7 @@ async def _probe_aruba() -> ServiceHealth:
         r = aioredis.Redis(host=settings.REDIS_HOST, port=settings.REDIS_PORT, db=0, socket_timeout=1)
         last_poll_ts = await r.get("aruba:last_poll")
         clients_online = await r.get("aruba:clients_online")
+        paused = bool(await r.exists("sim:aruba:paused"))
         await r.aclose()
 
         if last_poll_ts:
@@ -194,6 +197,7 @@ async def _probe_aruba() -> ServiceHealth:
             status="polling",
             last_poll=age_str,
             details=f"clients online: {clients}",
+            paused=paused,
         )
     except Exception as exc:
         return ServiceHealth(status="degraded", error=str(exc))
@@ -280,3 +284,53 @@ async def system_health(
         version="0.2.0",
         timestamp=datetime.now(timezone.utc).isoformat(),
     )
+
+
+# ---------------------------------------------------------------------------
+# Simulator control endpoints
+# ---------------------------------------------------------------------------
+
+_SIM_PAUSE_KEYS: dict[str, str] = {
+    "hikvision": "sim:hikvision:paused",
+    "aruba":     "sim:aruba:paused",
+}
+
+
+@router.post(
+    "/simulators/{sim}/pause",
+    summary="Pause a simulator",
+    description="Sets the Redis pause flag so the named simulator stops generating events.",
+)
+async def pause_simulator(
+    sim: str,
+    current_user: AuthenticatedUser = Depends(require_staff()),
+) -> dict:
+    if sim not in _SIM_PAUSE_KEYS:
+        raise HTTPException(status_code=404, detail=f"Unknown simulator '{sim}'. Valid: {list(_SIM_PAUSE_KEYS)}")
+    import redis.asyncio as aioredis
+    r = aioredis.Redis(host=settings.REDIS_HOST, port=settings.REDIS_PORT, db=0, socket_timeout=2)
+    try:
+        await r.set(_SIM_PAUSE_KEYS[sim], "1", ex=86400)
+        return {"sim": sim, "paused": True}
+    finally:
+        await r.aclose()
+
+
+@router.post(
+    "/simulators/{sim}/resume",
+    summary="Resume a simulator",
+    description="Removes the Redis pause flag so the named simulator resumes generating events.",
+)
+async def resume_simulator(
+    sim: str,
+    current_user: AuthenticatedUser = Depends(require_staff()),
+) -> dict:
+    if sim not in _SIM_PAUSE_KEYS:
+        raise HTTPException(status_code=404, detail=f"Unknown simulator '{sim}'. Valid: {list(_SIM_PAUSE_KEYS)}")
+    import redis.asyncio as aioredis
+    r = aioredis.Redis(host=settings.REDIS_HOST, port=settings.REDIS_PORT, db=0, socket_timeout=2)
+    try:
+        await r.delete(_SIM_PAUSE_KEYS[sim])
+        return {"sim": sim, "paused": False}
+    finally:
+        await r.aclose()

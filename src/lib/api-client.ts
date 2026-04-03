@@ -989,6 +989,14 @@ export const apiClient = {
     );
     return handleResponse(response);
   },
+
+  async controlSimulator(sim: 'hikvision' | 'aruba', action: 'pause' | 'resume') {
+    const response = await fetch(
+      `${API_BASE_URL}/api/v1/system/simulators/${sim}/${action}`,
+      { method: 'POST', headers: await getAuthHeaders() }
+    );
+    return handleResponse(response);
+  },
 };
 
 export { ApiError };
