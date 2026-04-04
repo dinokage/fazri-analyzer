@@ -70,7 +70,7 @@ async def get_anomaly_summary(
     ):
         by_type[atype] = count
 
-    zone_expr = Alert.location["zone_id"].astext
+    zone_expr = func.json_extract_path_text(Alert.location, "zone_id")
     by_location: dict = {}
     for count, zone in (
         db.query(func.count(), zone_expr).filter(base).group_by(zone_expr).all()
