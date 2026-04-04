@@ -2,6 +2,7 @@ version: 2
 
 ignored-paths:
   - env.prod.example
+  - .env.prod.example
 
 ignored-matches:
   - name: Sentry auth token CLI flag pattern
