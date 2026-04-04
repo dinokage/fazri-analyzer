@@ -9,3 +9,7 @@ ignored-matches:
     match: "auth-token \\$SENTRY_AUTH_TOKEN"
   - name: Jenkins credentials() references are credential IDs, not secrets
     match: "credentials('fazri-"
+  - name: env.prod.example is a template file with placeholder values
+    filename: "env.prod.example"
+  - name: .env.prod.example is a template file with placeholder values
+    filename: "\\.env\\.prod\\.example"
