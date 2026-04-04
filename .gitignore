@@ -96,3 +96,6 @@ Thumbs.db
 
 # Docker / misc logs
 *.log
+
+# Local mediamtx config file
+backend/mediamtx.yml

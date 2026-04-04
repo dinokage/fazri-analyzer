@@ -16,6 +16,7 @@ from datetime import datetime, timezone
 from typing import Optional
 
 from fastapi import APIRouter, Depends, Query
+from sqlalchemy import func
 from sqlalchemy.orm import Session
 
 from auth.dependencies import require_staff
@@ -49,21 +50,37 @@ async def get_anomaly_summary(
     current_user: AuthenticatedUser = Depends(require_staff()),
 ) -> dict:
     """Aggregate counts of all real (non-mock) alerts by severity, type, and zone."""
-    alerts = db.query(Alert).filter(Alert.is_mock == False).all()  # noqa: E712
+    base = Alert.is_mock == False  # noqa: E712
+
+    total: int = db.query(func.count(Alert.id)).filter(base).scalar() or 0
+
     by_severity = {"critical": 0, "high": 0, "medium": 0, "low": 0}
+    for count, sev in (
+        db.query(func.count(), Alert.severity).filter(base).group_by(Alert.severity).all()
+    ):
+        key = sev.value if hasattr(sev, "value") else sev
+        by_severity[key] = by_severity.get(key, 0) + count
+
     by_type: dict = {}
+    for count, atype in (
+        db.query(func.count(), Alert.anomaly_type)
+        .filter(base, Alert.anomaly_type != None)  # noqa: E711
+        .group_by(Alert.anomaly_type)
+        .all()
+    ):
+        by_type[atype] = count
+
+    zone_expr = Alert.location["zone_id"].astext
     by_location: dict = {}
-    for a in alerts:
-        sev = a.severity.value if hasattr(a.severity, "value") else a.severity
-        by_severity[sev] = by_severity.get(sev, 0) + 1
-        if a.anomaly_type:
-            by_type[a.anomaly_type] = by_type.get(a.anomaly_type, 0) + 1
-        loc = (a.location or {}).get("zone_id", "unknown")
-        by_location[loc] = by_location.get(loc, 0) + 1
+    for count, zone in (
+        db.query(func.count(), zone_expr).filter(base).group_by(zone_expr).all()
+    ):
+        by_location[zone or "unknown"] = count
+
     return {
         "success": True,
         "data": {
-            "total_anomalies": len(alerts),
+            "total_anomalies": total,
             "by_severity": by_severity,
             "by_type": by_type,
             "by_location": by_location,
@@ -74,8 +91,8 @@ async def get_anomaly_summary(
 
 @router.get("/all")
 async def get_all_anomalies(
-    limit: Optional[int] = Query(None, description="Max results; omit for all"),
-    offset: int = Query(0, description="Pagination offset"),
+    limit: Optional[int] = Query(None, ge=0, description="Max results; omit for all"),
+    offset: int = Query(0, ge=0, description="Pagination offset"),
     db: Session = Depends(get_db),
     current_user: AuthenticatedUser = Depends(require_staff()),
 ) -> dict:
@@ -86,7 +103,7 @@ async def get_all_anomalies(
         .order_by(Alert.created_at.desc())
     )
     total = q.count()
-    rows = q.offset(offset).limit(limit).all() if limit else q.offset(offset).all()
+    rows = q.offset(offset).limit(limit).all() if limit is not None else q.offset(offset).all()
     return {
         "success": True,
         "data": {

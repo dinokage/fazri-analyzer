@@ -201,6 +201,7 @@ async def lifespan(app: FastAPI):
             logger.info("Hikvision poller started")
         except Exception as e:
             logger.error(f"Failed to start Hikvision poller: {e}")
+            raise
 
     # Start Aruba WiFi poller if enabled
     _aruba_task = None
@@ -211,6 +212,7 @@ async def lifespan(app: FastAPI):
             logger.info("Aruba WiFi poller started")
         except Exception as e:
             logger.error(f"Failed to start Aruba poller: {e}")
+            raise
 
     yield
 
