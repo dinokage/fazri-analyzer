@@ -121,9 +121,9 @@ pipeline {
                         env.BACKEND_PORT        = '8001'
                         env.AUTH_PORT           = '4003'
                     }
-                    def sanitizedBranch = env.BRANCH_NAME.replaceAll('[^a-zA-Z0-9]', '-').toLowerCase()
-                    def shortSha        = env.GIT_COMMIT?.take(7) ?: 'unknown'
-                    env.IMAGE_TAG       = "${sanitizedBranch}-${shortSha}"
+                    env.SANITIZED_BRANCH = env.BRANCH_NAME.replaceAll('[^a-zA-Z0-9]', '-').toLowerCase()
+                    def shortSha         = env.GIT_COMMIT?.take(7) ?: 'unknown'
+                    env.IMAGE_TAG        = "${env.SANITIZED_BRANCH}-${shortSha}"
 
                     echo 'Branch:            ' + env.BRANCH_NAME
                     echo 'Deploy target:     ' + env.DEPLOY_ENV
@@ -686,20 +686,24 @@ pipeline {
             steps {
                 sh '''
                     docker image prune -f || true
-                    # Remove old tagged images for built services, keeping only the current tag and latest
+                    # Remove old tagged images ONLY for the current branch prefix.
+                    # This prevents concurrent branch/PR jobs from deleting each other's images.
                     if [ "${BUILD_BACKEND}" = "true" ]; then
                         docker images ${BACKEND_IMAGE} --format "{{.Tag}}" \
-                            | grep -v "^${IMAGE_TAG}$" | grep -v "^latest$" \
+                            | grep "^${SANITIZED_BRANCH}-" \
+                            | grep -v "^${IMAGE_TAG}$" \
                             | xargs -r -I{} docker rmi ${BACKEND_IMAGE}:{} 2>/dev/null || true
                     fi
                     if [ "${BUILD_AUTH}" = "true" ]; then
                         docker images ${AUTH_IMAGE} --format "{{.Tag}}" \
-                            | grep -v "^${IMAGE_TAG}$" | grep -v "^latest$" \
+                            | grep "^${SANITIZED_BRANCH}-" \
+                            | grep -v "^${IMAGE_TAG}$" \
                             | xargs -r -I{} docker rmi ${AUTH_IMAGE}:{} 2>/dev/null || true
                     fi
                     if [ "${BUILD_DEEPFACE}" = "true" ]; then
                         docker images ${DEEPFACE_IMAGE} --format "{{.Tag}}" \
-                            | grep -v "^${IMAGE_TAG}$" | grep -v "^latest$" \
+                            | grep "^${SANITIZED_BRANCH}-" \
+                            | grep -v "^${IMAGE_TAG}$" \
                             | xargs -r -I{} docker rmi ${DEEPFACE_IMAGE}:{} 2>/dev/null || true
                     fi
                 '''
