@@ -189,7 +189,7 @@ async def login(response: Response, username: str = "", password: str = "") -> d
     # Accept any credentials in simulator mode
     token = str(uuid.uuid4())
     _sessions[token] = datetime.now(timezone.utc) + timedelta(hours=8)
-    response.set_cookie("UIDARUBA", token, max_age=28800)
+    response.set_cookie("UIDARUBA", token, max_age=28800, httponly=True)
     return {
         "GlobalResult": {
             "status": "0",

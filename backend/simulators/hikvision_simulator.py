@@ -19,7 +19,7 @@ import os
 import random
 import sys
 import time
-import xml.etree.ElementTree as ET
+import defusedxml.ElementTree as ET
 from datetime import datetime, timezone, timedelta
 from typing import Optional
 
