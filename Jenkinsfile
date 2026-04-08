@@ -51,6 +51,32 @@ pipeline {
 
         // ── Notification credentials ──────────────────────────────────────────
         DISCORD_WEBHOOK_URL  = credentials('fazri-discord-webhook-url')
+
+        // ── Hikvision RFID ────────────────────────────────────────────────────
+        HIKVISION_ENABLED       = credentials('fazri-hikvision-enabled')
+        HIKVISION_BASE_URL      = credentials('fazri-hikvision-base-url')
+        HIKVISION_USERNAME      = credentials('fazri-hikvision-username')
+        HIKVISION_PASSWORD      = credentials('fazri-hikvision-password')
+        HIKVISION_POLL_INTERVAL = credentials('fazri-hikvision-poll-interval')
+        HIKVISION_DOOR_ZONE_MAP = credentials('fazri-hikvision-door-zone-map')
+
+        // ── Aruba WiFi ────────────────────────────────────────────────────────
+        ARUBA_ENABLED           = credentials('fazri-aruba-enabled')
+        ARUBA_BASE_URL          = credentials('fazri-aruba-base-url')
+        ARUBA_USERNAME          = credentials('fazri-aruba-username')
+        ARUBA_PASSWORD          = credentials('fazri-aruba-password')
+        ARUBA_POLL_INTERVAL     = credentials('fazri-aruba-poll-interval')
+        ARUBA_AP_ZONE_MAP       = credentials('fazri-aruba-ap-zone-map')
+
+        // ── Simulators (reuse existing DB/Redis credentials) ──────────────────
+        // These feed the MovementCoordinator inside the simulator containers.
+        SIM_POSTGRES_SERVER   = credentials('fazri-postgres-server')
+        SIM_POSTGRES_USER     = credentials('fazri-postgres-user')
+        SIM_POSTGRES_PASSWORD = credentials('fazri-postgres-password')
+        SIM_POSTGRES_DB       = credentials('fazri-postgres-db')
+        SIM_REDIS_HOST        = credentials('fazri-redis-host')
+        SIM_REDIS_PORT        = credentials('fazri-redis-port')
+        SIM_NUM_ENTITIES      = '10'
     }
 
     stages {
@@ -94,9 +120,9 @@ pipeline {
                         env.BACKEND_PORT        = '8001'
                         env.AUTH_PORT           = '4003'
                     }
-                    def sanitizedBranch = env.BRANCH_NAME.replaceAll('[^a-zA-Z0-9]', '-').toLowerCase()
-                    def shortSha        = env.GIT_COMMIT?.take(7) ?: 'unknown'
-                    env.IMAGE_TAG       = "${sanitizedBranch}-${shortSha}"
+                    env.SANITIZED_BRANCH = env.BRANCH_NAME.replaceAll('[^a-zA-Z0-9]', '-').toLowerCase()
+                    def shortSha         = env.GIT_COMMIT?.take(7) ?: 'unknown'
+                    env.IMAGE_TAG        = "${env.SANITIZED_BRANCH}-${shortSha}"
 
                     echo 'Branch:            ' + env.BRANCH_NAME
                     echo 'Deploy target:     ' + env.DEPLOY_ENV
@@ -264,6 +290,19 @@ pipeline {
                                     -e GO2RTC_API_URL="http://${GO2RTC_CONTAINER}:1984" \
                                     -e GO2RTC_RTSP_URL="rtsp://${GO2RTC_CONTAINER}:8554" \
                                     -e GO2RTC_ENABLED=true \
+                                    -e HIKVISION_ENABLED="${HIKVISION_ENABLED}" \
+                                    -e HIKVISION_BASE_URL="${HIKVISION_BASE_URL}" \
+                                    -e HIKVISION_USERNAME="${HIKVISION_USERNAME}" \
+                                    -e HIKVISION_PASSWORD="${HIKVISION_PASSWORD}" \
+                                    -e HIKVISION_POLL_INTERVAL_SECONDS="${HIKVISION_POLL_INTERVAL}" \
+                                    -e HIKVISION_DOOR_ZONE_MAP="${HIKVISION_DOOR_ZONE_MAP}" \
+                                    -e ARUBA_ENABLED="${ARUBA_ENABLED}" \
+                                    -e ARUBA_BASE_URL="${ARUBA_BASE_URL}" \
+                                    -e ARUBA_USERNAME="${ARUBA_USERNAME}" \
+                                    -e ARUBA_PASSWORD="${ARUBA_PASSWORD}" \
+                                    -e ARUBA_POLL_INTERVAL_SECONDS="${ARUBA_POLL_INTERVAL}" \
+                                    -e ARUBA_AP_ZONE_MAP="${ARUBA_AP_ZONE_MAP}" \
+                                    -e TESTING=false \
                                     -v app_data_${DEPLOY_ENV}:/app/augmented \
                                     -v app_ml_models_${DEPLOY_ENV}:/app/ml_models \
                                     -v app_logs_${DEPLOY_ENV}:/app/logs \
@@ -456,6 +495,91 @@ pipeline {
                     }
                 }
 
+                stage('Simulators') {
+                    when { expression { env.BUILD_BACKEND == 'true' && env.DEPLOY_ENV != 'production' } }
+                    steps {
+                        sh '''
+                            echo "Removing existing simulator containers..."
+                            docker rm -f fazri-hikvision-sim-${DEPLOY_ENV} 2>/dev/null || true
+                            docker rm -f fazri-aruba-sim-${DEPLOY_ENV}     2>/dev/null || true
+
+                            echo "Starting Hikvision simulator (movement coordinator)..."
+                            docker run -d \
+                                --name fazri-hikvision-sim-${DEPLOY_ENV} \
+                                --restart unless-stopped \
+                                --network ${NETWORK_NAME} \
+                                --no-healthcheck \
+                                -p 9011:9001 \
+                                -e HIKVISION_SIM_CONTINUOUS=1 \
+                                -e HIKVISION_SIM_COORDINATOR=1 \
+                                -e POSTGRES_SERVER="${SIM_POSTGRES_SERVER}" \
+                                -e POSTGRES_USER="${SIM_POSTGRES_USER}" \
+                                -e POSTGRES_PASSWORD="${SIM_POSTGRES_PASSWORD}" \
+                                -e POSTGRES_DB="${SIM_POSTGRES_DB}" \
+                                -e POSTGRES_PORT=5432 \
+                                -e REDIS_HOST="${SIM_REDIS_HOST}" \
+                                -e REDIS_PORT="${SIM_REDIS_PORT}" \
+                                -e SIM_NUM_ENTITIES="${SIM_NUM_ENTITIES}" \
+                                --entrypoint uvicorn \
+                                ${BACKEND_IMAGE}:${IMAGE_TAG} \
+                                simulators.hikvision_simulator:app --host 0.0.0.0 --port 9001
+
+                            echo "Starting Aruba simulator..."
+                            docker run -d \
+                                --name fazri-aruba-sim-${DEPLOY_ENV} \
+                                --restart unless-stopped \
+                                --network ${NETWORK_NAME} \
+                                --no-healthcheck \
+                                -p 9002:9002 \
+                                -e REDIS_HOST="${SIM_REDIS_HOST}" \
+                                -e REDIS_PORT="${SIM_REDIS_PORT}" \
+                                --entrypoint uvicorn \
+                                ${BACKEND_IMAGE}:${IMAGE_TAG} \
+                                simulators.aruba_simulator:app --host 0.0.0.0 --port 9002
+
+                            if ! docker ps --format '{{.Names}}' | grep -q "^fazri-hikvision-sim-${DEPLOY_ENV}$"; then
+                                echo "✗ Hikvision simulator container failed to start"
+                                docker logs fazri-hikvision-sim-${DEPLOY_ENV} 2>&1 || true
+                                exit 1
+                            fi
+                            for i in $(seq 1 12); do
+                                if docker exec fazri-hikvision-sim-${DEPLOY_ENV} \
+                                    curl -sf http://localhost:9001/health > /dev/null 2>&1; then
+                                    echo "✓ Hikvision simulator is healthy"
+                                    break
+                                fi
+                                if [ $i -eq 12 ]; then
+                                    echo "✗ Hikvision simulator health check failed after 60s"
+                                    docker logs fazri-hikvision-sim-${DEPLOY_ENV} --tail=50
+                                    exit 1
+                                fi
+                                echo "Hikvision sim attempt ${i}/12 — waiting..."
+                                sleep 5
+                            done
+
+                            if ! docker ps --format '{{.Names}}' | grep -q "^fazri-aruba-sim-${DEPLOY_ENV}$"; then
+                                echo "✗ Aruba simulator container failed to start"
+                                docker logs fazri-aruba-sim-${DEPLOY_ENV} 2>&1 || true
+                                exit 1
+                            fi
+                            for i in $(seq 1 12); do
+                                if docker exec fazri-aruba-sim-${DEPLOY_ENV} \
+                                    curl -sf http://localhost:9002/health > /dev/null 2>&1; then
+                                    echo "✓ Aruba simulator is healthy"
+                                    break
+                                fi
+                                if [ $i -eq 12 ]; then
+                                    echo "✗ Aruba simulator health check failed after 60s"
+                                    docker logs fazri-aruba-sim-${DEPLOY_ENV} --tail=50
+                                    exit 1
+                                fi
+                                echo "Aruba sim attempt ${i}/12 — waiting..."
+                                sleep 5
+                            done
+                        '''
+                    }
+                }
+
             }
         }
 
@@ -561,20 +685,24 @@ pipeline {
             steps {
                 sh '''
                     docker image prune -f || true
-                    # Remove old tagged images for built services, keeping only the current tag and latest
+                    # Remove old tagged images ONLY for the current branch prefix.
+                    # This prevents concurrent branch/PR jobs from deleting each other's images.
                     if [ "${BUILD_BACKEND}" = "true" ]; then
                         docker images ${BACKEND_IMAGE} --format "{{.Tag}}" \
-                            | grep -v "^${IMAGE_TAG}$" | grep -v "^latest$" \
+                            | grep "^${SANITIZED_BRANCH}-" \
+                            | grep -v "^${IMAGE_TAG}$" \
                             | xargs -r -I{} docker rmi ${BACKEND_IMAGE}:{} 2>/dev/null || true
                     fi
                     if [ "${BUILD_AUTH}" = "true" ]; then
                         docker images ${AUTH_IMAGE} --format "{{.Tag}}" \
-                            | grep -v "^${IMAGE_TAG}$" | grep -v "^latest$" \
+                            | grep "^${SANITIZED_BRANCH}-" \
+                            | grep -v "^${IMAGE_TAG}$" \
                             | xargs -r -I{} docker rmi ${AUTH_IMAGE}:{} 2>/dev/null || true
                     fi
                     if [ "${BUILD_DEEPFACE}" = "true" ]; then
                         docker images ${DEEPFACE_IMAGE} --format "{{.Tag}}" \
-                            | grep -v "^${IMAGE_TAG}$" | grep -v "^latest$" \
+                            | grep "^${SANITIZED_BRANCH}-" \
+                            | grep -v "^${IMAGE_TAG}$" \
                             | xargs -r -I{} docker rmi ${DEEPFACE_IMAGE}:{} 2>/dev/null || true
                     fi
                 '''

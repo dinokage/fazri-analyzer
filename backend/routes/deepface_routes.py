@@ -40,8 +40,8 @@ from auth.models import AuthenticatedUser
 from config import settings
 from database.connection import get_db
 from models.db.camera_streams import CameraStream, CameraStreamStatus
-from models.db.alerts import AlertSeverity, ActorType
-from models.schemas.alerts import AlertCreate, AlertSeverityEnum, LocationSchema
+
+
 from models.schemas.deepface import (
     FaceRegistrationResponse,
     FaceSearchResponse,
@@ -55,9 +55,7 @@ from models.schemas.deepface import (
 )
 from services.deepface_client import get_deepface_client
 from services.cctv_graph_service import get_cctv_graph_service
-from services.deepface_anomaly import DeepFaceAnomalyAnalyzer
-from services.alerts.alert_service import AlertService
-from services.alerts.assignment_engine import AssignmentEngine
+from services.alert_cooldown import get_alert_redis as _get_alert_redis_shared
 
 logger = logging.getLogger(__name__)
 
@@ -112,68 +110,11 @@ def _verify_webhook_signature(raw_body: bytes, signature_header: Optional[str]) 
 
 
 # ── Alert cooldown (Redis) ─────────────────────────────────────────────────
-# Prevents duplicate alerts when the same face appears in consecutive frames.
-# Uses Redis SET NX EX for atomic "create if absent" with auto-expiry.
-
-_alert_redis: Any = None
-
+# Delegates to the shared alert_cooldown module so EventIngestionService and
+# deepface_routes use the same Redis connection pool.
 
 def _get_alert_redis():
-    global _alert_redis
-    if _alert_redis is None:
-        try:
-            import redis as _redis_lib
-            _alert_redis = _redis_lib.Redis(
-                host=settings.REDIS_HOST,
-                port=settings.REDIS_PORT,
-                db=settings.REDIS_DB,
-                decode_responses=True,
-                socket_connect_timeout=2,
-                socket_timeout=2,
-            )
-            _alert_redis.ping()
-            logger.debug("Alert cooldown Redis connected: %s:%s db=%s", settings.REDIS_HOST, settings.REDIS_PORT, settings.REDIS_DB)
-        except Exception as exc:
-            logger.warning("Alert cooldown Redis unavailable: %s — duplicates may occur", exc)
-            _alert_redis = None
-    return _alert_redis
-
-
-def _cooldown_key(anomaly_type: str, stream_id: str, entity_key: str) -> str:
-    return f"fazri:alert_cd:{anomaly_type}:{stream_id}:{entity_key}"
-
-
-def _set_alert_cooldown(anomaly_type: str, stream_id: str, entity_key: str) -> bool:
-    """Atomic NX gate. Returns True if the key was newly created (proceed with alert),
-    False if already existed (suppressed) or Redis is unavailable after an error.
-    When Redis is entirely unavailable, returns True so alerts are not silently dropped."""
-    r = _get_alert_redis()
-    if not r:
-        logger.warning("Cooldown gate skipped — Redis unavailable, allowing alert")
-        return True
-    key = _cooldown_key(anomaly_type, stream_id, entity_key)
-    try:
-        result = r.set(key, "1", ex=settings.ALERT_COOLDOWN_SECONDS, nx=True)
-        # SET NX returns None when the key already existed; the bool(result) is True only when set
-        created = result is not None
-        logger.debug("Cooldown NX set: key=%s ttl=%s created=%s", key, settings.ALERT_COOLDOWN_SECONDS, created)
-        return created
-    except Exception as exc:
-        logger.error("Cooldown set FAILED for key=%s: %s", key, exc)
-        return True  # Allow on Redis error to avoid silently dropping alerts
-
-
-def _delete_alert_cooldown(anomaly_type: str, stream_id: str, entity_key: str) -> None:
-    """Delete the cooldown key so alert creation can be retried immediately."""
-    r = _get_alert_redis()
-    if not r:
-        return
-    key = _cooldown_key(anomaly_type, stream_id, entity_key)
-    try:
-        r.delete(key)
-        logger.debug("Cooldown key deleted for retry: key=%s", key)
-    except Exception as exc:
-        logger.error("Cooldown delete FAILED for key=%s: %s", key, exc)
+    return _get_alert_redis_shared()
 
 
 def _go2rtc_register_urls(stream_id: str, rtsp_url: str) -> list:
@@ -206,129 +147,6 @@ def _go2rtc_register_url(stream_id: str, rtsp_url: str) -> str:
 
 
 # ============================================================================
-
-
-def _create_alert_from_anomaly(
-    anomaly: Dict[str, Any],
-    entity: Optional[Dict[str, Any]],
-    zone_id: str,
-    match_data: Optional[Dict[str, Any]],
-    payload: WebhookPayload,
-    db: Session,
-) -> None:
-    """
-    Translate an anomaly dict into an Alert record and auto-assign it.
-
-    Mirrors the two-step pattern from alert_routes.py lines 118-143:
-      1. AlertService.create_alert()
-      2. AssignmentEngine.assign_alert() or assign_critical_alert()
-    """
-    severity_map = {
-        "low": AlertSeverityEnum.LOW,
-        "medium": AlertSeverityEnum.MEDIUM,
-        "high": AlertSeverityEnum.HIGH,
-        "critical": AlertSeverityEnum.CRITICAL,
-    }
-    severity = severity_map.get(anomaly.get("severity", "medium"), AlertSeverityEnum.MEDIUM)
-
-    affected = [entity["entity_id"]] if entity else []
-
-    evidence: Dict[str, Any] = {
-        "face_recognition": {
-            "stream_id": payload.stream_id,
-            "timestamp": payload.timestamp.isoformat(),
-            "frames_processed": payload.frames_processed,
-            "rtsp_url": payload.rtsp_url,
-        },
-        "cctv_frames": {
-            "stream_id": payload.stream_id,
-            "faces_found": payload.faces_found,
-        },
-        "anomaly_details": anomaly.get("details", {}),
-    }
-
-    if match_data:
-        evidence["face_recognition"].update({
-            "distance": match_data.get("distance"),
-            "confidence": match_data.get("confidence"),
-            "threshold": match_data.get("threshold"),
-            "facial_area": match_data.get("facial_area"),
-        })
-
-    alert_data = AlertCreate(
-        anomaly_type=anomaly["anomaly_type"],
-        title=f"Face Recognition Alert: {anomaly['anomaly_type'].replace('_', ' ').title()}",
-        description=anomaly["description"],
-        severity=severity,
-        location=LocationSchema(zone_id=zone_id),
-        affected_entities=affected,
-        data_sources=["CCTV"],
-        evidence=evidence,
-        is_mock=False,
-    )
-
-    alert_service = AlertService(db)
-    alert = alert_service.create_alert(
-        alert_data=alert_data,
-        actor_type=ActorType.SYSTEM,
-    )
-
-    assignment_engine = AssignmentEngine(db)
-    if alert.severity == AlertSeverity.CRITICAL:
-        assigned = assignment_engine.assign_critical_alert(alert, max_assignees=3)
-        if assigned:
-            logger.info(
-                "Critical deepface alert %s auto-assigned to %d staff",
-                alert.id,
-                len(assigned),
-            )
-    else:
-        assigned = assignment_engine.assign_alert(alert)
-        if assigned:
-            logger.info(
-                "Deepface alert %s auto-assigned to %s",
-                alert.id,
-                assigned.name,
-            )
-
-    db.refresh(alert)
-
-    # Web Push to all subscribed browser sessions
-    try:
-        from services.push_service import send_push_to_all
-        send_push_to_all(
-            db=db,
-            title=alert_data.title,
-            body=alert_data.description[:120],
-            url=f"/dashboard/alerts/{alert.id}",
-        )
-    except Exception as exc:
-        logger.warning("Web Push delivery error: %s", exc)
-
-    # Fire Discord webhook (non-blocking best-effort)
-    if settings.DISCORD_WEBHOOK_URL:
-        severity_colors = {
-            "low": 3447003,       # blue
-            "medium": 16776960,   # yellow
-            "high": 16744272,     # orange
-            "critical": 15158332, # red
-        }
-        color = severity_colors.get(anomaly.get("severity", "medium"), 15158332)
-        discord_payload = {
-            "content": "🚨 **Unknown Face Detected**",
-            "embeds": [{
-                "title": alert_data.title,
-                "description": alert_data.description[:500],
-                "color": color,
-                "fields": [
-                    {"name": "Severity", "value": anomaly.get("severity", "medium").upper(), "inline": True},
-                    {"name": "Zone", "value": zone_id, "inline": True},
-                    {"name": "Alert ID", "value": str(alert.id), "inline": False},
-                ],
-                "timestamp": datetime.now(timezone.utc).isoformat(),
-            }],
-        }
-        asyncio.create_task(_post_discord_webhook(settings.DISCORD_WEBHOOK_URL, discord_payload))
 
 
 def _stream_to_response(stream: CameraStream) -> StreamResponse:
@@ -400,18 +218,19 @@ async def deepface_webhook(
     For each face match in the payload:
       1. Validate HMAC signature
       2. Look up CameraStream config (zone_id, alert_on_unknown_face)
-      3. Resolve entity from Neo4j by img_name (= entity_id)
-      4. Write DETECTED_IN edge to Neo4j
-      5. Run anomaly rules
-      6. Create alert + auto-assign if anomaly detected
+      3. Build a SensorEvent and route through EventIngestionService
+         (entity resolution → persistence → anomaly detection → alert creation
+          → Neo4j projection all happen inside the service)
+      4. Cache bounding-box overlay data in Redis for the frontend
     """
-    # Read raw body first (needed for signature verification)
+    import json as _json
+
+    # ── 1. HMAC signature verification ────────────────────────────────────────
     raw_body = await request.body()
     sig_header = request.headers.get("X-DeepFace-Signature")
     _verify_webhook_signature(raw_body, sig_header)
 
-    # Parse payload (Pydantic does not consume the body stream so we pass raw)
-    import json as _json
+    # ── 2. Parse payload ───────────────────────────────────────────────────────
     try:
         payload_dict = _json.loads(raw_body)
         payload = WebhookPayload(**payload_dict)
@@ -422,7 +241,7 @@ async def deepface_webhook(
             detail=f"Invalid webhook payload: {exc}",
         )
 
-    # Look up camera stream config
+    # ── 3. Look up camera stream config ───────────────────────────────────────
     cam_stream: Optional[CameraStream] = (
         db.query(CameraStream)
         .filter(CameraStream.stream_id == payload.stream_id)
@@ -430,7 +249,6 @@ async def deepface_webhook(
     )
 
     if cam_stream is None:
-        # Unknown stream — log and accept (don't 404, DeepFace would keep retrying)
         logger.warning(
             "Webhook received for unknown stream_id=%s — ignoring",
             payload.stream_id,
@@ -438,133 +256,90 @@ async def deepface_webhook(
         return WebhookProcessedResponse(status="ok", processed=0, alerts_created=0)
 
     zone_id = cam_stream.zone_id
-    alert_on_unknown_face = cam_stream.alert_on_unknown_face
 
-    graph_svc = get_cctv_graph_service()
-    alerts_created = 0
+    # ── 4. Route each face match through EventIngestionService ─────────────────
+    from models.schemas.sensor_events import EventType, SensorEvent, SensorType
+    from services.entity_resolution_service import get_entity_resolution_service
+    from services.event_ingestion_service import get_event_ingestion_service
+
+    ingestion_svc = get_event_ingestion_service(db)
+    entity_resolver = get_entity_resolution_service()
+
     processed = 0
-    detection_overlays: List[Dict[str, Any]] = []  # collected for Redis cache
+    detection_overlays: List[Dict[str, Any]] = []
 
     for match in payload.matches:
-        entity_id = match.img_name
-        match_dict = match.model_dump()
+        face_id = match.img_name
+        is_unknown = face_id == "UNKNOWN_FACE"
 
-        # Resolve entity from Neo4j
-        entity = graph_svc.get_entity_by_entity_id(entity_id)
+        # Quick name lookup for frontend overlays (PG, not Neo4j)
+        entity_name: Optional[str] = None
+        if not is_unknown:
+            profile = entity_resolver.resolve("face_id", face_id, db=db)
+            if profile:
+                entity_name = profile.name
 
-        # Collect detection data for frontend bounding box overlays
         detection_overlays.append({
-            "img_name": match.img_name,
-            "entity_name": entity.get("name") if entity else None,
+            "img_name": face_id,
+            "entity_name": entity_name,
             "confidence": match.confidence,
             "distance": match.distance,
             "facial_area": match.facial_area.model_dump() if match.facial_area else None,
-            "is_unknown": match.img_name == "UNKNOWN_FACE",
+            "is_unknown": is_unknown,
         })
 
-        # Write detection event to Neo4j
-        if entity is not None:
-            graph_svc.create_detected_in(
-                entity_id=entity_id,
-                zone_id=zone_id,
-                timestamp=payload.timestamp,
-                stream_id=payload.stream_id,
-                face_id=entity.get("face_id", entity_id),
-            )
-        else:
-            # Log unknown face event
-            graph_svc.create_unknown_detected_in(
-                zone_id=zone_id,
-                timestamp=payload.timestamp,
-                stream_id=payload.stream_id,
-            )
-
-        # Gather data for anomaly analysis
-        recent_detections: List[Dict[str, Any]] = []
-        authorized_zones: List[str] = []
-
-        if entity is not None:
-            recent_detections = graph_svc.get_recent_detections(
-                entity_id=entity_id,
-                minutes=settings.DEEPFACE_IMPOSSIBLE_TRAVEL_MINUTES * 2,
-            )
-            authorized_zones = graph_svc.get_authorized_zones(entity_id)
-
-        # Run anomaly rules
-        anomaly = DeepFaceAnomalyAnalyzer.analyze(
-            match=match_dict,
-            entity=entity,
-            zone_id=zone_id,
-            authorized_zones=authorized_zones,
-            recent_detections=recent_detections,
-            alert_on_unknown_face=alert_on_unknown_face,
+        # Normalise confidence to [0, 1] (DeepFace may send 0–100)
+        conf_normalised = (
+            match.confidence / 100.0 if match.confidence > 1.0 else match.confidence
         )
 
-        if anomaly and settings.ALERT_SYSTEM_ENABLED:
-            anomaly_type = anomaly.get("anomaly_type", "unknown")
-            # Known entity → entity_id for per-person cooldown.
-            # Unknown face → per-tracker key when tracker_id is available
-            # (stream.py assigns a stable tracker_id per unknown face via
-            # embedding similarity), falling back to stream-level key.
-            if entity:
-                entity_key = entity.get("entity_id", "unknown")
-            else:
-                entity_key = match_dict.get("tracker_id") or f"unknown:{payload.stream_id}"
+        sensor_event = SensorEvent(
+            sensor_type=SensorType.CAMERA,
+            event_type=EventType.FACE_UNKNOWN if is_unknown else EventType.FACE_RECOGNIZED,
+            timestamp=payload.timestamp,
+            zone_id=zone_id,
+            raw_identifier=face_id,
+            identifier_type="face_id",
+            confidence=conf_normalised,
+            source_device_id=payload.stream_id,
+            metadata={
+                "alert_on_unknown_face": cam_stream.alert_on_unknown_face,
+                "distance": match.distance,
+                "tracker_id": match.model_dump().get("tracker_id"),
+            },
+        )
 
-            # _set_alert_cooldown is the sole atomic gate (SET NX).
-            # Returns True only when the key was freshly created — proceed.
-            if not _set_alert_cooldown(anomaly_type, payload.stream_id, entity_key):
-                logger.info(
-                    "Alert suppressed (cooldown): %s stream=%s key=%s",
-                    anomaly_type, payload.stream_id, entity_key,
-                )
-            else:
-                try:
-                    _create_alert_from_anomaly(
-                        anomaly=anomaly,
-                        entity=entity,
-                        zone_id=zone_id,
-                        match_data=match_dict,
-                        payload=payload,
-                        db=db,
-                    )
-                    alerts_created += 1
-                except Exception as exc:
-                    # Delete the cooldown key so the alert can be retried immediately.
-                    _delete_alert_cooldown(anomaly_type, payload.stream_id, entity_key)
-                    logger.error(
-                        "Failed to create alert for anomaly %s: %s",
-                        anomaly.get("anomaly_type"),
-                        exc,
-                        exc_info=True,
-                    )
+        try:
+            await ingestion_svc.ingest(sensor_event)
+        except Exception as exc:
+            logger.error(
+                "Ingestion failed for face=%s stream=%s: %s",
+                face_id, payload.stream_id, exc, exc_info=True,
+            )
 
         processed += 1
 
-    # Cache latest detections in Redis for frontend bounding box overlays.
-    # TTL=10s — slightly longer than detection interval so the cache stays
-    # fresh while the stream is active, and auto-expires when it stops.
+    # ── 5. Cache bounding-box overlays in Redis for live camera view ───────────
     if detection_overlays:
         r = _get_alert_redis()
         if r:
             try:
-                import json as _json
                 r.set(
                     f"fazri:detections:{payload.stream_id}",
                     _json.dumps(detection_overlays),
-                    ex=10,
+                    ex=10,  # 10s TTL — auto-expires when stream goes idle
                 )
-            except Exception:
-                pass  # best-effort cache — preview works without it
+            except Exception as exc:
+                logger.debug("Best-effort cache failed: %s", exc, exc_info=True)
 
-    # Update last_event_at on the camera stream record
+    # ── 6. Update last_event_at on the camera stream record ───────────────────
     cam_stream.last_event_at = datetime.now(timezone.utc)
     db.commit()
 
     return WebhookProcessedResponse(
         status="ok",
         processed=processed,
-        alerts_created=alerts_created,
+        alerts_created=0,  # alerts are counted inside EventIngestionService
     )
 
 

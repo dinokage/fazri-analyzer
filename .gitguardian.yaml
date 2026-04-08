@@ -5,3 +5,11 @@ ignored-matches:
     match: "auth-token \\$SENTRY_AUTH_TOKEN"
   - name: Jenkins credentials() references are credential IDs, not secrets
     match: "credentials('fazri-"
+  - name: SMTP placeholder host in template file
+    match: "smtp.gmail.com"
+  - name: SMTP placeholder email in template file
+    match: "alerts@yourcampus.edu"
+  - name: SMTP placeholder password in template file
+    match: "CHANGE_ME_SMTP_PASSWORD"
+  - name: Aruba placeholder password in template file
+    match: "CHANGE_ME_ARUBA_PW"

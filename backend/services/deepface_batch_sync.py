@@ -52,14 +52,18 @@ class DeepFaceBatchSync:
     timestamp newer than the watermark are processed.
     """
 
-    # Column names expected in the DeepFace face_embeddings table.
-    # Adjust if the DeepFace server schema differs.
+    # Column names in the DeepFace pgvector face_embeddings table.
+    # Schema: id, identity_name, embedding, det_score, created_at
+    # Note: stream_id, frame_id are backend-side camera context and are not
+    # stored in pgvector.  zone_id is also absent from the current schema;
+    # when not present in a row the sentinel BATCH_SYNC_ZONE is used so that
+    # graph writes are attempted rather than silently skipped.  Ensure a Zone
+    # node with zone_id="BATCH_SYNC_ZONE" exists in Neo4j for edges to be
+    # created; if it does not exist the MATCH is a no-op (logged at DEBUG).
     TABLE = "face_embeddings"
-    COL_LABEL = "img_name"        # = entity_id in our system
+    COL_LABEL = "identity_name"   # entity identifier stored at registration
     COL_CREATED_AT = "created_at"
-    COL_STREAM_ID = "stream_id"   # may be NULL for registered faces
-    COL_ZONE_ID = "zone_id"       # may be NULL
-    COL_FRAME_ID = "frame_id"     # may be NULL
+    COL_ZONE_ID = "zone_id"       # not in current schema; reserved for future use
 
     def __init__(self) -> None:
         self._last_synced_at: Optional[datetime] = None
@@ -139,15 +143,15 @@ class DeepFaceBatchSync:
 
         for row in rows:
             entity_id: Optional[str] = row.get(self.COL_LABEL)
-            zone_id: Optional[str] = row.get(self.COL_ZONE_ID)
-            stream_id: Optional[str] = row.get(self.COL_STREAM_ID)
-            frame_id: Optional[str] = row.get(self.COL_FRAME_ID)
+            zone_id: str = row.get(self.COL_ZONE_ID) or "BATCH_SYNC_ZONE"
+            stream_id: Optional[str] = None  # not stored in pgvector
+            frame_id: Optional[str] = None   # not stored in pgvector
             created_at: Optional[datetime] = row.get(self.COL_CREATED_AT)
 
-            # Skip rows that lack the minimum fields to create a useful edge
-            if not entity_id or not zone_id:
+            # Skip rows that lack the minimum field needed for graph writes
+            if not entity_id:
                 logger.debug(
-                    "Batch sync: skipping row — missing entity_id or zone_id: %s",
+                    "Batch sync: skipping row — missing entity_id: %s",
                     row,
                 )
                 continue
@@ -205,7 +209,7 @@ class DeepFaceBatchSync:
                 with conn.cursor() as cur:
                     cur.execute(
                         f"""
-                        SELECT img_name, created_at, stream_id, zone_id, frame_id
+                        SELECT identity_name, created_at
                         FROM {self.TABLE}
                         WHERE created_at > %s
                         ORDER BY created_at ASC

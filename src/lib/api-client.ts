@@ -935,6 +935,68 @@ export const apiClient = {
     );
     return handleResponse(response);
   },
+
+  // ── Sensor Events ────────────────────────────────────────────────────────
+
+  async getSensorEvents(params: {
+    sensor_type?: string;
+    zone_id?: string;
+    resolved?: boolean;
+    since?: string;
+    until?: string;
+    limit?: number;
+    offset?: number;
+  } = {}) {
+    const qs = new URLSearchParams();
+    if (params.sensor_type) qs.set('sensor_type', params.sensor_type);
+    if (params.zone_id) qs.set('zone_id', params.zone_id);
+    if (params.resolved !== undefined) qs.set('resolved', String(params.resolved));
+    if (params.since) qs.set('since', params.since);
+    if (params.until) qs.set('until', params.until);
+    if (params.limit !== undefined) qs.set('limit', String(params.limit));
+    if (params.offset !== undefined) qs.set('offset', String(params.offset));
+
+    const response = await fetch(
+      `${API_BASE_URL}/api/v1/events${qs.toString() ? `?${qs}` : ''}`,
+      { headers: await getAuthHeaders() }
+    );
+    return handleResponse(response);
+  },
+
+  // ── Entity timeline (sensor events) ─────────────────────────────────────
+
+  async getEntitySensorTimeline(
+    entityId: string,
+    params: { since?: string; limit?: number } = {}
+  ) {
+    const qs = new URLSearchParams();
+    if (params.since) qs.set('since', params.since);
+    if (params.limit !== undefined) qs.set('limit', String(params.limit));
+
+    const response = await fetch(
+      `${API_BASE_URL}/api/v1/entities/${entityId}/timeline${qs.toString() ? `?${qs}` : ''}`,
+      { headers: await getAuthHeaders() }
+    );
+    return handleResponse(response);
+  },
+
+  // ── System health ────────────────────────────────────────────────────────
+
+  async getSystemHealth() {
+    const response = await fetch(
+      `${API_BASE_URL}/api/v1/system/health`,
+      { headers: await getAuthHeaders() }
+    );
+    return handleResponse(response);
+  },
+
+  async controlSimulator(sim: 'hikvision' | 'aruba', action: 'pause' | 'resume') {
+    const response = await fetch(
+      `${API_BASE_URL}/api/v1/system/simulators/${sim}/${action}`,
+      { method: 'POST', headers: await getAuthHeaders() }
+    );
+    return handleResponse(response);
+  },
 };
 
 export { ApiError };

@@ -1,0 +1,4 @@
+entity_id,name,role,department,email,card_id,device_hash
+EMP001,Alice Tester,STAFF,Engineering,alice@fazri.campus,0000000001,AA:BB:CC:DD:EE:01
+EMP002,Bob Checker,STUDENT,CS,bob@fazri.campus,0000000002,AA:BB:CC:DD:EE:02
+EMP003,Carol Validator,STAFF,IT,carol@fazri.campus,0000000003,AA:BB:CC:DD:EE:03

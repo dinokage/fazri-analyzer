@@ -114,6 +114,7 @@ wrapt==1.17.3
 google-generativeai>=0.8.0
 google-cloud-aiplatform>=1.38.0
 sentry-sdk==2.24.0
+defusedxml>=0.7.1
 httpx>=0.28.1
 onvif-zeep==0.2.12
 pywebpush==2.3.0

@@ -52,5 +52,8 @@ def init_db():
     # Import all models here to ensure they're registered with Base
     from models.db import alerts  # noqa: F401
     from models.db import push_subscriptions  # noqa: F401
+    from models.db import sensor_events  # noqa: F401
+    from models.db import entity_identifiers  # noqa: F401
+    from models.db import entity_profiles  # noqa: F401
 
     Base.metadata.create_all(bind=engine)

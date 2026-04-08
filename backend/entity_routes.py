@@ -1,34 +1,111 @@
 # backend/app/api/entity_routes.py
 import difflib
 import logging
+from collections import defaultdict
+from datetime import datetime, timezone
+from typing import Optional, List, Dict
+
 from fastapi import APIRouter, HTTPException, Query, Depends
-from typing import Optional, List
 from pydantic import BaseModel
+from sqlalchemy import text as sa_text
 from sqlalchemy.orm import Session
 
-from services.entity_resolver import get_resolver
-from services.confidence_scorer import ConfidenceScorer
-from models.entity import Entity
 from auth.dependencies import get_current_user, require_staff
-from auth.models import AuthenticatedUser, UserRole
 from auth.exceptions import PermissionDeniedError
+from auth.models import AuthenticatedUser, UserRole
+from config import settings
 from database.connection import get_db
+from models.db.entity_identifiers import EntityIdentifier
+from models.db.entity_profiles import EntityProfile
+from services.confidence_scorer import ConfidenceScorer
+from services.entity_resolution_service import EntityProfileDTO, get_entity_resolution_service
 
 logger = logging.getLogger(__name__)
 
 
+# ---------------------------------------------------------------------------
+# DB-backed helpers (replace the in-memory resolver methods)
+# ---------------------------------------------------------------------------
+
+def _identifiers_for_entity(entity_id: str, db: Session) -> List[EntityIdentifier]:
+    """Return all active identifier rows for an entity."""
+    return (
+        db.query(EntityIdentifier)
+        .filter_by(entity_id=entity_id, active=True)
+        .all()
+    )
+
+
+def _all_identifiers_grouped(entity_id: str, db: Session) -> Dict[str, List[str]]:
+    """Return identifiers grouped by type: {identifier_type: [values, ...]}."""
+    rows = _identifiers_for_entity(entity_id, db)
+    grouped: Dict[str, List[str]] = defaultdict(list)
+    for r in rows:
+        grouped[r.identifier_type].append(r.identifier_value)
+    return dict(grouped)
+
+
+def _transitive_entities(entity_id: str, db: Session) -> List[EntityProfileDTO]:
+    """Find other entities that share any identifier with entity_id."""
+    rows = db.execute(
+        sa_text(
+            """
+            SELECT DISTINCT ei2.entity_id
+            FROM   entity_identifiers ei1
+            JOIN   entity_identifiers ei2
+                   ON  ei1.identifier_type  = ei2.identifier_type
+                   AND ei1.identifier_value = ei2.identifier_value
+            WHERE  ei1.entity_id = :eid
+              AND  ei2.entity_id != :eid
+              AND  ei1.active = true
+              AND  ei2.active = true
+            """
+        ),
+        {"eid": entity_id},
+    ).fetchall()
+
+    svc = get_entity_resolution_service()
+    return [
+        p
+        for r in rows
+        if (p := svc.get_entity_profile(r.entity_id, db=db)) is not None
+    ]
+
+
+def _profile_to_entity_dict(
+    profile: EntityProfileDTO,
+    identifiers: List[EntityIdentifier],
+) -> dict:
+    """Build an Entity-compatible response dict from DB data."""
+    return {
+        "entity_id": profile.entity_id,
+        "name": profile.name,
+        "email": profile.email,
+        "entity_type": (profile.role or "unknown").lower(),
+        "department": profile.department,
+        "confidence_score": 1.0,
+        "linked_entity_ids": [],
+        "created_at": profile.created_at.isoformat() if profile.created_at else None,
+        "updated_at": profile.updated_at.isoformat() if profile.updated_at else None,
+        "identifiers": [
+            {
+                "type": i.identifier_type,
+                "value": i.identifier_value,
+                "source": i.source,
+                "confidence": i.confidence,
+                "first_seen": i.first_seen.isoformat() if i.first_seen else None,
+                "last_seen": i.last_seen.isoformat() if i.last_seen else None,
+            }
+            for i in identifiers
+        ],
+    }
+
+
+# ---------------------------------------------------------------------------
+# Name similarity helper (unchanged)
+# ---------------------------------------------------------------------------
+
 def _name_similarity(query: str, candidate: str) -> float:
-    """Fuzzy similarity between a search query and a candidate name.
-
-    Takes the maximum of:
-    - Full sequence ratio (handles typos across full names)
-    - Best per-word ratio (handles partial searches like "john" in "John Smith")
-
-    Examples:
-        "john"  vs "John Smith" → word hit on "John"  → 1.0
-        "smith" vs "John Smith" → word hit on "Smith"  → 1.0
-        "jhn"   vs "John Smith" → word approx on "John" → ~0.86
-    """
     q = query.lower()
     n = candidate.lower()
     full = difflib.SequenceMatcher(None, q, n).ratio()
@@ -38,9 +115,13 @@ def _name_similarity(query: str, candidate: str) -> float:
     )
     return max(full, word_best)
 
+
+# ---------------------------------------------------------------------------
+# Router and auth DB engine
+# ---------------------------------------------------------------------------
+
 router = APIRouter(prefix="/api/v1/entities", tags=["entities"])
 
-# Module-level shared engine for auth database queries (lazy singleton)
 _auth_engine = None
 
 
@@ -48,50 +129,50 @@ def _get_auth_engine():
     global _auth_engine
     if _auth_engine is None:
         from sqlalchemy import create_engine
-        from config import settings
         if settings.AUTH_DATABASE_URL:
             _auth_engine = create_engine(settings.AUTH_DATABASE_URL, pool_pre_ping=True)
     return _auth_engine
+
 
 class EntitySearchRequest(BaseModel):
     identifier_type: str
     identifier_value: str
 
-class EntitySearchResponse(BaseModel):
-    entity: Optional[Entity]
-    all_identifiers: dict
-    linked_entities: List[Entity]
-    confidence: float
 
-@router.post("/search", response_model=EntitySearchResponse)
+# ---------------------------------------------------------------------------
+# Routes
+# ---------------------------------------------------------------------------
+
+@router.post("/search")
 async def search_entity(
     request: EntitySearchRequest,
-    current_user: AuthenticatedUser = Depends(get_current_user)
+    current_user: AuthenticatedUser = Depends(get_current_user),
+    db: Session = Depends(get_db),
 ):
-    """Search for entity by identifier"""
-    resolver = get_resolver()
-    
-    # Direct resolution
-    entity = resolver.resolve_by_identifier(
-        request.identifier_type,
-        request.identifier_value
-    )
-    
-    if not entity:
+    """Search for an entity by any identifier type (card_id, mac_address, …)."""
+    svc = get_entity_resolution_service()
+    profile = svc.resolve(request.identifier_type, request.identifier_value, db=db)
+    if profile is None:
         raise HTTPException(status_code=404, detail="Entity not found")
-    
-    # Get all identifiers
-    all_ids = resolver.get_all_identifiers_for_entity(entity.entity_id)
-    
-    # Get linked entities
-    linked = resolver.resolve_transitive(entity.entity_id)
-    
-    return EntitySearchResponse(
-        entity=entity,
-        all_identifiers=all_ids,
-        linked_entities=linked,
-        confidence=entity.confidence_score
-    )
+
+    if current_user.role == UserRole.STUDENT and current_user.entity_id != profile.entity_id:
+        raise PermissionDeniedError("You can only access your own data")
+
+    identifiers = _identifiers_for_entity(profile.entity_id, db)
+    entity_dict = _profile_to_entity_dict(profile, identifiers)
+    all_ids = _all_identifiers_grouped(profile.entity_id, db)
+    linked = [
+        _profile_to_entity_dict(p, _identifiers_for_entity(p.entity_id, db))
+        for p in _transitive_entities(profile.entity_id, db)
+    ]
+
+    return {
+        "entity": entity_dict,
+        "all_identifiers": all_ids,
+        "linked_entities": linked,
+        "confidence": 1.0,
+    }
+
 
 @router.get("/fuzzy-search")
 async def fuzzy_search_by_name(
@@ -100,9 +181,8 @@ async def fuzzy_search_by_name(
     current_user: AuthenticatedUser = Depends(require_staff()),
     db: Session = Depends(get_db),
 ):
-    """Fuzzy name search across auth users and staff_profiles (STAFF+ only)"""
+    """Fuzzy name search across auth users and staff_profiles (STAFF+ only)."""
     from sqlalchemy import text
-    from config import settings
 
     seen_entity_ids: set = set()
     matches = []
@@ -146,8 +226,8 @@ async def fuzzy_search_by_name(
 
     # ── 2. Query staff_profiles (non-mock, with entity_id) ────────────────────
     from models.db.alerts import StaffProfile
-
     from sqlalchemy import or_
+
     staff_list = (
         db.query(StaffProfile)
         .filter(or_(StaffProfile.name.ilike(f"%{name}%"), StaffProfile.entity_id.ilike(f"%{name}%")))
@@ -185,30 +265,119 @@ async def fuzzy_search_by_name(
         "matches": matches[:20],
     }
 
-@router.get("/{entity_id}")
-async def get_entity(
+
+@router.get("/{entity_id}/fusion-report")
+async def get_entity_fusion_report(
     entity_id: str,
-    current_user: AuthenticatedUser = Depends(get_current_user)
+    current_user: AuthenticatedUser = Depends(get_current_user),
+    db: Session = Depends(get_db),
 ):
-    """Get entity by ID (students can only access their own data)"""
-    # Students can only access their own entity
+    """
+    Multi-modal fusion report for an entity.
+    Students can only access their own data.
+    """
     if current_user.role == UserRole.STUDENT and current_user.entity_id != entity_id:
         raise PermissionDeniedError("You can only access your own data")
 
-    resolver = get_resolver()
-
-    if entity_id not in resolver.entities:
+    svc = get_entity_resolution_service()
+    profile = svc.get_entity_profile(entity_id, db=db)
+    if profile is None:
         raise HTTPException(status_code=404, detail="Entity not found")
-    
-    entity = resolver.entities[entity_id]
-    all_ids = resolver.get_all_identifiers_for_entity(entity_id)
-    linked = resolver.resolve_transitive(entity_id)
-    
+
+    identifiers = _identifiers_for_entity(entity_id, db)
+
+    # Group by source for the identifiers_by_source section
+    identifiers_by_source: Dict[str, List[dict]] = defaultdict(list)
+    for i in identifiers:
+        identifiers_by_source[i.source].append({
+            "type": i.identifier_type,
+            "value": i.identifier_value,
+            "confidence": i.confidence,
+            "first_seen": i.first_seen.isoformat() if i.first_seen else None,
+            "last_seen": i.last_seen.isoformat() if i.last_seen else None,
+        })
+
+    # Provenance: {source: ["type:value", ...]}
+    provenance: Dict[str, List[str]] = defaultdict(list)
+    for i in identifiers:
+        provenance[i.source].append(f"{i.identifier_type}:{i.identifier_value}")
+
+    # Transitive links with confidence scoring
+    my_id_set = {(i.identifier_type, i.identifier_value) for i in identifiers}
+    entity1_ids = [{"type": i.identifier_type, "source": i.source} for i in identifiers]
+
+    linked_with_confidence = []
+    for p in _transitive_entities(entity_id, db):
+        p_identifiers = _identifiers_for_entity(p.entity_id, db)
+        shared = [
+            f"{i.identifier_type}:{i.identifier_value}"
+            for i in p_identifiers
+            if (i.identifier_type, i.identifier_value) in my_id_set
+        ]
+        entity2_ids = [{"type": i.identifier_type, "source": i.source} for i in p_identifiers]
+        link_confidence = ConfidenceScorer.calculate_link_confidence(
+            entity1_ids, entity2_ids, shared
+        )
+        linked_with_confidence.append({
+            "entity_id": p.entity_id,
+            "name": p.name,
+            "confidence": link_confidence,
+            "shared_identifiers": shared,
+        })
+    linked_with_confidence.sort(key=lambda x: x["confidence"], reverse=True)
+
+    identifier_types = list({i.identifier_type for i in identifiers})
+    most_reliable_source = (
+        max(identifiers_by_source.items(), key=lambda x: len(x[1]))[0]
+        if identifiers_by_source
+        else None
+    )
+
     return {
-        "entity": entity,
-        "all_identifiers": all_ids,
-        "linked_entities": linked
+        "entity_id": profile.entity_id,
+        "name": profile.name,
+        "overall_confidence": 1.0,
+        "identifiers_by_source": dict(identifiers_by_source),
+        "provenance": dict(provenance),
+        "linked_entities": linked_with_confidence,
+        "fusion_summary": {
+            "total_sources": len(identifiers_by_source),
+            "total_identifiers": len(identifiers),
+            "identifier_types": identifier_types,
+            "most_reliable_source": most_reliable_source,
+        },
     }
+
+
+@router.get("/{entity_id}")
+async def get_entity(
+    entity_id: str,
+    current_user: AuthenticatedUser = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """Get entity by ID. Students can only access their own data."""
+    if current_user.role == UserRole.STUDENT and current_user.entity_id != entity_id:
+        raise PermissionDeniedError("You can only access your own data")
+
+    svc = get_entity_resolution_service()
+    profile = svc.get_entity_profile(entity_id, db=db)
+    if profile is None:
+        raise HTTPException(status_code=404, detail="Entity not found")
+
+    identifiers = _identifiers_for_entity(entity_id, db)
+    entity_dict = _profile_to_entity_dict(profile, identifiers)
+    all_ids = _all_identifiers_grouped(entity_id, db)
+    linked = [
+        _profile_to_entity_dict(p, _identifiers_for_entity(p.entity_id, db))
+        for p in _transitive_entities(entity_id, db)
+    ]
+
+    return {
+        "entity": entity_dict,
+        "all_identifiers": all_ids,
+        "linked_entities": linked,
+    }
+
 
 @router.get("/")
 async def list_entities(
@@ -216,106 +385,132 @@ async def list_entities(
     limit: int = 100,
     department: Optional[str] = Query(None, description="Filter by department"),
     entity_type: Optional[str] = Query(None, description="Filter by role"),
-    current_user: AuthenticatedUser = Depends(require_staff())
+    current_user: AuthenticatedUser = Depends(require_staff()),
+    db: Session = Depends(get_db),
 ):
-    """List all entities (STAFF+ only)"""
-    resolver = get_resolver()
-    entities = list(resolver.entities.values())
-    if department and entity_type:
-        entities = [e for e in entities if e.department == department and e.entity_type == entity_type][skip:skip+limit]
-    elif department:
-        entities = [e for e in entities if e.department == department][skip:skip+limit]
-    elif entity_type:
-        entities = [e for e in entities if e.entity_type == entity_type][skip:skip+limit]
-    else:
-        entities = entities[skip:skip+limit]
+    """List all entities (STAFF+ only)."""
+    query = db.query(EntityProfile)
+    if department:
+        query = query.filter(EntityProfile.department == department)
+    if entity_type:
+        query = query.filter(EntityProfile.role == entity_type)
+
+    total = query.count()
+    profiles = query.offset(skip).limit(limit).all()
+
+    # Bulk-fetch identifiers to avoid N+1 queries
+    entity_ids = [p.entity_id for p in profiles]
+    all_idents = (
+        db.query(EntityIdentifier)
+        .filter(
+            EntityIdentifier.entity_id.in_(entity_ids),
+            EntityIdentifier.active == True,  # noqa: E712
+        )
+        .all()
+    )
+    ident_map: Dict[str, List[EntityIdentifier]] = defaultdict(list)
+    for i in all_idents:
+        ident_map[i.entity_id].append(i)
+
+    entities = [
+        _profile_to_entity_dict(EntityProfileDTO.from_orm(p), ident_map[p.entity_id])
+        for p in profiles
+    ]
+
     return {
-        "total": len(resolver.entities),
+        "total": total,
         "skip": skip,
         "limit": limit,
-        "entities": entities
+        "entities": entities,
     }
 
-@router.get("/{entity_id}/fusion-report")
-async def get_entity_fusion_report(
+
+@router.get("/{entity_id}/timeline")
+async def get_entity_sensor_timeline(
     entity_id: str,
-    current_user: AuthenticatedUser = Depends(get_current_user)
+    since: Optional[str] = Query(None, description="ISO 8601 start timestamp (default: 7 days ago)"),
+    limit: int = Query(200, ge=1, le=500),
+    current_user: AuthenticatedUser = Depends(get_current_user),
+    db: Session = Depends(get_db),
 ):
     """
-    Get detailed multi-modal fusion report for an entity
-    Shows all data sources, identifiers, and confidence scores
-    (students can only access their own data)
+    Return the chronological sensor event history for one entity across all modalities.
+    Also returns recent alert IDs associated with this entity so the frontend can
+    highlight anomaly-triggering events.
     """
-    # Students can only access their own entity
+    from datetime import timedelta
+    from models.db.sensor_events import SensorEventRecord
+    from models.db.alerts import Alert
+
+    # ── Students may only view their own timeline ─────────────────────────────
     if current_user.role == UserRole.STUDENT and current_user.entity_id != entity_id:
-        raise PermissionDeniedError("You can only access your own data")
+        raise PermissionDeniedError("You can only access your own timeline")
 
-    resolver = get_resolver()
+    # ── Resolve since timestamp ───────────────────────────────────────────────
+    if since:
+        try:
+            since_dt = datetime.fromisoformat(since.replace("Z", "+00:00"))
+        except ValueError as e:
+            raise HTTPException(status_code=400, detail="Invalid 'since' timestamp") from e
+    else:
+        since_dt = datetime.now(timezone.utc) - timedelta(days=7)
 
-    if entity_id not in resolver.entities:
-        raise HTTPException(status_code=404, detail="Entity not found")
-    
-    entity = resolver.entities[entity_id]
-    
-    # Get all identifiers grouped by source
-    identifiers_by_source = {}
-    for identifier in entity.identifiers:
-        source = identifier.source
-        if source not in identifiers_by_source:
-            identifiers_by_source[source] = []
-        
-        identifiers_by_source[source].append({
-            'type': identifier.type,
-            'value': identifier.value,
-            'confidence': identifier.confidence,
-            'first_seen': identifier.first_seen,
-            'last_seen': identifier.last_seen
-        })
-    
-    # Get linked entities with confidence scores
-    linked = resolver.resolve_transitive(entity_id)
-    linked_with_confidence = []
-    
-    for linked_entity in linked:
-        # Find shared identifiers
-        shared = []
-        for id1 in entity.identifiers:
-            for id2 in linked_entity.identifiers:
-                if id1.type == id2.type and id1.value == id2.value:
-                    shared.append(f"{id1.type}:{id1.value}")
-        
-        entity1_ids = [{'type': id.type, 'source': id.source} for id in entity.identifiers]
-        entity2_ids = [{'type': id.type, 'source': id.source} for id in linked_entity.identifiers]
-        
-        link_confidence = ConfidenceScorer.calculate_link_confidence(
-            entity1_ids, entity2_ids, shared
-        )
-        
-        linked_with_confidence.append({
-            'entity_id': linked_entity.entity_id,
-            'name': linked_entity.name,
-            'confidence': link_confidence,
-            'shared_identifiers': shared
-        })
-    
-    # Sort by confidence
-    linked_with_confidence.sort(key=lambda x: x['confidence'], reverse=True)
-    
-    # Get provenance
-    provenance = entity.get_provenance()
-    
-    return {
-        'entity_id': entity.entity_id,
-        'name': entity.name,
-        'overall_confidence': entity.confidence_score,
-        'identifiers_by_source': identifiers_by_source,
-        'provenance': provenance,
-        'linked_entities': linked_with_confidence,
-        'fusion_summary': {
-            'total_sources': len(identifiers_by_source),
-            'total_identifiers': len(entity.identifiers),
-            'identifier_types': list(set([id.type for id in entity.identifiers])),
-            'most_reliable_source': max(identifiers_by_source.items(), 
-                                       key=lambda x: len(x[1]))[0] if identifiers_by_source else None
+    if since_dt.tzinfo is None:
+        since_dt = since_dt.replace(tzinfo=timezone.utc)
+
+    # ── Sensor events for this entity ─────────────────────────────────────────
+    rows = (
+        db.query(SensorEventRecord)
+        .filter(SensorEventRecord.resolved_entity_id == entity_id)
+        .filter(SensorEventRecord.timestamp >= since_dt)
+        .order_by(SensorEventRecord.timestamp.asc())
+        .limit(limit)
+        .all()
+    )
+
+    # ── Recent alerts referencing this entity ─────────────────────────────────
+    alert_rows = []
+    if settings.ALERT_SYSTEM_ENABLED:
+        try:
+            alert_rows = (
+                db.query(Alert.id, Alert.anomaly_type, Alert.created_at)
+                .filter(Alert.affected_entities.contains([entity_id]))
+                .filter(Alert.created_at >= since_dt)
+                .order_by(Alert.created_at.asc())
+                .all()
+            )
+        except Exception as e:
+            logger.warning("Alert query failed for entity %s since %s: %s", entity_id, since_dt, e)
+            alert_rows = []
+
+    alert_windows = [
+        {
+            "alert_id": str(a.id),
+            "anomaly_type": a.anomaly_type,
+            "timestamp": a.created_at.isoformat() if a.created_at else None,
         }
+        for a in alert_rows
+    ]
+
+    events_out = [
+        {
+            "event_id": r.event_id,
+            "sensor_type": r.sensor_type,
+            "event_type": r.event_type,
+            "timestamp": r.timestamp.isoformat() if r.timestamp else None,
+            "zone_id": r.zone_id,
+            "building": r.building,
+            "floor": r.floor,
+            "confidence": r.confidence,
+            "source_device_id": r.source_device_id,
+        }
+        for r in rows
+    ]
+
+    return {
+        "entity_id": entity_id,
+        "since": since_dt.isoformat(),
+        "total": len(events_out),
+        "events": events_out,
+        "alerts": alert_windows,
     }

@@ -159,13 +159,20 @@ class DeepFaceAnomalyAnalyzer:
     ) -> Optional[Dict[str, Any]]:
         """
         Fires when the entity was detected in a *different* zone more
-        recently than DEEPFACE_IMPOSSIBLE_TRAVEL_MINUTES ago.
+        recently than the minimum travel time between the two zones allows.
+
+        Uses the zone travel time matrix for per-zone-pair thresholds.
+        Falls back to DEEPFACE_IMPOSSIBLE_TRAVEL_MINUTES for unknown zones.
 
         Skips detections in the same zone (normal re-detection).
         """
-        window = timedelta(minutes=settings.DEEPFACE_IMPOSSIBLE_TRAVEL_MINUTES)
+        # Import here to avoid circular imports at module load time
+        try:
+            from config.zone_matrix import zone_matrix as _zm
+        except ImportError:
+            _zm = None
+
         now = datetime.now(timezone.utc)
-        cutoff = now - window
 
         for det in recent_detections:
             prev_zone = det.get("zone_id")
@@ -187,17 +194,30 @@ class DeepFaceAnomalyAnalyzer:
                 except (ValueError, TypeError):
                     continue
 
-            if prev_ts >= cutoff:
+            elapsed_seconds = int((now - prev_ts).total_seconds())
+
+            # Determine whether this elapsed time is physically impossible
+            min_travel = (
+                _zm.get_min_travel_time(prev_zone, current_zone_id)
+                if _zm is not None
+                else None
+            )
+            if min_travel is None:
+                min_travel = settings.DEEPFACE_IMPOSSIBLE_TRAVEL_MINUTES * 60
+            is_impossible = elapsed_seconds < min_travel
+
+            if is_impossible:
                 entity_id = entity.get("entity_id", "unknown")
                 entity_name = entity.get("name", entity_id)
-                minutes_ago = int((now - prev_ts).total_seconds() / 60)
+                minutes_ago = elapsed_seconds // 60
                 return {
                     "anomaly_type": "impossible_travel",
                     "severity": "critical",
                     "description": (
                         f"Impossible travel detected for {entity_name} ({entity_id}). "
                         f"Seen in zone {prev_zone} {minutes_ago} minute(s) ago, "
-                        f"now detected in zone {current_zone_id}."
+                        f"now detected in zone {current_zone_id}. "
+                        f"Minimum travel time: {min_travel}s, elapsed: {elapsed_seconds}s."
                     ),
                     "details": {
                         "entity_id": entity_id,
@@ -205,6 +225,8 @@ class DeepFaceAnomalyAnalyzer:
                         "previous_zone": prev_zone,
                         "current_zone": current_zone_id,
                         "previous_detection_timestamp": prev_ts.isoformat(),
+                        "elapsed_seconds": elapsed_seconds,
+                        "min_travel_seconds": min_travel,
                         "minutes_between": minutes_ago,
                         "rule": "impossible_travel",
                     },

@@ -4,7 +4,8 @@
 /node_modules
 /auth/node_modules
 /auth/dist
-/docs
+/docs/*
+!docs/enrollment-runbook.md
 /.pnp
 .pnp.*
 .yarn/*
@@ -35,6 +36,7 @@ yarn-error.log*
 
 # env files (can opt-in for committing if needed)
 .env*
+!.env.prod.example
 
 # vercel
 .vercel
@@ -54,3 +56,46 @@ next-env.d.ts
 .sentryclirc
 .sentry-*
 sentry-debug-files/
+
+# ML model artifacts
+*.pkl
+*.pickle
+*.h5
+*.pt
+*.onnx
+
+# Large data files
+*.csv.gz
+
+# Synthetic / augmented data (large CSVs, not for version control)
+backend/augmented/
+
+# Credentials (belt-and-suspenders)
+*credentials*.json
+!*credentials*.json.example
+
+# Python
+__pycache__/
+*.pyc
+*.pyo
+*.egg-info/
+.eggs/
+*.egg
+.venv/
+venv/
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+
+# OS
+Thumbs.db
+
+# Docker / misc logs
+*.log
+
+# Local mediamtx config file
+backend/mediamtx.yml

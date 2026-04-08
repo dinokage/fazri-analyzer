@@ -1,0 +1,256 @@
+###############################################################################
+# FAZRI — Production Docker Compose
+#
+# On-premise university deployment (single-node).
+# Tested on: Ubuntu 22.04 / 24.04, Docker 25+, Compose v2.
+#
+# Usage:
+#   cp .env.prod.example .env.prod && nano .env.prod   # fill in secrets
+#   bash scripts/deploy.sh
+###############################################################################
+
+x-restart: &restart
+  restart: unless-stopped
+
+services:
+
+  # ── PostgreSQL (main application DB) ────────────────────────────────────────
+
+  postgres:
+    <<: *restart
+    image: postgres:15
+    container_name: fazri_postgres
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_DB: ${POSTGRES_DB}
+    command: >
+      postgres
+        -c shared_buffers=256MB
+        -c work_mem=16MB
+        -c effective_cache_size=768MB
+        -c maintenance_work_mem=64MB
+        -c max_connections=100
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    networks:
+      - fazri-prod
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER} -d ${POSTGRES_DB}"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 15s
+
+  # ── pgvector (DeepFace face embeddings) ─────────────────────────────────────
+
+  pgvector:
+    <<: *restart
+    image: pgvector/pgvector:pg17
+    container_name: fazri_pgvector
+    environment:
+      POSTGRES_USER: ${DEEPFACE_POSTGRES_USER}
+      POSTGRES_PASSWORD: ${DEEPFACE_POSTGRES_PASSWORD}
+      POSTGRES_DB: ${DEEPFACE_POSTGRES_DB}
+    volumes:
+      - pgvector_data:/var/lib/postgresql/data
+    networks:
+      - fazri-prod
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${DEEPFACE_POSTGRES_USER} -d ${DEEPFACE_POSTGRES_DB}"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 15s
+
+  # ── Neo4j (movement graph) ───────────────────────────────────────────────────
+
+  neo4j:
+    <<: *restart
+    image: neo4j:5
+    container_name: fazri_neo4j
+    environment:
+      NEO4J_AUTH: ${NEO4J_USER}/${NEO4J_PASSWORD}
+      NEO4J_dbms_memory_pagecache_size: 256M
+      NEO4J_dbms_memory_heap_initial__size: 512M
+      NEO4J_dbms_memory_heap_max__size: 1G
+    volumes:
+      - neo4j_data:/data
+    networks:
+      - fazri-prod
+    healthcheck:
+      test: ["CMD-SHELL", "cypher-shell -u ${NEO4J_USER} -p ${NEO4J_PASSWORD} 'RETURN 1' 2>/dev/null || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 20s
+
+  # ── Redis (alert cooldown, chat sessions) ───────────────────────────────────
+
+  redis:
+    <<: *restart
+    image: redis:7-alpine
+    container_name: fazri_redis
+    command: redis-server --maxmemory 256mb --maxmemory-policy allkeys-lru --appendonly yes
+    volumes:
+      - redis_data:/data
+    networks:
+      - fazri-prod
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 3s
+      retries: 10
+
+  # ── DeepFace server (face recognition) ──────────────────────────────────────
+
+  deepface-server:
+    <<: *restart
+    build:
+      context: ./deepface-server
+      dockerfile: Dockerfile
+    container_name: fazri_deepface
+    environment:
+      DEEPFACE_POSTGRES_URI: postgresql://${DEEPFACE_POSTGRES_USER}:${DEEPFACE_POSTGRES_PASSWORD}@pgvector:5432/${DEEPFACE_POSTGRES_DB}
+    # InsightFace is not thread-safe — single worker only
+    command: uvicorn main:app --host 0.0.0.0 --port 8000 --workers 1
+    volumes:
+      - deepface_models:/app/.insightface
+    depends_on:
+      pgvector:
+        condition: service_healthy
+    networks:
+      - fazri-prod
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 60s
+    # Uncomment if GPU is available:
+    # deploy:
+    #   resources:
+    #     reservations:
+    #       devices:
+    #         - driver: nvidia
+    #           count: 1
+    #           capabilities: [gpu]
+
+  # ── go2rtc (RTSP relay + WebRTC) ────────────────────────────────────────────
+
+  go2rtc:
+    <<: *restart
+    image: alexxit/go2rtc:v1.9.7
+    container_name: fazri_go2rtc
+    ports:
+      - "8555:8555/tcp"  # WebRTC/ICE TCP (public — required for browser WebRTC)
+      - "8555:8555/udp"  # WebRTC/ICE UDP (public — required for browser WebRTC)
+      # 1984 (HTTP API/WebUI) and 8554 (RTSP relay) are intentionally not exposed:
+      # backend and DeepFace reach go2rtc via the internal Docker network service name.
+    volumes:
+      - ./go2rtc.yaml:/config/go2rtc.yaml:ro
+    networks:
+      - fazri-prod
+
+  # ── Backend (FastAPI) ────────────────────────────────────────────────────────
+
+  backend:
+    <<: *restart
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+      target: production
+    container_name: fazri_backend
+    env_file:
+      - .env.prod
+    environment:
+      # Overrides that must use service names inside Docker network
+      POSTGRES_SERVER: postgres
+      REDIS_HOST: redis
+      NEO4J_URI: bolt://neo4j:7687
+      DEEPFACE_SERVER_URL: http://deepface-server:8000
+      DEEPFACE_POSTGRES_URI: postgresql://${DEEPFACE_POSTGRES_USER}:${DEEPFACE_POSTGRES_PASSWORD}@pgvector:5432/${DEEPFACE_POSTGRES_DB}
+      GO2RTC_API_URL: http://go2rtc:1984
+      GO2RTC_RTSP_URL: rtsp://go2rtc:8554
+    volumes:
+      - backend_data:/app/augmented
+      - backend_logs:/app/logs
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      neo4j:
+        condition: service_healthy
+      pgvector:
+        condition: service_healthy
+      deepface-server:
+        condition: service_healthy
+    networks:
+      - fazri-prod
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 40s
+
+  # ── Frontend (Next.js) ───────────────────────────────────────────────────────
+
+  frontend:
+    <<: *restart
+    build:
+      context: .
+      dockerfile: Dockerfile.prod
+      args:
+        NEXT_PUBLIC_FASTAPI_BASE_URL: ${NEXT_PUBLIC_FASTAPI_BASE_URL:-/api}
+    container_name: fazri_frontend
+    environment:
+      NEXTAUTH_URL: ${NEXTAUTH_URL}
+      NEXTAUTH_SECRET: ${NEXTAUTH_SECRET}
+      BETTER_AUTH_SECRET: ${BETTER_AUTH_SECRET}
+    depends_on:
+      backend:
+        condition: service_healthy
+    networks:
+      - fazri-prod
+
+  # ── nginx (reverse proxy + SSL) ─────────────────────────────────────────────
+
+  nginx:
+    <<: *restart
+    image: nginx:alpine
+    container_name: fazri_nginx
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./nginx/nginx.conf:/etc/nginx/nginx.conf:ro
+      - ./nginx/certs:/etc/nginx/certs:ro
+    depends_on:
+      - frontend
+      - backend
+    networks:
+      - fazri-prod
+    healthcheck:
+      test: ["CMD", "wget", "-q", "--spider", "http://localhost/"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+
+# ── Networks ───────────────────────────────────────────────────────────────────
+
+networks:
+  fazri-prod:
+    driver: bridge
+
+# ── Volumes ────────────────────────────────────────────────────────────────────
+
+volumes:
+  postgres_data:
+  pgvector_data:
+  neo4j_data:
+  redis_data:
+  deepface_models:
+  backend_data:
+  backend_logs:
