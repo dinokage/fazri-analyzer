@@ -19,7 +19,7 @@ RUN pnpm --filter=@fazri/db db:generate
 RUN pnpm --filter=@fazri/auth build
 
 # Remove devDependencies before copying to runner
-RUN pnpm prune --prod
+RUN CI=true pnpm prune --prod
 
 FROM node:22-alpine AS runner
 WORKDIR /app
