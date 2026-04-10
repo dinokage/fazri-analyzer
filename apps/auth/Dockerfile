@@ -23,6 +23,13 @@ RUN pnpm --filter=@fazri/auth build
 # Create minimal production deployment with only auth's prod deps
 RUN pnpm deploy --filter=@fazri/auth --prod --legacy /deploy
 
+# pnpm deploy copies @prisma/client from the store (pre-generate state).
+# prisma generate puts .prisma/ alongside @prisma/ inside the pnpm package's
+# node_modules — copy it into the same location in the deploy.
+RUN PRISMA_PKG=$(ls -d /app/node_modules/.pnpm/@prisma+client@* | head -1) && \
+    DEPLOY_PKG="/deploy/node_modules/.pnpm/$(basename "$PRISMA_PKG")" && \
+    cp -r "$PRISMA_PKG/node_modules/.prisma" "$DEPLOY_PKG/node_modules/.prisma"
+
 FROM node:22-alpine AS runner
 WORKDIR /app
 
