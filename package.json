@@ -2,12 +2,13 @@
   "name": "fazri-analyzer",
   "version": "0.1.0",
   "private": true,
+  "packageManager": "pnpm@10.32.1",
   "scripts": {
-    "dev": "pnpm --filter @fazri/web dev",
-    "build": "pnpm --filter @fazri/web build",
-    "start": "pnpm --filter @fazri/web start",
-    "lint": "pnpm --filter @fazri/web lint",
-    "dev:auth": "pnpm --filter @fazri/auth dev"
+    "dev": "turbo dev --filter=@fazri/web",
+    "build": "turbo build --filter=@fazri/web",
+    "start": "turbo start --filter=@fazri/web",
+    "lint": "turbo lint --filter=@fazri/web",
+    "dev:auth": "turbo dev --filter=@fazri/auth"
   },
   "pnpm": {
     "overrides": {
@@ -15,5 +16,8 @@
       "@types/react": "19.2.14",
       "@types/react-dom": "19.2.3"
     }
+  },
+  "devDependencies": {
+    "turbo": "^2.9.6"
   }
 }
