@@ -9,6 +9,7 @@
 /packages/types/node_modules
 /packages/config/node_modules
 /packages/db/node_modules
+/packages/db/dist
 /docs/*
 !docs/enrollment-runbook.md
 /.pnp

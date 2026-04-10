@@ -14,26 +14,23 @@ RUN pnpm install --frozen-lockfile
 COPY apps/auth/ ./apps/auth/
 COPY packages/db/ ./packages/db/
 
-# Generate Prisma client and build auth
-RUN pnpm --filter=@fazri/db db:generate
+# Build @fazri/db (prisma generate + tsc → dist/)
+RUN pnpm --filter=@fazri/db build
+
+# Build auth (tsc → dist/)
 RUN pnpm --filter=@fazri/auth build
 
-# Remove devDependencies before copying to runner
-RUN CI=true pnpm prune --prod
+# Create minimal production deployment with only auth's prod deps
+RUN pnpm deploy --filter=@fazri/auth --prod --legacy /deploy
 
 FROM node:22-alpine AS runner
 WORKDIR /app
 
-# Copy pruned node_modules (includes generated Prisma client)
-COPY --from=builder /app/node_modules ./node_modules
+# Minimal prod deps + workspace packages (includes @fazri/db with its dist/)
+COPY --from=builder /deploy ./
 
-# Copy workspace manifests (needed for module resolution)
-COPY --from=builder /app/package.json ./
-COPY --from=builder /app/apps/auth/package.json ./apps/auth/
-COPY --from=builder /app/packages/db/package.json ./packages/db/
-
-# Copy compiled output
-COPY --from=builder /app/apps/auth/dist ./apps/auth/dist
+# Compiled auth output
+COPY --from=builder /app/apps/auth/dist ./dist
 
 RUN addgroup -g 1001 -S nodejs && \
     adduser -S authuser -u 1001 && \
@@ -44,4 +41,4 @@ EXPOSE 4000
 HEALTHCHECK --interval=30s --timeout=10s --start-period=5s --retries=3 \
   CMD node -e "require('http').get('http://localhost:4000/health', (r) => r.statusCode === 200 ? process.exit(0) : process.exit(1))"
 
-CMD ["node", "apps/auth/dist/index.js"]
+CMD ["node", "dist/index.js"]
