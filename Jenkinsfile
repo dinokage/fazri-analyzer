@@ -198,7 +198,7 @@ pipeline {
                             docker build -f apps/auth/Dockerfile \
                                 -t ${AUTH_IMAGE}:${IMAGE_TAG} \
                                 $([ "${BRANCH_NAME}" = "master" ] && echo "-t ${AUTH_IMAGE}:latest" || echo "") \
-                                apps/auth/
+                                .
                         '''
                     }
                 }
