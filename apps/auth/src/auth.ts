@@ -2,7 +2,7 @@ import { betterAuth } from "better-auth";
 import { prismaAdapter } from "better-auth/adapters/prisma";
 import { username } from "better-auth/plugins";
 import { jwt } from "better-auth/plugins";
-import { prisma } from "./lib/prisma";
+import { prisma } from "@fazri/db";
 import bcrypt from "bcryptjs";
 
 export const auth = betterAuth({

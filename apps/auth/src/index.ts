@@ -4,7 +4,7 @@ import express from "express";
 import cors from "cors";
 import { toNodeHandler } from "better-auth/node";
 import { auth } from "./auth";
-import { prisma } from "./lib/prisma";
+import { prisma } from "@fazri/db";
 
 const app = express();
 const PORT = parseInt(process.env.PORT ?? "4000", 10);

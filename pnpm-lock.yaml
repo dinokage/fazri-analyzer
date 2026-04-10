@@ -19,9 +19,9 @@ importers:
 
   apps/auth:
     dependencies:
-      '@prisma/client':
-        specifier: ^6.0.0
-        version: 6.16.3(prisma@6.16.3(typescript@5.9.3))(typescript@5.9.3)
+      '@fazri/db':
+        specifier: workspace:*
+        version: link:../../packages/db
       '@sentry/node':
         specifier: ^8
         version: 8.55.1
@@ -53,9 +53,6 @@ importers:
       '@types/node':
         specifier: ^22.0.0
         version: 22.19.15
-      prisma:
-        specifier: ^6.0.0
-        version: 6.16.3(typescript@5.9.3)
       tsx:
         specifier: ^4.19.2
         version: 4.21.0
@@ -227,6 +224,21 @@ importers:
         version: 1.4.0
       typescript:
         specifier: ^5
+        version: 5.9.3
+
+  packages/config: {}
+
+  packages/db:
+    dependencies:
+      '@prisma/client':
+        specifier: ^6.0.0
+        version: 6.16.3(prisma@6.16.3(typescript@5.9.3))(typescript@5.9.3)
+    devDependencies:
+      prisma:
+        specifier: ^6.0.0
+        version: 6.16.3(typescript@5.9.3)
+      typescript:
+        specifier: ^5.7.3
         version: 5.9.3
 
 packages:

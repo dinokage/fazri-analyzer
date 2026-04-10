@@ -8,7 +8,10 @@
     "build": "turbo build --filter=@fazri/web",
     "start": "turbo start --filter=@fazri/web",
     "lint": "turbo lint --filter=@fazri/web",
-    "dev:auth": "turbo dev --filter=@fazri/auth"
+    "dev:auth": "turbo dev --filter=@fazri/auth",
+    "db:generate": "turbo db:generate --filter=@fazri/db",
+    "db:push": "turbo db:push --filter=@fazri/db",
+    "db:migrate": "turbo db:migrate --filter=@fazri/db"
   },
   "pnpm": {
     "overrides": {
