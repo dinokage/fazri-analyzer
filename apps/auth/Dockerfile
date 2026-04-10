@@ -18,18 +18,22 @@ COPY packages/db/ ./packages/db/
 RUN pnpm --filter=@fazri/db db:generate
 RUN pnpm --filter=@fazri/auth build
 
+# Remove devDependencies before copying to runner
+RUN pnpm prune --prod
+
 FROM node:22-alpine AS runner
-RUN npm install -g pnpm
 WORKDIR /app
 
-COPY package.json pnpm-lock.yaml pnpm-workspace.yaml ./
-COPY apps/auth/package.json ./apps/auth/
-COPY packages/db/package.json ./packages/db/
+# Copy pruned node_modules (includes generated Prisma client)
+COPY --from=builder /app/node_modules ./node_modules
 
-RUN pnpm install --frozen-lockfile --prod
+# Copy workspace manifests (needed for module resolution)
+COPY --from=builder /app/package.json ./
+COPY --from=builder /app/apps/auth/package.json ./apps/auth/
+COPY --from=builder /app/packages/db/package.json ./packages/db/
 
+# Copy compiled output
 COPY --from=builder /app/apps/auth/dist ./apps/auth/dist
-COPY --from=builder /app/node_modules/.prisma ./node_modules/.prisma
 
 RUN addgroup -g 1001 -S nodejs && \
     adduser -S authuser -u 1001 && \
