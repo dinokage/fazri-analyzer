@@ -107,7 +107,7 @@ services:
   deepface-server:
     <<: *restart
     build:
-      context: ./deepface-server
+      context: ./apps/deepface
       dockerfile: Dockerfile
     container_name: fazri_deepface
     environment:
@@ -157,7 +157,7 @@ services:
   backend:
     <<: *restart
     build:
-      context: ./backend
+      context: ./apps/api
       dockerfile: Dockerfile
       target: production
     container_name: fazri_backend
@@ -201,7 +201,7 @@ services:
     <<: *restart
     build:
       context: .
-      dockerfile: Dockerfile.prod
+      dockerfile: apps/web/Dockerfile
       args:
         NEXT_PUBLIC_FASTAPI_BASE_URL: ${NEXT_PUBLIC_FASTAPI_BASE_URL:-/api}
     container_name: fazri_frontend

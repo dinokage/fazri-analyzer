@@ -144,15 +144,16 @@ pipeline {
 
                     def isFirstRun = changedFiles == 'all'
 
-                    env.BUILD_BACKEND  = (changedFiles.contains('backend/')          ||
+                    env.BUILD_BACKEND  = (changedFiles.contains('apps/api/')          ||
                                           changedFiles.contains('Jenkinsfile')        ||
                                           isFirstRun) ? 'true' : 'false'
 
-                    env.BUILD_AUTH     = (changedFiles.contains('auth/')             ||
+                    env.BUILD_AUTH     = (changedFiles.contains('apps/auth/')         ||
+                                          changedFiles.contains('packages/')          ||
                                           changedFiles.contains('Jenkinsfile')        ||
                                           isFirstRun) ? 'true' : 'false'
 
-                    env.BUILD_DEEPFACE = (changedFiles.contains('deepface-server/')  ||
+                    env.BUILD_DEEPFACE = (changedFiles.contains('apps/deepface/')     ||
                                           changedFiles.contains('Jenkinsfile')        ||
                                           isFirstRun) ? 'true' : 'false'
 
@@ -181,10 +182,10 @@ pipeline {
                     steps {
                         echo "Building backend image (live container still up)..."
                         sh '''
-                            docker build -f backend/Dockerfile --target production \
+                            docker build -f apps/api/Dockerfile --target production \
                                 -t ${BACKEND_IMAGE}:${IMAGE_TAG} \
                                 $([ "${BRANCH_NAME}" = "master" ] && echo "-t ${BACKEND_IMAGE}:latest" || echo "") \
-                                backend/
+                                apps/api/
                         '''
                     }
                 }
@@ -194,10 +195,10 @@ pipeline {
                     steps {
                         echo "Building auth service image (live container still up)..."
                         sh '''
-                            docker build -f auth/Dockerfile \
+                            docker build -f apps/auth/Dockerfile \
                                 -t ${AUTH_IMAGE}:${IMAGE_TAG} \
                                 $([ "${BRANCH_NAME}" = "master" ] && echo "-t ${AUTH_IMAGE}:latest" || echo "") \
-                                auth/
+                                apps/auth/
                         '''
                     }
                 }
@@ -207,10 +208,10 @@ pipeline {
                     steps {
                         echo "Building DeepFace server image (live container still up)..."
                         sh '''
-                            docker build -f deepface-server/Dockerfile \
+                            docker build -f apps/deepface/Dockerfile \
                                 -t ${DEEPFACE_IMAGE}:${IMAGE_TAG} \
                                 $([ "${BRANCH_NAME}" = "master" ] && echo "-t ${DEEPFACE_IMAGE}:latest" || echo "") \
-                                deepface-server/
+                                apps/deepface/
                         '''
                     }
                 }

@@ -2,8 +2,12 @@
 
 # dependencies
 /node_modules
-/auth/node_modules
-/auth/dist
+/apps/web/node_modules
+/apps/auth/node_modules
+/apps/auth/dist
+/packages/ui/node_modules
+/packages/types/node_modules
+/packages/config/node_modules
 /docs/*
 !docs/enrollment-runbook.md
 /.pnp
@@ -19,10 +23,12 @@
 
 # next.js
 /.next/
-/out/
+/apps/web/.next/
+/apps/web/out/
 
 # production
 /build
+/apps/web/build
 
 # misc
 .DS_Store
@@ -45,9 +51,10 @@ clau-docs/
 *.tsbuildinfo
 next-env.d.ts
 
-/src/generated/prisma
-/backend/backup*
-/backend/anal/*
+/apps/web/src/generated/prisma
+/apps/auth/prisma/generated/
+/apps/api/backup*
+/apps/api/anal/*
 
 # git worktrees
 .worktrees/
@@ -68,7 +75,7 @@ sentry-debug-files/
 *.csv.gz
 
 # Synthetic / augmented data (large CSVs, not for version control)
-backend/augmented/
+apps/api/augmented/
 
 # Credentials (belt-and-suspenders)
 *credentials*.json
@@ -98,4 +105,4 @@ Thumbs.db
 *.log
 
 # Local mediamtx config file
-backend/mediamtx.yml
+apps/api/mediamtx.yml
