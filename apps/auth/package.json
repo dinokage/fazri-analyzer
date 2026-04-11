@@ -1,0 +1,27 @@
+{
+  "name": "@fazri/auth",
+  "version": "0.1.0",
+  "private": true,
+  "scripts": {
+    "dev": "pnpm --filter=@fazri/db db:generate && tsx watch --require ./src/instrument.ts src/index.ts",
+    "build": "pnpm --filter=@fazri/db db:generate && tsc",
+    "start": "node --require ./dist/instrument.js dist/index.js"
+  },
+  "dependencies": {
+    "@fazri/db": "workspace:*",
+    "better-auth": "^1.2.7",
+    "@sentry/node": "^8",
+    "bcryptjs": "^2.4.3",
+    "express": "^4.21.2",
+    "cors": "^2.8.5",
+    "dotenv": "^16.4.7"
+  },
+  "devDependencies": {
+    "@types/bcryptjs": "^2.4.6",
+    "@types/express": "^5.0.0",
+    "@types/cors": "^2.8.17",
+    "@types/node": "^22.0.0",
+    "tsx": "^4.19.2",
+    "typescript": "^5.7.3"
+  }
+}

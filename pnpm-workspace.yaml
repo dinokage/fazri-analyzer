@@ -1,2 +1,4 @@
 packages:
-  - 'auth'
+  - 'apps/web'
+  - 'apps/auth'
+  - 'packages/*'

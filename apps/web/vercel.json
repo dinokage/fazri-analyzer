@@ -1,0 +1,7 @@
+{
+  "framework": "nextjs",
+  "installCommand": "cd ../.. && pnpm install",
+  "buildCommand": "pnpm build",
+  "outputDirectory": ".next",
+  "ignoreCommand": "git diff HEAD^ HEAD --quiet -- . ':!apps/api' ':!apps/auth' ':!apps/deepface' ':!Jenkinsfile' ':!nginx' ':!mediamtx' ':!scripts'"
+}
