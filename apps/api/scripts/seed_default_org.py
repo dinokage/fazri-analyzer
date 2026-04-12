@@ -22,7 +22,7 @@ def seed():
     conn = psycopg2.connect(AUTH_DB_URL)
     cur = conn.cursor()
 
-    org_id = "default-org"
+    org_id = "default"
     now = datetime.now(timezone.utc)
 
     # Check if already exists
