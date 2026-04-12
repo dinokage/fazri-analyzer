@@ -35,10 +35,10 @@ def seed():
 
     cur.execute(
         """
-        INSERT INTO organization (id, name, slug, "createdAt", "updatedAt")
-        VALUES (%s, %s, %s, %s, %s)
+        INSERT INTO organization (id, name, slug, "createdAt")
+        VALUES (%s, %s, %s, %s)
         """,
-        (org_id, "Default Campus", "default", now, now),
+        (org_id, "Default Campus", "default", now),
     )
     conn.commit()
     print(f"Created organization: id={org_id} slug=default name='Default Campus'")
@@ -53,7 +53,7 @@ def seed():
             VALUES (gen_random_uuid()::text, %s, %s, 'owner', %s)
             ON CONFLICT DO NOTHING
             """,
-            ("default-org", user_id, now),
+            (org_id, user_id, now),
         )
     conn.commit()
     print(f"Assigned {len(admins)} SUPER_ADMIN users as owners of default-org")
