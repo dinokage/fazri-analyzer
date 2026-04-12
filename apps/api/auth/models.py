@@ -22,3 +22,5 @@ class AuthenticatedUser(BaseModel):
     student_id: Optional[str] = None
     staff_id: Optional[str] = None
     department: Optional[str] = None
+    organizationId: Optional[str] = None
+    sessionId: Optional[str] = None

@@ -105,6 +105,8 @@ class SensorEventRecord(Base):
         nullable=False,
     )
 
+    organization_id = Column(String, nullable=True, index=True)
+
     # ------------------------------------------------------------------
     # Composite indexes
     # Three access patterns drive these:

@@ -72,7 +72,10 @@ async def run_hikvision_poller() -> None:
                 db = SessionLocal()
                 try:
                     svc = get_event_ingestion_service(db)
-                    results = await svc.ingest_batch(events)
+                    results = await svc.ingest_batch(
+                        events,
+                        organization_id=settings.HIKVISION_ORGANIZATION_ID,
+                    )
                 finally:
                     db.close()
 

@@ -1,8 +1,8 @@
 import { betterAuth } from "better-auth";
 import { prismaAdapter } from "better-auth/adapters/prisma";
-import { username } from "better-auth/plugins";
-import { jwt } from "better-auth/plugins";
+import { username, jwt, organization } from "better-auth/plugins";
 import { prisma } from "@fazri/db";
+import { ac, ownerRole, adminRole, memberRole } from "./permissions";
 import bcrypt from "bcryptjs";
 
 export const auth = betterAuth({
@@ -27,6 +27,7 @@ export const auth = betterAuth({
       jwt: {
         expirationTime: "30d",
         definePayload: ({ user, session }) => ({
+          // Existing fields — preserve exactly
           id: user.id,
           entity_id: (user as Record<string, unknown>).entity_id,
           name: user.name,
@@ -37,16 +38,36 @@ export const auth = betterAuth({
           staff_id: (user as Record<string, unknown>).staff_id,
           department: (user as Record<string, unknown>).department,
           sessionId: session.id,
+          // NEW — org context from session (no DB queries here)
+          organizationId:
+            (session as Record<string, unknown>).activeOrganizationId ?? null,
         }),
+      },
+    }),
+    organization({
+      ac,
+      roles: {
+        owner: ownerRole,
+        admin: adminRole,
+        member: memberRole,
+      },
+      allowUserToCreateOrganization: async (user) => {
+        return (user as Record<string, unknown>).role === "SUPER_ADMIN";
+      },
+      sendInvitationEmail: async (data) => {
+        // TODO: Integrate with email provider (SendGrid / SMTP)
+        console.log(
+          `[FAZRI] Invite ${data.email} to org ${data.organization.name} as ${data.role}`
+        );
       },
     }),
   ],
 
   user: {
     additionalFields: {
-      entity_id:   { type: "string", required: true,  unique: true },
-      username:    { type: "string", required: true,  unique: true },
-      role:        { type: "string", required: true,  defaultValue: "STUDENT" },
+      entity_id:   { type: "string", required: true, unique: true },
+      username:    { type: "string", required: true, unique: true },
+      role:        { type: "string", required: true, defaultValue: "STUDENT" },
       face_id:     { type: "string", required: false },
       student_id:  { type: "string", required: false },
       staff_id:    { type: "string", required: false },

@@ -75,7 +75,10 @@ async def run_aruba_poller() -> None:
                 if movement_events:
                     with SessionLocal() as db:
                         svc = get_event_ingestion_service(db)
-                        results = await svc.ingest_batch(movement_events)
+                        results = await svc.ingest_batch(
+                            movement_events,
+                            organization_id=settings.ARUBA_ORGANIZATION_ID,
+                        )
 
                     resolved_count = sum(1 for r in results if r is not None)
                     stats["polled"] += len(movement_events)

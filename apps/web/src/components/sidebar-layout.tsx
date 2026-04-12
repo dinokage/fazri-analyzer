@@ -38,11 +38,12 @@ import { useActiveAlertCount } from "@/hooks/useAlerts"
 
 import { Button } from "@/components/ui/button"
 
-export function SidebarLayout({ children }: { children: React.ReactNode }) {
+export function SidebarLayout({ children, orgSlug }: { children: React.ReactNode; orgSlug?: string }) {
   const pathname = usePathname()
   const router = useRouter()
   const { data: session, isPending } = useSession()
   const isActive = (href: string) => pathname === href
+  const basePath = orgSlug ? `/${orgSlug}/dashboard` : "/dashboard"
 
   const user = session?.user as Record<string, unknown> | undefined
   const isSuperAdmin = user?.role === "SUPER_ADMIN"
@@ -79,10 +80,10 @@ export function SidebarLayout({ children }: { children: React.ReactNode }) {
                         <SidebarMenuItem>
                           <SidebarMenuButton
                             asChild
-                            data-active={isActive("/dashboard")}
+                            data-active={isActive(basePath)}
                           >
                             <Link
-                              href="/dashboard"
+                              href={basePath}
                               className="flex items-center gap-3"
                             >
                               <LayoutDashboard className="h-5 w-5 flex-shrink-0" />
@@ -93,10 +94,10 @@ export function SidebarLayout({ children }: { children: React.ReactNode }) {
                         <SidebarMenuItem>
                           <SidebarMenuButton
                             asChild
-                            data-active={isActive("/dashboard/anomalies")}
+                            data-active={isActive(`${basePath}/anomalies`)}
                           >
                             <Link
-                              href="/dashboard/anomalies"
+                              href={`${basePath}/anomalies`}
                               className="flex items-center gap-3"
                             >
                               <Bug className="h-5 w-5 flex-shrink-0" />
@@ -107,10 +108,10 @@ export function SidebarLayout({ children }: { children: React.ReactNode }) {
                         <SidebarMenuItem>
                           <SidebarMenuButton
                             asChild
-                            data-active={isActive("/dashboard/zones")}
+                            data-active={isActive(`${basePath}/zones`)}
                           >
                             <Link
-                              href="/dashboard/zones"
+                              href={`${basePath}/zones`}
                               className="flex items-center gap-3"
                             >
                               <Activity className="h-5 w-5 flex-shrink-0" />
@@ -121,10 +122,10 @@ export function SidebarLayout({ children }: { children: React.ReactNode }) {
                         <SidebarMenuItem>
                           <SidebarMenuButton
                             asChild
-                            data-active={isActive("/dashboard/events")}
+                            data-active={isActive(`${basePath}/events`)}
                           >
                             <Link
-                              href="/dashboard/events"
+                              href={`${basePath}/events`}
                               className="flex items-center gap-3"
                             >
                               <Radio className="h-5 w-5 flex-shrink-0" />
@@ -135,10 +136,10 @@ export function SidebarLayout({ children }: { children: React.ReactNode }) {
                         <SidebarMenuItem>
                           <SidebarMenuButton
                             asChild
-                            data-active={isActive("/dashboard/alerts") || pathname.startsWith("/dashboard/alerts/")}
+                            data-active={isActive(`${basePath}/alerts`) || pathname.startsWith(`${basePath}/alerts/`)}
                           >
                             <Link
-                              href="/dashboard/alerts"
+                              href={`${basePath}/alerts`}
                               className="flex items-center gap-3"
                             >
                               <ShieldAlert className="h-5 w-5 flex-shrink-0" />
@@ -154,10 +155,10 @@ export function SidebarLayout({ children }: { children: React.ReactNode }) {
                         <SidebarMenuItem>
                           <SidebarMenuButton
                             asChild
-                            data-active={isActive("/dashboard/chat")}
+                            data-active={isActive(`${basePath}/chat`)}
                           >
                             <Link
-                              href="/dashboard/chat"
+                              href={`${basePath}/chat`}
                               className="flex items-center gap-3"
                             >
                               <Bot className="h-5 w-5 flex-shrink-0" />
@@ -168,10 +169,10 @@ export function SidebarLayout({ children }: { children: React.ReactNode }) {
                         <SidebarMenuItem>
                           <SidebarMenuButton
                             asChild
-                            data-active={isActive("/dashboard/face-enrollment")}
+                            data-active={isActive(`${basePath}/face-enrollment`)}
                           >
                             <Link
-                              href="/dashboard/face-enrollment"
+                              href={`${basePath}/face-enrollment`}
                               className="flex items-center gap-3"
                             >
                               <UserCheck className="h-5 w-5 flex-shrink-0" />
@@ -182,10 +183,10 @@ export function SidebarLayout({ children }: { children: React.ReactNode }) {
                         <SidebarMenuItem>
                           <SidebarMenuButton
                             asChild
-                            data-active={isActive("/dashboard/cameras") || pathname.startsWith("/dashboard/cameras")}
+                            data-active={isActive(`${basePath}/cameras`) || pathname.startsWith(`${basePath}/cameras`)}
                           >
                             <Link
-                              href="/dashboard/cameras"
+                              href={`${basePath}/cameras`}
                               className="flex items-center gap-3"
                             >
                               <Camera className="h-5 w-5 flex-shrink-0" />
@@ -196,10 +197,10 @@ export function SidebarLayout({ children }: { children: React.ReactNode }) {
                         <SidebarMenuItem>
                           <SidebarMenuButton
                             asChild
-                            data-active={isActive("/dashboard/webhooks")}
+                            data-active={isActive(`${basePath}/webhooks`)}
                           >
                             <Link
-                              href="/dashboard/webhooks"
+                              href={`${basePath}/webhooks`}
                               className="flex items-center gap-3"
                             >
                               <Webhook className="h-5 w-5 flex-shrink-0" />
@@ -210,10 +211,10 @@ export function SidebarLayout({ children }: { children: React.ReactNode }) {
                         <SidebarMenuItem>
                           <SidebarMenuButton
                             asChild
-                            data-active={isActive("/dashboard/system")}
+                            data-active={isActive(`${basePath}/system`)}
                           >
                             <Link
-                              href="/dashboard/system"
+                              href={`${basePath}/system`}
                               className="flex items-center gap-3"
                             >
                               <Heart className="h-5 w-5 flex-shrink-0" />
@@ -234,10 +235,10 @@ export function SidebarLayout({ children }: { children: React.ReactNode }) {
                     <SidebarMenuItem>
                       <SidebarMenuButton
                         asChild
-                        data-active={isActive("/dashboard/profile")}
+                        data-active={isActive(`${basePath}/profile`)}
                       >
                         <Link
-                          href="/dashboard/profile"
+                          href={`${basePath}/profile`}
                           className="flex items-center gap-3"
                         >
                           <User className="h-5 w-5 flex-shrink-0" />
@@ -289,7 +290,7 @@ export function SidebarLayout({ children }: { children: React.ReactNode }) {
               <div className="flex items-center gap-3 min-w-0 flex-1">
                 <SidebarTrigger className="flex-shrink-0" />
                 <h1 className="text-lg font-semibold text-pretty capitalize truncate">
-                  {pathname === "/dashboard"
+                  {pathname === basePath
                     ? "Dashboard Overview"
                     : pathname.split("/").pop()?.replace(/-/g, " ") ||
                       "Application Overview"}

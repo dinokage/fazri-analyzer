@@ -14,7 +14,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
-from auth.dependencies import require_staff
+from auth.dependencies import require_staff, require_org_member
 from auth.models import AuthenticatedUser
 from database.connection import get_db
 from models.db.sensor_events import SensorEventRecord
@@ -92,7 +92,7 @@ async def list_events(
     offset: int = Query(0, ge=0),
     # Auth
     db: Session = Depends(get_db),
-    current_user: AuthenticatedUser = Depends(require_staff()),
+    current_user: AuthenticatedUser = Depends(require_org_member),
 ) -> SensorEventListResponse:
     query = db.query(SensorEventRecord)
 

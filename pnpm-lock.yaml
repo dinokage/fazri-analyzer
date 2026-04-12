@@ -29,7 +29,7 @@ importers:
         specifier: ^2.4.3
         version: 2.4.3
       better-auth:
-        specifier: ^1.2.7
+        specifier: ^1.5.6
         version: 1.5.6(@opentelemetry/api@1.9.0)(@prisma/client@6.16.3(prisma@6.16.3(typescript@5.9.3))(typescript@5.9.3))(next@16.2.3(@babel/core@7.29.0)(@opentelemetry/api@1.9.0)(react-dom@19.2.4(react@19.2.4))(react@19.2.4))(pg@8.20.0)(prisma@6.16.3(typescript@5.9.3))(react-dom@19.2.4(react@19.2.4))(react@19.2.4)
       cors:
         specifier: ^2.8.5
@@ -126,7 +126,7 @@ importers:
         specifier: ^1.15.0
         version: 1.15.0
       better-auth:
-        specifier: ^1.2.7
+        specifier: ^1.5.6
         version: 1.5.6(@opentelemetry/api@1.9.0)(@prisma/client@6.16.3(prisma@6.16.3(typescript@5.9.3))(typescript@5.9.3))(next@16.2.3(@babel/core@7.29.0)(@opentelemetry/api@1.9.0)(react-dom@19.2.4(react@19.2.4))(react@19.2.4))(pg@8.20.0)(prisma@6.16.3(typescript@5.9.3))(react-dom@19.2.4(react@19.2.4))(react@19.2.4)
       class-variance-authority:
         specifier: ^0.7.1

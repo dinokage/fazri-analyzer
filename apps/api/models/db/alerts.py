@@ -132,6 +132,8 @@ class StaffProfile(Base):
     # Demo flag
     is_mock_user = Column(Boolean, default=False)
 
+    organization_id = Column(String, nullable=False, index=True, default="default-org")
+
     # Timestamps
     created_at = Column(DateTime(timezone=True), default=_utcnow)
     updated_at = Column(DateTime(timezone=True), default=_utcnow, onupdate=_utcnow)
@@ -240,6 +242,8 @@ class Alert(Base):
     is_mock = Column(Boolean, default=False, index=True)
     mock_scenario = Column(String(100), nullable=True)
 
+    organization_id = Column(String, nullable=False, index=True, default="default-org")
+
     # Timestamps
     created_at = Column(DateTime(timezone=True), default=_utcnow, index=True)
     updated_at = Column(DateTime(timezone=True), default=_utcnow, onupdate=_utcnow)
@@ -286,6 +290,8 @@ class AlertAssignment(Base):
     # Was this assignment active or reassigned
     is_active = Column(Boolean, default=True)
 
+    organization_id = Column(String, nullable=False, index=True, default="default-org")
+
     # Relationships
     alert = relationship("Alert", back_populates="assignments")
     staff = relationship("StaffProfile", back_populates="assignments")
@@ -330,6 +336,8 @@ class AlertAuditLog(Base):
 
     # Demo flag
     is_mock = Column(Boolean, default=False)
+
+    organization_id = Column(String, nullable=False, index=True, default="default-org")
 
     # Timestamp (immutable)
     timestamp = Column(DateTime(timezone=True), default=_utcnow, nullable=False)
@@ -378,6 +386,8 @@ class NotificationQueue(Base):
     # Demo flag
     is_mock = Column(Boolean, default=False)
 
+    organization_id = Column(String, nullable=False, index=True, default="default-org")
+
     # Timestamps
     created_at = Column(DateTime(timezone=True), default=_utcnow)
     scheduled_at = Column(DateTime(timezone=True), default=_utcnow)  # For delayed notifications
@@ -415,6 +425,8 @@ class NotificationLog(Base):
     # External service response
     external_id = Column(String(255), nullable=True)  # ID from SendGrid, Twilio, etc.
     response_data = Column(JSON, nullable=True)
+
+    organization_id = Column(String, nullable=False, index=True, default="default-org")
 
     # Timestamps
     sent_at = Column(DateTime(timezone=True), default=_utcnow)

@@ -84,6 +84,7 @@ class EntityResolutionService:
         identifier_type: str,
         identifier_value: str,
         db: Optional[Session] = None,
+        organization_id: str = "default-org",
     ) -> Optional[EntityProfileDTO]:
         """
         Direct lookup: identifier_type + identifier_value → EntityProfile.
@@ -99,6 +100,7 @@ class EntityResolutionService:
             ident_query = db.query(EntityIdentifier).filter(
                 EntityIdentifier.identifier_type == identifier_type,
                 EntityIdentifier.active == True,  # noqa: E712
+                EntityIdentifier.organization_id == organization_id,
             )
             if identifier_type == "mac_address":
                 ident_query = ident_query.filter(
@@ -255,6 +257,7 @@ class EntityResolutionService:
         csv_path: str,
         mapping: Optional[dict] = None,
         db: Optional[Session] = None,
+        organization_id: str = "default-org",
     ) -> dict:
         """
         Read a CSV and upsert entity_profiles + entity_identifiers.
@@ -336,6 +339,7 @@ class EntityResolutionService:
                                 email=row.get("email"),
                                 department=row.get("department"),
                                 authorized_zones=[],
+                                organization_id=organization_id,
                             )
                         )
                         stats["created"] += 1
@@ -359,6 +363,7 @@ class EntityResolutionService:
                                 first_seen=now,
                                 last_seen=now,
                                 active=True,
+                                organization_id=organization_id,
                             )
                             .on_conflict_do_update(
                                 constraint="uq_entity_identifiers_type_value",

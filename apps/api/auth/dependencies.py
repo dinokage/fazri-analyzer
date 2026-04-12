@@ -4,6 +4,7 @@ from fastapi import Header, Depends, Request
 from auth.jwt import decode_jwt_token
 from auth.models import AuthenticatedUser, UserRole
 from auth.exceptions import AuthenticationError, PermissionDeniedError
+from config import settings
 
 
 async def get_current_user(
@@ -49,6 +50,8 @@ async def get_current_user(
             student_id=payload.get("student_id"),
             staff_id=payload.get("staff_id"),
             department=payload.get("department"),
+            sessionId=payload.get("sessionId"),
+            organizationId=payload.get("organizationId"),
         )
 
         # Store user in request state for Sentry middleware
@@ -102,3 +105,46 @@ def require_faculty() -> Callable:
 def require_admin() -> Callable:
     """Require SUPER_ADMIN role"""
     return require_role([UserRole.SUPER_ADMIN])
+
+
+async def require_org_member(
+    current_user: AuthenticatedUser = Depends(get_current_user),
+) -> AuthenticatedUser:
+    """Require user to have an active organization set in their JWT."""
+    if not current_user.organizationId:
+        raise PermissionDeniedError(
+            detail="No active organization. Please select a college first."
+        )
+    return current_user
+
+
+async def require_org_admin(
+    current_user: AuthenticatedUser = Depends(require_org_member),
+) -> AuthenticatedUser:
+    """
+    Require admin or owner role within the active org.
+
+    Checks membership via the auth service so role changes take
+    effect immediately without re-login.
+    """
+    import httpx as _httpx
+
+    try:
+        async with _httpx.AsyncClient(timeout=5) as client:
+            resp = await client.get(
+                f"{settings.AUTH_SERVICE_URL}/api/auth/organization/get-full-organization",
+                params={"organizationId": current_user.organizationId},
+            )
+            if resp.status_code == 200:
+                data = resp.json()
+                members = data.get("members", [])
+                user_member = next(
+                    (m for m in members if m.get("userId") == current_user.id),
+                    None,
+                )
+                if user_member and user_member.get("role") in ("owner", "admin"):
+                    return current_user
+    except Exception:
+        pass
+
+    raise PermissionDeniedError(detail="Admin access required for this organization.")

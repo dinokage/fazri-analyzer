@@ -24,3 +24,4 @@ class PushSubscription(Base):
     # Authentication secret (base64url)
     auth = Column(Text, nullable=False)
     created_at = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc), nullable=False)
+    organization_id = Column(String, nullable=False, index=True, default="default-org")

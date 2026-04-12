@@ -22,7 +22,7 @@ from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy import text
 from sqlalchemy.orm import Session
 
-from auth.dependencies import require_staff
+from auth.dependencies import require_staff, require_org_member
 from auth.models import AuthenticatedUser
 from database.connection import get_db
 from scripts.sample_zones import ZONES_DATA
@@ -114,7 +114,7 @@ def _zone_to_dict(zone: Dict) -> Dict:
 
 @router.get("/zones")
 async def list_zones(
-    current_user: AuthenticatedUser = Depends(require_staff()),
+    current_user: AuthenticatedUser = Depends(require_org_member),
 ) -> Dict:
     zones = [_zone_to_dict(z) for z in ZONES_DATA]
     return {"success": True, "data": zones, "count": len(zones)}
@@ -123,7 +123,7 @@ async def list_zones(
 @router.get("/zones/{zone_id}")
 async def get_zone(
     zone_id: str,
-    current_user: AuthenticatedUser = Depends(require_staff()),
+    current_user: AuthenticatedUser = Depends(require_org_member),
 ) -> Dict:
     zone = _ZONES.get(zone_id)
     if not zone:
@@ -135,7 +135,7 @@ async def get_zone(
 async def get_zone_occupancy(
     zone_id: str,
     db: Session = Depends(get_db),
-    current_user: AuthenticatedUser = Depends(require_staff()),
+    current_user: AuthenticatedUser = Depends(require_org_member),
 ) -> Dict:
     if zone_id not in _ZONES:
         raise HTTPException(status_code=404, detail=f"Zone '{zone_id}' not found")
@@ -147,7 +147,7 @@ async def get_zone_history(
     zone_id: str,
     hours_back: int = 24,
     db: Session = Depends(get_db),
-    current_user: AuthenticatedUser = Depends(require_staff()),
+    current_user: AuthenticatedUser = Depends(require_org_member),
 ) -> Dict:
     """Return hourly event counts for the zone over the past N hours."""
     if hours_back <= 0 or hours_back > MAX_HOURS_BACK:
@@ -190,7 +190,7 @@ async def get_zone_history(
 @router.get("/zones/{zone_id}/connections")
 async def get_zone_connections(
     zone_id: str,
-    current_user: AuthenticatedUser = Depends(require_staff()),
+    current_user: AuthenticatedUser = Depends(require_org_member),
 ) -> Dict:
     """Return zones adjacent to zone_id based on travel-time matrix."""
     if zone_id not in _ZONES:
@@ -221,7 +221,7 @@ async def get_zone_connections(
 @router.get("/campus/summary")
 async def get_campus_summary(
     db: Session = Depends(get_db),
-    current_user: AuthenticatedUser = Depends(require_staff()),
+    current_user: AuthenticatedUser = Depends(require_org_member),
 ) -> Dict:
     """Aggregate real-time occupancy across all zones."""
     since = datetime.now(timezone.utc) - timedelta(minutes=_PRESENCE_WINDOW_MINUTES)

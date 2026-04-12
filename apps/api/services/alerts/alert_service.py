@@ -58,6 +58,7 @@ class AlertService:
         actor_type: ActorType = ActorType.SYSTEM,
         ip_address: Optional[str] = None,
         user_agent: Optional[str] = None,
+        organization_id: str = "default-org",
     ) -> Alert:
         """
         Create a new alert.
@@ -88,6 +89,7 @@ class AlertService:
             evidence=alert_data.evidence,
             is_mock=alert_data.is_mock,
             mock_scenario=alert_data.mock_scenario,
+            organization_id=organization_id,
         )
 
         self.db.add(alert)
@@ -155,6 +157,7 @@ class AlertService:
         include_resolved: bool = False,
         limit: int = 20,
         offset: int = 0,
+        organization_id: Optional[str] = None,
     ) -> Tuple[List[Alert], int]:
         """
         Get alerts with optional filters.
@@ -192,6 +195,9 @@ class AlertService:
 
         if is_mock is not None:
             query = query.filter(Alert.is_mock == is_mock)
+
+        if organization_id:
+            query = query.filter(Alert.organization_id == organization_id)
 
         # Get total count before pagination
         total = query.count()

@@ -1,7 +1,7 @@
 'use client';
 
 import { AnimatePresence, motion } from 'framer-motion';
-import { ArrowLeft, Eye, EyeOff, Lock, Shield, User } from 'lucide-react';
+import { ArrowLeft, Building2, Eye, EyeOff, Lock, Shield, User } from 'lucide-react';
 import { authClient } from '@/lib/auth-client';
 import { useRouter } from 'next/navigation';
 import { useRef, useState, useEffect } from 'react';
@@ -32,13 +32,18 @@ function Spinner() {
   );
 }
 
-export default function SigninPage() {
+type Step = "slug" | "username" | "password";
+
+export default function SigninPage({ prefillSlug }: { prefillSlug?: string }) {
   const router = useRouter();
 
+  const [orgSlug, setOrgSlug] = useState(prefillSlug ?? '');
+  const [orgName, setOrgName] = useState('');
+  const [checkingSlug, setCheckingSlug] = useState(false);
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
   const [hidePassword, setHidePassword] = useState(true);
-  const [usernameChecked, setUsernameChecked] = useState(false);
+  const [step, setStep] = useState<Step>("slug");
   const [checkingUsername, setCheckingUsername] = useState(false);
   const [submitted, setSubmitted] = useState(false);
   const [direction, setDirection] = useState<1 | -1>(1);
@@ -51,7 +56,7 @@ export default function SigninPage() {
   }, []);
 
   useEffect(() => {
-    if (usernameChecked) {
+    if (step === "password") {
       setTimeout(() => {
         passwordRef.current?.focus();
         passwordRef.current?.classList.add('ring-2', 'ring-neutral-400', 'dark:ring-neutral-400');
@@ -60,7 +65,45 @@ export default function SigninPage() {
         }, 800);
       }, 420);
     }
-  }, [usernameChecked]);
+  }, [step]);
+
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  const handleSlugContinue = async (slugOverride?: string) => {
+    const normalized = (slugOverride ?? orgSlug).trim().toLowerCase();
+    if (!normalized) return;
+    setOrgSlug(normalized);
+    setCheckingSlug(true);
+    try {
+      const res = await fetch(
+        `${process.env.NEXT_PUBLIC_AUTH_SERVICE_URL}/api/check-org-slug`,
+        {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ slug: normalized }),
+        }
+      );
+      const data = await res.json();
+      if (!data.exists) {
+        toast.error('No college found with this identifier.');
+        setCheckingSlug(false);
+        return;
+      }
+      setOrgName(data.name);
+      setDirection(1);
+      setStep('username');
+    } catch {
+      toast.error('Auth service is unreachable.', { id: 'auth-unreachable' });
+    }
+    setCheckingSlug(false);
+  };
+
+  useEffect(() => {
+    if (prefillSlug) {
+      handleSlugContinue(prefillSlug);
+    }
+    // Only run on mount
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   const handleUsernameContinue = async () => {
     const normalized = username.trim();
@@ -71,7 +114,7 @@ export default function SigninPage() {
       const res = await fetch(`${process.env.NEXT_PUBLIC_AUTH_SERVICE_URL}/api/check-username`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ username: normalized }),
+        body: JSON.stringify({ username: normalized, organizationSlug: orgSlug }),
       });
       if (!res.ok) {
         toast.error('Auth service error. Please try again later.', { id: 'auth-service-error' });
@@ -80,12 +123,12 @@ export default function SigninPage() {
       }
       const data = await res.json();
       if (!data.exists) {
-        toast.error('No account found with this username.');
+        toast.error(`No account found at ${orgName}.`);
         setCheckingUsername(false);
         return;
       }
       setDirection(1);
-      setUsernameChecked(true);
+      setStep('password');
     } catch {
       toast.error('Auth service is unreachable. Please try again later.', { id: 'auth-unreachable' });
     }
@@ -94,8 +137,14 @@ export default function SigninPage() {
 
   const goBack = () => {
     setDirection(-1);
-    setUsernameChecked(false);
-    setPassword('');
+    if (step === 'password') {
+      setStep('username');
+      setPassword('');
+    } else if (step === 'username') {
+      setStep('slug');
+      setUsername('');
+      setOrgName('');
+    }
   };
 
   const login = async () => {
@@ -118,7 +167,8 @@ export default function SigninPage() {
         setSubmitted(false);
         return;
       }
-      router.push('/dashboard');
+      await authClient.organization.setActive({ organizationSlug: orgSlug });
+      router.push(`/${orgSlug}/dashboard`);
     } catch {
       toast.error('Auth service is unreachable. Please try again later.', { id: 'auth-unreachable' });
       setSubmitted(false);
@@ -130,7 +180,7 @@ export default function SigninPage() {
 
   return (
     <div className="flex min-h-screen bg-white dark:bg-neutral-950">
-      {/* ── Left: form panel ── */}
+      {/* Left: form panel */}
       <div className="flex w-full flex-col justify-center px-6 py-12 lg:w-[52%] xl:px-20">
         <div className="mx-auto w-full max-w-sm">
 
@@ -147,9 +197,9 @@ export default function SigninPage() {
           {/* Sliding content */}
           <div className="overflow-hidden">
             <AnimatePresence mode="wait" initial={false} custom={direction}>
-              {!usernameChecked ? (
+              {step === 'slug' && (
                 <motion.div
-                  key="username"
+                  key="slug"
                   custom={-direction}
                   variants={slideVariants}
                   initial="enter"
@@ -161,10 +211,74 @@ export default function SigninPage() {
                     Welcome back
                   </h1>
                   <p className="mt-1 text-sm text-neutral-500 dark:text-neutral-400">
-                    Sign in to your Fazri Analyzer account
+                    Enter your college identifier to sign in
                   </p>
 
                   <div className="mt-7 space-y-4">
+                    <div>
+                      <label className="mb-1.5 block text-sm font-medium text-neutral-700 dark:text-neutral-300">
+                        College identifier
+                      </label>
+                      <div className="relative">
+                        <div className="pointer-events-none absolute inset-y-0 left-3.5 flex items-center">
+                          <Building2 size={14} className="text-neutral-400 dark:text-neutral-500" />
+                        </div>
+                        <input
+                          type="text"
+                          value={orgSlug}
+                          onChange={e => setOrgSlug(e.target.value)}
+                          onKeyDown={e => {
+                            if (e.key === 'Enter' && orgSlug.trim()) {
+                              e.preventDefault();
+                              handleSlugContinue();
+                            }
+                          }}
+                          placeholder="your-college"
+                          className={`${inputClass} pl-9`}
+                          autoComplete="organization"
+                          autoFocus
+                        />
+                      </div>
+                    </div>
+
+                    <button
+                      type="button"
+                      onClick={() => handleSlugContinue()}
+                      disabled={checkingSlug || !orgSlug.trim()}
+                      className="flex w-full cursor-pointer items-center justify-center gap-2 rounded-lg bg-neutral-900 dark:bg-neutral-50 px-4 py-2.5 text-sm font-semibold text-white dark:text-neutral-900 transition-all duration-200 hover:bg-neutral-800 dark:hover:bg-neutral-200 disabled:cursor-not-allowed disabled:opacity-50"
+                    >
+                      {checkingSlug ? <><Spinner /><span>Checking…</span></> : 'Continue'}
+                    </button>
+                  </div>
+                </motion.div>
+              )}
+
+              {step === 'username' && (
+                <motion.div
+                  key="username"
+                  custom={direction}
+                  variants={slideVariants}
+                  initial="enter"
+                  animate="center"
+                  exit="exit"
+                  transition={{ duration: 0.32, ease: 'easeOut' }}
+                >
+                  <h1 className="text-2xl font-semibold tracking-tight text-neutral-900 dark:text-neutral-50">
+                    {orgName || orgSlug}
+                  </h1>
+                  <p className="mt-1 text-sm text-neutral-500 dark:text-neutral-400">
+                    Enter your username to continue
+                  </p>
+                  <button
+                    type="button"
+                    onClick={goBack}
+                    className="mt-2 inline-flex cursor-pointer items-center gap-1.5 text-sm text-neutral-400 transition-colors hover:text-neutral-700 dark:text-neutral-500 dark:hover:text-neutral-300"
+                  >
+                    <ArrowLeft size={13} />
+                    Change college
+                  </button>
+
+                  <div className="mt-6 space-y-4">
                     <div>
                       <label className="mb-1.5 block text-sm font-medium text-neutral-700 dark:text-neutral-300">
                         Username
@@ -201,7 +315,9 @@ export default function SigninPage() {
                     </button>
                   </div>
                 </motion.div>
-              ) : (
+              )}
+
+              {step === 'password' && (
                 <motion.div
                   key="password"
                   custom={direction}
@@ -278,7 +394,7 @@ export default function SigninPage() {
         </div>
       </div>
 
-      {/* ── Right: decorative panel ── */}
+      {/* Right: decorative panel */}
       <div className="relative hidden overflow-hidden bg-neutral-900 lg:flex lg:w-[48%] flex-col items-center justify-center">
         <div
           className="absolute inset-0"

@@ -107,6 +107,8 @@ class CameraStream(Base):
     # Stores the last error message when status == ERROR
     error_message = Column(Text, nullable=True)
 
+    organization_id = Column(String, nullable=False, index=True, default="default-org")
+
     def __repr__(self) -> str:
         return (
             f"<CameraStream id={self.id} stream_id={self.stream_id!r} "

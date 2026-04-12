@@ -16,7 +16,7 @@ from fastapi import APIRouter, Depends, File, HTTPException, UploadFile, status
 from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
-from auth.dependencies import require_admin
+from auth.dependencies import require_admin, require_org_admin
 from auth.models import AuthenticatedUser
 from database.connection import get_db
 
@@ -45,7 +45,7 @@ class ImportResult(BaseModel):
 async def import_sap_csv(
     file: UploadFile = File(..., description="SAP CSV export file"),
     db: Session = Depends(get_db),
-    current_user: AuthenticatedUser = Depends(require_admin()),
+    current_user: AuthenticatedUser = Depends(require_org_admin),
 ) -> ImportResult:
     """
     Read a SAP CSV upload and import entity profiles into PostgreSQL.
