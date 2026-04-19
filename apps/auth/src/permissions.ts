@@ -81,4 +81,7 @@ export const adminPluginAc = createAccessControl(adminPluginStatement);
 export const superAdminPluginRole = adminPluginAc.newRole({
   ...adminPluginDefaults.statements,
 });
-export const regularPluginRole = adminPluginAc.newRole({});
+export const regularPluginRole = adminPluginAc.newRole({
+  user: [],
+  session: [],
+});
