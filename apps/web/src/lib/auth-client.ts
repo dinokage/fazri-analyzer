@@ -3,6 +3,7 @@ import {
   usernameClient,
   jwtClient,
   organizationClient,
+  adminClient,
 } from "better-auth/client/plugins";
 import { toast } from "sonner";
 
@@ -12,6 +13,7 @@ export const authClient = createAuthClient({
     usernameClient(),
     jwtClient(),
     organizationClient(),
+    adminClient(),
   ],
   fetchOptions: {
     onError: async (context) => {

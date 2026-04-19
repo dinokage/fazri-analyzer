@@ -1,7 +1,7 @@
 'use client';
 
 import { AnimatePresence, motion } from 'framer-motion';
-import { ArrowLeft, Building2, Eye, EyeOff, Lock, Shield, User } from 'lucide-react';
+import { ArrowLeft, Eye, EyeOff, Lock, Shield, User } from 'lucide-react';
 import { authClient } from '@/lib/auth-client';
 import { useRouter } from 'next/navigation';
 import { useRef, useState, useEffect } from 'react';
@@ -32,18 +32,15 @@ function Spinner() {
   );
 }
 
-type Step = "slug" | "username" | "password";
+type Step = "username" | "password";
 
-export default function SigninPage({ prefillSlug }: { prefillSlug?: string }) {
+export default function SigninPage() {
   const router = useRouter();
 
-  const [orgSlug, setOrgSlug] = useState(prefillSlug ?? '');
-  const [orgName, setOrgName] = useState('');
-  const [checkingSlug, setCheckingSlug] = useState(false);
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
   const [hidePassword, setHidePassword] = useState(true);
-  const [step, setStep] = useState<Step>("slug");
+  const [step, setStep] = useState<Step>("username");
   const [checkingUsername, setCheckingUsername] = useState(false);
   const [submitted, setSubmitted] = useState(false);
   const [direction, setDirection] = useState<1 | -1>(1);
@@ -67,44 +64,6 @@ export default function SigninPage({ prefillSlug }: { prefillSlug?: string }) {
     }
   }, [step]);
 
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  const handleSlugContinue = async (slugOverride?: string) => {
-    const normalized = (slugOverride ?? orgSlug).trim().toLowerCase();
-    if (!normalized) return;
-    setOrgSlug(normalized);
-    setCheckingSlug(true);
-    try {
-      const res = await fetch(
-        `${process.env.NEXT_PUBLIC_AUTH_SERVICE_URL}/api/check-org-slug`,
-        {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ slug: normalized }),
-        }
-      );
-      const data = await res.json();
-      if (!data.exists) {
-        toast.error('No college found with this identifier.');
-        setCheckingSlug(false);
-        return;
-      }
-      setOrgName(data.name);
-      setDirection(1);
-      setStep('username');
-    } catch {
-      toast.error('Auth service is unreachable.', { id: 'auth-unreachable' });
-    }
-    setCheckingSlug(false);
-  };
-
-  useEffect(() => {
-    if (prefillSlug) {
-      handleSlugContinue(prefillSlug);
-    }
-    // Only run on mount
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
-
   const handleUsernameContinue = async () => {
     const normalized = username.trim();
     if (!normalized) return;
@@ -114,7 +73,7 @@ export default function SigninPage({ prefillSlug }: { prefillSlug?: string }) {
       const res = await fetch(`${process.env.NEXT_PUBLIC_AUTH_SERVICE_URL}/api/check-username`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ username: normalized, organizationSlug: orgSlug }),
+        body: JSON.stringify({ username: normalized }),
       });
       if (!res.ok) {
         toast.error('Auth service error. Please try again later.', { id: 'auth-service-error' });
@@ -123,7 +82,7 @@ export default function SigninPage({ prefillSlug }: { prefillSlug?: string }) {
       }
       const data = await res.json();
       if (!data.exists) {
-        toast.error(`No account found at ${orgName}.`);
+        toast.error('No account found with that username.');
         setCheckingUsername(false);
         return;
       }
@@ -137,14 +96,8 @@ export default function SigninPage({ prefillSlug }: { prefillSlug?: string }) {
 
   const goBack = () => {
     setDirection(-1);
-    if (step === 'password') {
-      setStep('username');
-      setPassword('');
-    } else if (step === 'username') {
-      setStep('slug');
-      setUsername('');
-      setOrgName('');
-    }
+    setStep('username');
+    setPassword('');
   };
 
   const login = async () => {
@@ -167,8 +120,7 @@ export default function SigninPage({ prefillSlug }: { prefillSlug?: string }) {
         setSubmitted(false);
         return;
       }
-      await authClient.organization.setActive({ organizationSlug: orgSlug });
-      router.push(`/${orgSlug}/dashboard`);
+      router.push('/dashboard');
     } catch {
       toast.error('Auth service is unreachable. Please try again later.', { id: 'auth-unreachable' });
       setSubmitted(false);
@@ -197,9 +149,9 @@ export default function SigninPage({ prefillSlug }: { prefillSlug?: string }) {
           {/* Sliding content */}
           <div className="overflow-hidden">
             <AnimatePresence mode="wait" initial={false} custom={direction}>
-              {step === 'slug' && (
+              {step === 'username' && (
                 <motion.div
-                  key="slug"
+                  key="username"
                   custom={-direction}
                   variants={slideVariants}
                   initial="enter"
@@ -211,74 +163,10 @@ export default function SigninPage({ prefillSlug }: { prefillSlug?: string }) {
                     Welcome back
                   </h1>
                   <p className="mt-1 text-sm text-neutral-500 dark:text-neutral-400">
-                    Enter your college identifier to sign in
+                    Enter your username to sign in
                   </p>
 
                   <div className="mt-7 space-y-4">
-                    <div>
-                      <label className="mb-1.5 block text-sm font-medium text-neutral-700 dark:text-neutral-300">
-                        College identifier
-                      </label>
-                      <div className="relative">
-                        <div className="pointer-events-none absolute inset-y-0 left-3.5 flex items-center">
-                          <Building2 size={14} className="text-neutral-400 dark:text-neutral-500" />
-                        </div>
-                        <input
-                          type="text"
-                          value={orgSlug}
-                          onChange={e => setOrgSlug(e.target.value)}
-                          onKeyDown={e => {
-                            if (e.key === 'Enter' && orgSlug.trim()) {
-                              e.preventDefault();
-                              handleSlugContinue();
-                            }
-                          }}
-                          placeholder="your-college"
-                          className={`${inputClass} pl-9`}
-                          autoComplete="organization"
-                          autoFocus
-                        />
-                      </div>
-                    </div>
-
-                    <button
-                      type="button"
-                      onClick={() => handleSlugContinue()}
-                      disabled={checkingSlug || !orgSlug.trim()}
-                      className="flex w-full cursor-pointer items-center justify-center gap-2 rounded-lg bg-neutral-900 dark:bg-neutral-50 px-4 py-2.5 text-sm font-semibold text-white dark:text-neutral-900 transition-all duration-200 hover:bg-neutral-800 dark:hover:bg-neutral-200 disabled:cursor-not-allowed disabled:opacity-50"
-                    >
-                      {checkingSlug ? <><Spinner /><span>Checking…</span></> : 'Continue'}
-                    </button>
-                  </div>
-                </motion.div>
-              )}
-
-              {step === 'username' && (
-                <motion.div
-                  key="username"
-                  custom={direction}
-                  variants={slideVariants}
-                  initial="enter"
-                  animate="center"
-                  exit="exit"
-                  transition={{ duration: 0.32, ease: 'easeOut' }}
-                >
-                  <h1 className="text-2xl font-semibold tracking-tight text-neutral-900 dark:text-neutral-50">
-                    {orgName || orgSlug}
-                  </h1>
-                  <p className="mt-1 text-sm text-neutral-500 dark:text-neutral-400">
-                    Enter your username to continue
-                  </p>
-                  <button
-                    type="button"
-                    onClick={goBack}
-                    className="mt-2 inline-flex cursor-pointer items-center gap-1.5 text-sm text-neutral-400 transition-colors hover:text-neutral-700 dark:text-neutral-500 dark:hover:text-neutral-300"
-                  >
-                    <ArrowLeft size={13} />
-                    Change college
-                  </button>
-
-                  <div className="mt-6 space-y-4">
                     <div>
                       <label className="mb-1.5 block text-sm font-medium text-neutral-700 dark:text-neutral-300">
                         Username

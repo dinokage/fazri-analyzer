@@ -33,17 +33,19 @@ import {
   Webhook,
   Radio,
   Heart,
+  Settings,
 } from "lucide-react"
 import { useActiveAlertCount } from "@/hooks/useAlerts"
-
+import { OrgSwitcher } from "@/components/layout/OrgSwitcher"
 import { Button } from "@/components/ui/button"
 
-export function SidebarLayout({ children, orgSlug }: { children: React.ReactNode; orgSlug?: string }) {
+const BASE = "/dashboard"
+
+export function SidebarLayout({ children }: { children: React.ReactNode }) {
   const pathname = usePathname()
   const router = useRouter()
   const { data: session, isPending } = useSession()
   const isActive = (href: string) => pathname === href
-  const basePath = orgSlug ? `/${orgSlug}/dashboard` : "/dashboard"
 
   const user = session?.user as Record<string, unknown> | undefined
   const isSuperAdmin = user?.role === "SUPER_ADMIN"
@@ -56,196 +58,145 @@ export function SidebarLayout({ children, orgSlug }: { children: React.ReactNode
     }
   }, [isPending, session, router])
 
-  // Get active alert count for badge
   const { count: activeAlertCount } = useActiveAlertCount(30000)
 
   return (
     <SidebarProvider>
       <div className="flex h-screen w-full overflow-hidden">
         <Sidebar className="flex flex-col overflow-hidden">
-          <SidebarHeader className="h-16 flex items-center justify-center flex-shrink-0">
-            <div className="flex items-center gap-2 px-4">
+          <SidebarHeader className="flex-shrink-0 px-3 pt-3 pb-2">
+            <div className="flex items-center gap-2 px-1 mb-2">
               <span className="font-bold text-lg truncate">Fazri Analyzer</span>
             </div>
+            <OrgSwitcher />
           </SidebarHeader>
 
           <SidebarContent className="flex-1 overflow-y-auto overflow-x-hidden">
             {isAuthenticated && (
               <>
-                {isSuperAdmin && (
-                  <>
-                    <SidebarGroup>
-                      <SidebarGroupLabel>Management Console</SidebarGroupLabel>
-                      <SidebarMenu>
-                        <SidebarMenuItem>
-                          <SidebarMenuButton
-                            asChild
-                            data-active={isActive(basePath)}
-                          >
-                            <Link
-                              href={basePath}
-                              className="flex items-center gap-3"
-                            >
-                              <LayoutDashboard className="h-5 w-5 flex-shrink-0" />
-                              <span className="truncate">Dashboard Overview</span>
-                            </Link>
-                          </SidebarMenuButton>
-                        </SidebarMenuItem>
-                        <SidebarMenuItem>
-                          <SidebarMenuButton
-                            asChild
-                            data-active={isActive(`${basePath}/anomalies`)}
-                          >
-                            <Link
-                              href={`${basePath}/anomalies`}
-                              className="flex items-center gap-3"
-                            >
-                              <Bug className="h-5 w-5 flex-shrink-0" />
-                              <span className="truncate">Anomalies Detection</span>
-                            </Link>
-                          </SidebarMenuButton>
-                        </SidebarMenuItem>
-                        <SidebarMenuItem>
-                          <SidebarMenuButton
-                            asChild
-                            data-active={isActive(`${basePath}/zones`)}
-                          >
-                            <Link
-                              href={`${basePath}/zones`}
-                              className="flex items-center gap-3"
-                            >
-                              <Activity className="h-5 w-5 flex-shrink-0" />
-                              <span className="truncate">Zones</span>
-                            </Link>
-                          </SidebarMenuButton>
-                        </SidebarMenuItem>
-                        <SidebarMenuItem>
-                          <SidebarMenuButton
-                            asChild
-                            data-active={isActive(`${basePath}/events`)}
-                          >
-                            <Link
-                              href={`${basePath}/events`}
-                              className="flex items-center gap-3"
-                            >
-                              <Radio className="h-5 w-5 flex-shrink-0" />
-                              <span className="truncate">Sensor Events</span>
-                            </Link>
-                          </SidebarMenuButton>
-                        </SidebarMenuItem>
-                        <SidebarMenuItem>
-                          <SidebarMenuButton
-                            asChild
-                            data-active={isActive(`${basePath}/alerts`) || pathname.startsWith(`${basePath}/alerts/`)}
-                          >
-                            <Link
-                              href={`${basePath}/alerts`}
-                              className="flex items-center gap-3"
-                            >
-                              <ShieldAlert className="h-5 w-5 flex-shrink-0" />
-                              <span className="truncate">Security Alerts</span>
-                              {activeAlertCount > 0 && (
-                                <span className="ml-auto flex h-5 min-w-5 items-center justify-center rounded-full bg-red-600 px-1.5 text-xs font-medium text-white">
-                                  {activeAlertCount > 99 ? '99+' : activeAlertCount}
-                                </span>
-                              )}
-                            </Link>
-                          </SidebarMenuButton>
-                        </SidebarMenuItem>
-                        <SidebarMenuItem>
-                          <SidebarMenuButton
-                            asChild
-                            data-active={isActive(`${basePath}/chat`)}
-                          >
-                            <Link
-                              href={`${basePath}/chat`}
-                              className="flex items-center gap-3"
-                            >
-                              <Bot className="h-5 w-5 flex-shrink-0" />
-                              <span className="truncate">AI Assistant</span>
-                            </Link>
-                          </SidebarMenuButton>
-                        </SidebarMenuItem>
-                        <SidebarMenuItem>
-                          <SidebarMenuButton
-                            asChild
-                            data-active={isActive(`${basePath}/face-enrollment`)}
-                          >
-                            <Link
-                              href={`${basePath}/face-enrollment`}
-                              className="flex items-center gap-3"
-                            >
-                              <UserCheck className="h-5 w-5 flex-shrink-0" />
-                              <span className="truncate">Face Enrollment</span>
-                            </Link>
-                          </SidebarMenuButton>
-                        </SidebarMenuItem>
-                        <SidebarMenuItem>
-                          <SidebarMenuButton
-                            asChild
-                            data-active={isActive(`${basePath}/cameras`) || pathname.startsWith(`${basePath}/cameras`)}
-                          >
-                            <Link
-                              href={`${basePath}/cameras`}
-                              className="flex items-center gap-3"
-                            >
-                              <Camera className="h-5 w-5 flex-shrink-0" />
-                              <span className="truncate">Camera Streams</span>
-                            </Link>
-                          </SidebarMenuButton>
-                        </SidebarMenuItem>
-                        <SidebarMenuItem>
-                          <SidebarMenuButton
-                            asChild
-                            data-active={isActive(`${basePath}/webhooks`)}
-                          >
-                            <Link
-                              href={`${basePath}/webhooks`}
-                              className="flex items-center gap-3"
-                            >
-                              <Webhook className="h-5 w-5 flex-shrink-0" />
-                              <span className="truncate">Webhooks</span>
-                            </Link>
-                          </SidebarMenuButton>
-                        </SidebarMenuItem>
-                        <SidebarMenuItem>
-                          <SidebarMenuButton
-                            asChild
-                            data-active={isActive(`${basePath}/system`)}
-                          >
-                            <Link
-                              href={`${basePath}/system`}
-                              className="flex items-center gap-3"
-                            >
-                              <Heart className="h-5 w-5 flex-shrink-0" />
-                              <span className="truncate">System Health</span>
-                            </Link>
-                          </SidebarMenuButton>
-                        </SidebarMenuItem>
-                      </SidebarMenu>
-                    </SidebarGroup>
+                <SidebarGroup>
+                  <SidebarGroupLabel>Management Console</SidebarGroupLabel>
+                  <SidebarMenu>
+                    <SidebarMenuItem>
+                      <SidebarMenuButton asChild data-active={isActive(BASE)}>
+                        <Link href={BASE} className="flex items-center gap-3">
+                          <LayoutDashboard className="h-5 w-5 flex-shrink-0" />
+                          <span className="truncate">Dashboard Overview</span>
+                        </Link>
+                      </SidebarMenuButton>
+                    </SidebarMenuItem>
+                    <SidebarMenuItem>
+                      <SidebarMenuButton asChild data-active={isActive(`${BASE}/anomalies`)}>
+                        <Link href={`${BASE}/anomalies`} className="flex items-center gap-3">
+                          <Bug className="h-5 w-5 flex-shrink-0" />
+                          <span className="truncate">Anomalies Detection</span>
+                        </Link>
+                      </SidebarMenuButton>
+                    </SidebarMenuItem>
+                    <SidebarMenuItem>
+                      <SidebarMenuButton asChild data-active={isActive(`${BASE}/zones`)}>
+                        <Link href={`${BASE}/zones`} className="flex items-center gap-3">
+                          <Activity className="h-5 w-5 flex-shrink-0" />
+                          <span className="truncate">Zones</span>
+                        </Link>
+                      </SidebarMenuButton>
+                    </SidebarMenuItem>
+                    <SidebarMenuItem>
+                      <SidebarMenuButton asChild data-active={isActive(`${BASE}/events`)}>
+                        <Link href={`${BASE}/events`} className="flex items-center gap-3">
+                          <Radio className="h-5 w-5 flex-shrink-0" />
+                          <span className="truncate">Sensor Events</span>
+                        </Link>
+                      </SidebarMenuButton>
+                    </SidebarMenuItem>
+                    <SidebarMenuItem>
+                      <SidebarMenuButton
+                        asChild
+                        data-active={isActive(`${BASE}/alerts`) || pathname.startsWith(`${BASE}/alerts/`)}
+                      >
+                        <Link href={`${BASE}/alerts`} className="flex items-center gap-3">
+                          <ShieldAlert className="h-5 w-5 flex-shrink-0" />
+                          <span className="truncate">Security Alerts</span>
+                          {activeAlertCount > 0 && (
+                            <span className="ml-auto flex h-5 min-w-5 items-center justify-center rounded-full bg-red-600 px-1.5 text-xs font-medium text-white">
+                              {activeAlertCount > 99 ? '99+' : activeAlertCount}
+                            </span>
+                          )}
+                        </Link>
+                      </SidebarMenuButton>
+                    </SidebarMenuItem>
+                    <SidebarMenuItem>
+                      <SidebarMenuButton asChild data-active={isActive(`${BASE}/chat`)}>
+                        <Link href={`${BASE}/chat`} className="flex items-center gap-3">
+                          <Bot className="h-5 w-5 flex-shrink-0" />
+                          <span className="truncate">AI Assistant</span>
+                        </Link>
+                      </SidebarMenuButton>
+                    </SidebarMenuItem>
+                    <SidebarMenuItem>
+                      <SidebarMenuButton asChild data-active={isActive(`${BASE}/face-enrollment`)}>
+                        <Link href={`${BASE}/face-enrollment`} className="flex items-center gap-3">
+                          <UserCheck className="h-5 w-5 flex-shrink-0" />
+                          <span className="truncate">Face Enrollment</span>
+                        </Link>
+                      </SidebarMenuButton>
+                    </SidebarMenuItem>
+                    <SidebarMenuItem>
+                      <SidebarMenuButton
+                        asChild
+                        data-active={isActive(`${BASE}/cameras`) || pathname.startsWith(`${BASE}/cameras`)}
+                      >
+                        <Link href={`${BASE}/cameras`} className="flex items-center gap-3">
+                          <Camera className="h-5 w-5 flex-shrink-0" />
+                          <span className="truncate">Camera Streams</span>
+                        </Link>
+                      </SidebarMenuButton>
+                    </SidebarMenuItem>
+                    <SidebarMenuItem>
+                      <SidebarMenuButton asChild data-active={isActive(`${BASE}/webhooks`)}>
+                        <Link href={`${BASE}/webhooks`} className="flex items-center gap-3">
+                          <Webhook className="h-5 w-5 flex-shrink-0" />
+                          <span className="truncate">Webhooks</span>
+                        </Link>
+                      </SidebarMenuButton>
+                    </SidebarMenuItem>
+                    <SidebarMenuItem>
+                      <SidebarMenuButton asChild data-active={isActive(`${BASE}/system`)}>
+                        <Link href={`${BASE}/system`} className="flex items-center gap-3">
+                          <Heart className="h-5 w-5 flex-shrink-0" />
+                          <span className="truncate">System Health</span>
+                        </Link>
+                      </SidebarMenuButton>
+                    </SidebarMenuItem>
+                  </SidebarMenu>
+                </SidebarGroup>
 
-                    <SidebarSeparator />
-                  </>
-                )}
+                <SidebarSeparator />
 
                 <SidebarGroup>
                   <SidebarGroupLabel>Account</SidebarGroupLabel>
                   <SidebarMenu>
                     <SidebarMenuItem>
-                      <SidebarMenuButton
-                        asChild
-                        data-active={isActive(`${basePath}/profile`)}
-                      >
-                        <Link
-                          href={`${basePath}/profile`}
-                          className="flex items-center gap-3"
-                        >
+                      <SidebarMenuButton asChild data-active={isActive(`${BASE}/profile`)}>
+                        <Link href={`${BASE}/profile`} className="flex items-center gap-3">
                           <User className="h-5 w-5 flex-shrink-0" />
                           <span className="truncate">My Profile</span>
                         </Link>
                       </SidebarMenuButton>
                     </SidebarMenuItem>
+                    {isSuperAdmin && (
+                      <SidebarMenuItem>
+                        <SidebarMenuButton
+                          asChild
+                          data-active={pathname.startsWith('/admin')}
+                        >
+                          <Link href="/admin" className="flex items-center gap-3">
+                            <Settings className="h-5 w-5 flex-shrink-0" />
+                            <span className="truncate">Admin Console</span>
+                          </Link>
+                        </SidebarMenuButton>
+                      </SidebarMenuItem>
+                    )}
                   </SidebarMenu>
                 </SidebarGroup>
               </>
@@ -279,7 +230,7 @@ export function SidebarLayout({ children, orgSlug }: { children: React.ReactNode
               )
             )}
             <div className="text-xs text-sidebar-foreground/70 pt-3 border-t border-border/70 -mx-4 px-4 truncate">
-              &copy; {new Date().getFullYear()} Fazri Analyzer | IIT Bombay
+              &copy; {new Date().getFullYear()} Fazri Analyzer
             </div>
           </SidebarFooter>
         </Sidebar>
@@ -290,16 +241,16 @@ export function SidebarLayout({ children, orgSlug }: { children: React.ReactNode
               <div className="flex items-center gap-3 min-w-0 flex-1">
                 <SidebarTrigger className="flex-shrink-0" />
                 <h1 className="text-lg font-semibold text-pretty capitalize truncate">
-                  {pathname === basePath
+                  {pathname === BASE
                     ? "Dashboard Overview"
                     : pathname.split("/").pop()?.replace(/-/g, " ") ||
                       "Application Overview"}
                 </h1>
               </div>
               {isLoading ? (
-                  <div className="h-8 w-8 rounded-full animate-pulse bg-muted flex-shrink-0" />
+                <div className="h-8 w-8 rounded-full animate-pulse bg-muted flex-shrink-0" />
               ) : isAuthenticated ? (
-                  <div className="flex-shrink-0"><UserNav /></div>
+                <div className="flex-shrink-0"><UserNav /></div>
               ) : null}
             </div>
           </header>

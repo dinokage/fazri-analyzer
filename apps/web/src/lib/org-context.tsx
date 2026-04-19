@@ -15,20 +15,15 @@ const OrgCtx = createContext<OrgContextValue>({
   isLoaded: false,
 });
 
-export function OrgProvider({
-  children,
-  orgSlug,
-}: {
-  children: React.ReactNode;
-  orgSlug: string;
-}) {
+export function OrgProvider({ children }: { children: React.ReactNode }) {
   const { data: session, isPending } = useSession();
+  const user = session?.user as Record<string, unknown> | undefined;
 
   return (
     <OrgCtx.Provider
       value={{
-        organizationId: (session?.user as any)?.organizationId ?? null,
-        organizationSlug: orgSlug,
+        organizationId: (user?.organizationId as string) ?? null,
+        organizationSlug: (user?.organizationSlug as string) ?? null,
         isLoaded: !isPending,
       }}
     >

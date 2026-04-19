@@ -1,6 +1,6 @@
 import { betterAuth } from "better-auth";
 import { prismaAdapter } from "better-auth/adapters/prisma";
-import { username, jwt, organization } from "better-auth/plugins";
+import { username, jwt, organization, admin } from "better-auth/plugins";
 import { prisma } from "@fazri/db";
 import { ac, ownerRole, adminRole, memberRole } from "./permissions";
 import bcrypt from "bcryptjs";
@@ -13,6 +13,25 @@ export const auth = betterAuth({
     password: {
       hash: async (password) => bcrypt.hash(password, 10),
       verify: async ({ hash, password }) => bcrypt.compare(password, hash),
+    },
+  },
+
+  databaseHooks: {
+    session: {
+      create: {
+        before: async (session) => {
+          const member = await prisma.member.findFirst({
+            where: { userId: session.userId },
+            orderBy: { createdAt: "asc" },
+          });
+          return {
+            data: {
+              ...session,
+              activeOrganizationId: member?.organizationId ?? null,
+            },
+          };
+        },
+      },
     },
   },
 
@@ -60,6 +79,10 @@ export const auth = betterAuth({
           `[FAZRI] Invite ${data.email} to org ${data.organization.name} as ${data.role}`
         );
       },
+    }),
+    admin({
+      adminRoles: ["SUPER_ADMIN"],
+      defaultRole: "STUDENT",
     }),
   ],
 

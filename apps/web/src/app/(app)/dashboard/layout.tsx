@@ -1,21 +1,26 @@
 import type React from "react";
+import { headers } from "next/headers";
+import { redirect } from "next/navigation";
 import { SidebarLayout } from "@/components/sidebar-layout";
 import { ErrorBoundary } from "@/components/ErrorBoundary";
 import { AlertNotificationListener } from "@/components/alert-notification-listener";
 import { OrgProvider } from "@/lib/org-context";
+import { getAuthSession } from "@/lib/auth-server";
 
-export default async function OrgDashboardLayout({
+export default async function DashboardLayout({
   children,
-  params,
 }: {
   children: React.ReactNode;
-  params: Promise<{ orgSlug: string }>;
 }) {
-  const { orgSlug } = await params;
+  const session = await getAuthSession(await headers());
+
+  if (!session) {
+    redirect("/auth");
+  }
 
   return (
-    <OrgProvider orgSlug={orgSlug}>
-      <SidebarLayout orgSlug={orgSlug}>
+    <OrgProvider>
+      <SidebarLayout>
         <AlertNotificationListener enabled pollInterval={10000} />
         <ErrorBoundary>{children}</ErrorBoundary>
       </SidebarLayout>

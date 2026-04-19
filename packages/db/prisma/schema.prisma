@@ -22,6 +22,9 @@ model user {
   password      String
   image         String?
   username      String       @unique
+  banned        Boolean?     @default(false)
+  banReason     String?
+  banExpires    DateTime?
   createdAt     DateTime     @default(now())
   updatedAt     DateTime     @default(now()) @updatedAt
   emailVerified Boolean      @default(false)
@@ -41,6 +44,7 @@ model session {
   ipAddress            String?
   userAgent            String?
   activeOrganizationId String?
+  impersonatedBy       String?
   user                 user     @relation(fields: [userId], references: [id], onDelete: Cascade, map: "Session_userId_fkey")
 }
 

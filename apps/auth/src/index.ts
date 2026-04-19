@@ -29,38 +29,8 @@ app.get("/health", (_req, res) => {
   res.json({ status: "ok", timestamp: new Date().toISOString() });
 });
 
-// ── Org slug validation (unauthenticated — used by login step 1) ──────────
-app.post("/api/check-org-slug", async (req, res) => {
-  const { slug } = req.body as { slug: string };
-  if (!slug?.trim()) {
-    res.status(400).json({ error: "slug required" });
-    return;
-  }
-
-  try {
-    const org = await prisma.organization.findUnique({
-      where: { slug: slug.trim().toLowerCase() },
-      select: { name: true },
-    });
-
-    if (!org) {
-      res.json({ exists: false, name: null });
-      return;
-    }
-
-    // SECURITY: Do NOT return the internal org `id` to unauthenticated callers
-    res.json({ exists: true, name: org.name });
-  } catch (err) {
-    console.error("check-org-slug db error:", err);
-    res.status(500).json({ error: "internal error" });
-  }
-});
-
 app.post("/api/check-username", async (req, res) => {
-  const { username, organizationSlug } = req.body as {
-    username: string;
-    organizationSlug?: string;
-  };
+  const { username } = req.body as { username: string };
   if (!username || typeof username !== "string") {
     res.status(400).json({ exists: false });
     return;
@@ -70,31 +40,7 @@ app.post("/api/check-username", async (req, res) => {
       where: { username: { equals: username.trim(), mode: "insensitive" } },
       select: { id: true },
     });
-
-    if (!user) {
-      res.json({ exists: false });
-      return;
-    }
-
-    // If org context provided, verify user is a member of that org
-    if (organizationSlug) {
-      const org = await prisma.organization.findUnique({
-        where: { slug: organizationSlug.trim().toLowerCase() },
-        select: { id: true },
-      });
-      if (org) {
-        const membership = await prisma.member.findFirst({
-          where: { userId: user.id, organizationId: org.id },
-        });
-        if (!membership) {
-          // SECURITY: Return same error as "user not found" to prevent enumeration
-          res.json({ exists: false });
-          return;
-        }
-      }
-    }
-
-    res.json({ exists: true });
+    res.json({ exists: !!user });
   } catch (err) {
     console.error("check-username db error:", err);
     res.status(500).json({ exists: false });

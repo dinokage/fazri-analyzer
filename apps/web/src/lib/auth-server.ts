@@ -1,7 +1,4 @@
-/**
- * Server-side auth helper for Next.js Server Components.
- * Calls the auth microservice to verify the session cookie.
- */
+import { cache } from "react";
 
 export type FazriUser = {
   id: string;
@@ -17,6 +14,8 @@ export type FazriUser = {
   department?: string | null;
   card_id?: string | null;
   device_hash?: string | null;
+  organizationId?: string | null;
+  organizationSlug?: string | null;
 };
 
 export type FazriSession = {
@@ -26,6 +25,7 @@ export type FazriSession = {
     token: string;
     expiresAt: string;
     userId: string;
+    activeOrganizationId?: string | null;
   };
 };
 
@@ -34,41 +34,33 @@ const AUTH_INTERNAL_URL =
 
 export async function getAuthToken(headers: Headers): Promise<string | null> {
   try {
-    const response = await fetch(
-      `${AUTH_INTERNAL_URL}/api/auth/token`,
-      {
-        headers: {
-          cookie: headers.get("cookie") ?? "",
-        },
-        cache: "no-store",
-      }
-    );
-    if (!response.ok) return null;
-    const data = await response.json();
-    return data?.token ?? null;
+    let jwt: string | null = null;
+    const res = await fetch(`${AUTH_INTERNAL_URL}/api/auth/get-session`, {
+      headers: { cookie: headers.get("cookie") ?? "" },
+      cache: "no-store",
+    });
+    if (res.ok) {
+      jwt = res.headers.get("set-auth-jwt");
+    }
+    return jwt;
   } catch {
     return null;
   }
 }
 
-export async function getAuthSession(
-  headers: Headers
-): Promise<FazriSession | null> {
+// cache() deduplicates calls within the same server render tree —
+// multiple server components calling this share a single fetch.
+export const getAuthSession = cache(async (incomingHeaders: Headers): Promise<FazriSession | null> => {
   try {
-    const response = await fetch(
-      `${AUTH_INTERNAL_URL}/api/auth/get-session`,
-      {
-        headers: {
-          cookie: headers.get("cookie") ?? "",
-        },
-        cache: "no-store",
-      }
-    );
-    if (!response.ok) return null;
-    const data = await response.json();
+    const res = await fetch(`${AUTH_INTERNAL_URL}/api/auth/get-session`, {
+      headers: { cookie: incomingHeaders.get("cookie") ?? "" },
+      cache: "no-store",
+    });
+    if (!res.ok) return null;
+    const data = await res.json();
     if (!data?.user) return null;
     return data as FazriSession;
   } catch {
     return null;
   }
-}
+});
