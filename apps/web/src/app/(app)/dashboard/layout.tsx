@@ -14,7 +14,7 @@ export default async function DashboardLayout({
 }) {
   const session = await getAuthSession(await headers());
 
-  if (!session) {
+  if (!session && process.env.NODE_ENV === "production") {
     redirect("/auth");
   }
 
