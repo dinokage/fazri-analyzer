@@ -5,8 +5,6 @@ import { prisma } from "@fazri/db";
 import { ac, ownerRole, adminRole, memberRole, adminPluginAc, superAdminPluginRole, regularPluginRole } from "./permissions";
 import bcrypt from "bcryptjs";
 
-const isProd = process.env.NODE_ENV === "production";
-
 export const auth = betterAuth({
   database: prismaAdapter(prisma, { provider: "postgresql" }),
 

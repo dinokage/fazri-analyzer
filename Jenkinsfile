@@ -358,6 +358,7 @@ pipeline {
                                 -e BETTER_AUTH_SECRET="${BETTER_AUTH_SECRET}" \
                                 -e TRUSTED_ORIGINS="${AUTH_TRUSTED_ORIGINS}" \
                                 -e AUTH_SERVICE_URL="${AUTH_SERVICE_URL}" \
+                                -e NODE_ENV=production \
                                 -e PORT=4000 \
                                 -e SENTRY_DSN="${AUTH_SENTRY_DSN}" \
                                 -e SENTRY_ENVIRONMENT=${DEPLOY_ENV} \
