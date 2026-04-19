@@ -2,7 +2,7 @@ import { betterAuth } from "better-auth";
 import { prismaAdapter } from "better-auth/adapters/prisma";
 import { username, jwt, organization, admin } from "better-auth/plugins";
 import { prisma } from "@fazri/db";
-import { ac, ownerRole, adminRole, memberRole } from "./permissions";
+import { ac, ownerRole, adminRole, memberRole, adminPluginAc, superAdminPluginRole, regularPluginRole } from "./permissions";
 import bcrypt from "bcryptjs";
 
 export const auth = betterAuth({
@@ -81,6 +81,13 @@ export const auth = betterAuth({
       },
     }),
     admin({
+      ac: adminPluginAc,
+      roles: {
+        SUPER_ADMIN: superAdminPluginRole,
+        STUDENT: regularPluginRole,
+        STAFF: regularPluginRole,
+        FACULTY: regularPluginRole,
+      },
       adminRoles: ["SUPER_ADMIN"],
       defaultRole: "STUDENT",
     }),

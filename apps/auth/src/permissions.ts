@@ -9,6 +9,10 @@ import {
   adminAc,
   memberAc,
 } from "better-auth/plugins/organization/access";
+import {
+  defaultStatements as adminDefaultStatements,
+  adminAc as adminPluginDefaults,
+} from "better-auth/plugins/admin/access";
 
 /**
  * FAZRI-specific resource permissions layered on top of Better Auth's
@@ -68,3 +72,13 @@ export const memberRole = ac.newRole({
   report:  ["read"],
   sensor:  ["read"],
 });
+
+// ── Admin plugin access control ──────────────────────────────────────────────
+// Separate from the organization plugin AC above.
+const adminPluginStatement = { ...adminDefaultStatements } as const;
+export const adminPluginAc = createAccessControl(adminPluginStatement);
+
+export const superAdminPluginRole = adminPluginAc.newRole({
+  ...adminPluginDefaults.statements,
+});
+export const regularPluginRole = adminPluginAc.newRole({});
