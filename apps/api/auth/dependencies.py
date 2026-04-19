@@ -110,7 +110,10 @@ def require_admin() -> Callable:
 async def require_org_member(
     current_user: AuthenticatedUser = Depends(get_current_user),
 ) -> AuthenticatedUser:
-    """Require user to have an active organization set in their JWT."""
+    """Require user to have an active organization set in their JWT.
+    SUPER_ADMIN bypasses this check — they operate across all orgs."""
+    if current_user.role == UserRole.SUPER_ADMIN:
+        return current_user
     if not current_user.organizationId:
         raise PermissionDeniedError(
             detail="No active organization. Please select a college first."
