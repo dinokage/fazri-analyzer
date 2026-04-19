@@ -12,8 +12,12 @@ export default async function AdminLayout({
 }) {
   const session = await getAuthSession(await headers());
 
-  if (!session) redirect("/auth");
-  if (session.user.role !== "SUPER_ADMIN") redirect("/dashboard");
+  if (!session) {
+    if (process.env.NODE_ENV === "production") redirect("/auth");
+  } else if (session.user.role !== "SUPER_ADMIN") {
+    console.warn("[admin] access denied — role:", session.user.role);
+    redirect("/dashboard");
+  }
 
   return (
     <OrgProvider>
