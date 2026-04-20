@@ -11,6 +11,21 @@ COPY packages/db/package.json ./packages/db/
 # Install all workspace dependencies
 RUN pnpm install --frozen-lockfile
 
+# Patch all samlify instances for ESM named-export interop (exports.default = exports)
+RUN node -e " \
+  const fs = require('fs'); \
+  const { execSync } = require('child_process'); \
+  const files = execSync('find node_modules/.pnpm -path \"*/samlify/build/index.js\" 2>/dev/null').toString().trim().split('\n').filter(Boolean); \
+  files.forEach(f => { \
+    let c = fs.readFileSync(f, 'utf8'); \
+    if (!c.includes('exports.default = exports')) { \
+      c = c.replace('Object.defineProperty(exports, \"__esModule\", { value: true });', 'Object.defineProperty(exports, \"__esModule\", { value: true });\nexports.default = exports;'); \
+      fs.writeFileSync(f, c); \
+      console.log('Patched:', f); \
+    } \
+  }); \
+"
+
 # Copy source files
 COPY apps/auth/ ./apps/auth/
 COPY packages/db/ ./packages/db/
