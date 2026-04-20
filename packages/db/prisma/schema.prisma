@@ -134,6 +134,4 @@ model ssoProvider {
   userId         String?
   organizationId String?
   domain         String?
-  createdAt      DateTime
-  updatedAt      DateTime
 }
