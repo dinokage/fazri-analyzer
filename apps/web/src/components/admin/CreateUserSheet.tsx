@@ -74,14 +74,18 @@ export function CreateUserSheet({ open, onOpenChange, onSuccess }: Props) {
         return;
       }
       if (form.orgId && created?.user?.id) {
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      const { error: memberErr } = await (authClient.organization as any).addMember({
-          userId: created.user.id,
-          organizationId: form.orgId,
-          role: form.orgRole,
-        });
-        if (memberErr) {
-          toast.error(`User created but org assignment failed: ${memberErr.message}`);
+        const memberRes = await fetch(
+          `${process.env.NEXT_PUBLIC_AUTH_SERVICE_URL}/api/add-org-member`,
+          {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            credentials: "include",
+            body: JSON.stringify({ userId: created.user.id, organizationId: form.orgId, role: form.orgRole }),
+          }
+        );
+        if (!memberRes.ok) {
+          const body = await memberRes.json().catch(() => ({}));
+          toast.error(`User created but org assignment failed: ${(body as { error?: string }).error ?? "Unknown error"}`);
         }
       }
       toast.success(`User "${form.name}" created.`);

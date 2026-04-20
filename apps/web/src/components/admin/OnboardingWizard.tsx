@@ -135,14 +135,21 @@ export function OnboardingWizard() {
 
   const stepTwo = async () => {
     setLoading(true);
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const { error } = await (authClient.organization as any).addMember({
-      userId: state.userId,
-      organizationId: state.orgId,
-      role: state.orgRole,
-    });
+    const res = await fetch(
+      `${process.env.NEXT_PUBLIC_AUTH_SERVICE_URL}/api/add-org-member`,
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+        body: JSON.stringify({ userId: state.userId, organizationId: state.orgId, role: state.orgRole }),
+      }
+    );
     setLoading(false);
-    if (error) { toast.error(error.message ?? "Failed to assign user."); return; }
+    if (!res.ok) {
+      const body = await res.json().catch(() => ({}));
+      toast.error((body as { error?: string }).error ?? "Failed to assign user.");
+      return;
+    }
     saveProgress(3, state);
     toast.success(`${state.userName} added to ${state.orgName} as ${state.orgRole}.`);
     setStep(3);

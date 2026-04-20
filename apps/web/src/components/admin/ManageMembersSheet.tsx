@@ -103,14 +103,19 @@ export function ManageMembersSheet({ open, onOpenChange, org }: Props) {
 
   const addMember = async (userId: string, userName: string) => {
     setAdding(userId);
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const { error } = await (authClient.organization as any).addMember({
-      userId,
-      organizationId: org.id,
-      role: addRole,
-    });
-    if (error) toast.error(error.message ?? "Failed to add member.");
-    else {
+    const res = await fetch(
+      `${process.env.NEXT_PUBLIC_AUTH_SERVICE_URL}/api/add-org-member`,
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+        body: JSON.stringify({ userId, organizationId: org.id, role: addRole }),
+      }
+    );
+    if (!res.ok) {
+      const body = await res.json().catch(() => ({}));
+      toast.error((body as { error?: string }).error ?? "Failed to add member.");
+    } else {
       toast.success(`${userName} added to ${org.name}.`);
       setAddSearch("");
       invalidate();
