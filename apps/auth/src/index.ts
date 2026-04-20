@@ -178,4 +178,4 @@ Sentry.setupExpressErrorHandler(app);
 
 app.listen(PORT, () => {
   console.log(`Auth service running on port ${PORT}`);
-});
+}); 
