@@ -4,6 +4,7 @@ WORKDIR /app
 
 # Copy workspace manifests
 COPY package.json pnpm-lock.yaml pnpm-workspace.yaml ./
+COPY patches/ ./patches/
 COPY apps/auth/package.json ./apps/auth/
 COPY packages/db/package.json ./packages/db/
 
