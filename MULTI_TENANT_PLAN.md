@@ -4,7 +4,7 @@
 > identified by a URL slug (e.g. `/iit-bombay/dashboard/cameras`).
 > **Auth:** Better Auth `organization` plugin — single source of truth for tenancy.
 >
-> **Updated:** 2026-04-10 — full rewrite after commit `ae83a72` (sensor ingestion pipeline)
+> **Updated:** 2026-04-11 — paths updated for monorepo structure (PR #20: `apps/auth/` → `apps/auth/`, `apps/api/` → `apps/api/`, `src/` → `apps/web/src/`, Prisma → `packages/db/`). Original: full rewrite after commit `ae83a72` (sensor ingestion pipeline)
 > added new tables and exposed several gaps in the original plan.
 
 ---
@@ -34,7 +34,7 @@ Corrections from the original plan — do not re-introduce these mistakes during
 | Topic | Original Plan Assumed | Actual Current State |
 |---|---|---|
 | better-auth version | "upgrade to 1.5.6" | `package.json` says `^1.2.7` but lockfile resolves to `1.5.6` — just pin to `^1.5.6` in package.json, no reinstall needed |
-| Migration tooling | Alembic (`alembic revision --autogenerate`) | Plain Python SQL scripts in `backend/migrations/` — NOT Alembic. Follow `create_sensor_events.py` pattern |
+| Migration tooling | Alembic (`alembic revision --autogenerate`) | Plain Python SQL scripts in `apps/api/migrations/` — NOT Alembic. Follow `create_sensor_events.py` pattern |
 | `sensor_events` table | Not mentioned | Added in `ae83a72` — needs `organization_id` stamped at ingest time |
 | `entity_profiles` table | Not mentioned | Added in `ae83a72` — needs `organization_id` |
 | `entity_identifiers` table | Not mentioned | Added in `ae83a72` — needs `organization_id` AND unique constraint change from `(type, value)` → `(org, type, value)` |
@@ -102,7 +102,7 @@ After step 3 of login: call `authClient.organization.setActive({ organizationId 
 
 **One org per backend instance**, configured via environment variables.
 
-Rationale: Each physical campus has one Hikvision NVR and one Aruba controller. A multi-campus deployment runs separate backend instances, each configured for its own org. This avoids per-org credential management in a single process. Add `HIKVISION_ORG_ID` and `ARUBA_ORG_ID` to `backend/.env`. The pollers stamp every `SensorEventRecord` with that org ID at ingest time.
+Rationale: Each physical campus has one Hikvision NVR and one Aruba controller. A multi-campus deployment runs separate backend instances, each configured for its own org. This avoids per-org credential management in a single process. Add `HIKVISION_ORG_ID` and `ARUBA_ORG_ID` to `apps/api/.env`. The pollers stamp every `SensorEventRecord` with that org ID at ingest time.
 
 Startup guard: if `HIKVISION_ENABLED=True` but `HIKVISION_ORG_ID` is empty, log an error and refuse to start. Same for Aruba.
 
@@ -118,7 +118,7 @@ Rationale: The current global constraint prevents two different colleges from ha
 
 ### 4.1 Pin better-auth Version
 
-In `auth/package.json`, change:
+In `apps/auth/package.json`, change:
 ```json
 "better-auth": "^1.2.7"
 ```
@@ -127,17 +127,17 @@ to:
 "better-auth": "^1.5.6"
 ```
 
-Run `pnpm install` in the `auth/` workspace. No new packages needed — the organization plugin ships inside `better-auth`.
+Run `pnpm install` in the `apps/auth/` workspace. No new packages needed — the organization plugin ships inside `better-auth`.
 
 ### 4.2 Generate Prisma Schema Additions
 
-After updating `auth/src/auth.ts` (step 4.3 below), run:
+After updating `apps/auth/src/auth.ts` (step 4.3 below), run:
 ```bash
-cd auth
+cd apps/auth
 npx @better-auth/cli generate
 ```
 
-This reads `auth/src/auth.ts` and outputs the Prisma additions. Apply them to `auth/prisma/schema.prisma`. The CLI will add:
+This reads `apps/auth/src/auth.ts` and outputs the Prisma additions. Apply them to `packages/db/prisma/schema.prisma`. The CLI will add:
 
 ```prisma
 model session {
@@ -188,11 +188,11 @@ model invitation {
 }
 ```
 
-Then push to DB:
+Then push to DB (run from repo root — Prisma lives in `packages/db`):
 ```bash
-npx prisma db push
+pnpm --filter=@fazri/db db:push
 # or in production:
-npx prisma migrate dev --name add_organizations
+pnpm --filter=@fazri/db db:migrate
 ```
 
 The `user` model also needs the `member[]` and `invitation[]` relations added:
@@ -204,14 +204,14 @@ model user {
 }
 ```
 
-### 4.3 `auth/src/auth.ts` — Full Updated File
+### 4.3 `apps/auth/src/auth.ts` — Full Updated File
 
 ```typescript
 import { betterAuth } from "better-auth";
 import { prismaAdapter } from "better-auth/adapters/prisma";
 import { username, jwt, organization } from "better-auth/plugins";
 import { createAccessControl } from "better-auth/plugins/access";
-import { prisma } from "./lib/prisma";
+import { prisma } from "@fazri/db";
 import bcrypt from "bcryptjs";
 
 // Fine-grained permissions for college roles
@@ -387,7 +387,7 @@ export const auth = betterAuth({
 export type Auth = typeof auth;
 ```
 
-### 4.4 `auth/src/index.ts` — New and Updated Endpoints
+### 4.4 `apps/auth/src/index.ts` — New and Updated Endpoints
 
 Add `POST /api/check-org-slug` and update `POST /api/check-username`:
 
@@ -478,22 +478,22 @@ app.post("/api/check-username", async (req, res) => {
 
 | Table | File | Notes |
 |-------|------|-------|
-| `sensor_events` | `backend/models/db/sensor_events.py` | Stamped at ingest via `HIKVISION_ORG_ID`/`ARUBA_ORG_ID` |
-| `entity_profiles` | `backend/models/db/entity_profiles.py` | Each person belongs to one org |
-| `entity_identifiers` | `backend/models/db/entity_identifiers.py` | + unique constraint change (critical) |
-| `alerts` | `backend/models/db/alerts.py` | Core scoping |
-| `staff_profiles` | `backend/models/db/alerts.py` | Org-specific staff |
-| `camera_streams` | `backend/models/db/camera_streams.py` | Org-specific cameras |
-| `outgoing_webhooks` | `backend/models/db/webhooks.py` | Org-specific webhooks |
-| `push_subscriptions` | `backend/models/db/push_subscriptions.py` | Org-specific push |
-| `notification_queue` | `backend/models/db/alerts.py` | Org-specific notifications |
+| `sensor_events` | `apps/api/models/db/sensor_events.py` | Stamped at ingest via `HIKVISION_ORG_ID`/`ARUBA_ORG_ID` |
+| `entity_profiles` | `apps/api/models/db/entity_profiles.py` | Each person belongs to one org |
+| `entity_identifiers` | `apps/api/models/db/entity_identifiers.py` | + unique constraint change (critical) |
+| `alerts` | `apps/api/models/db/alerts.py` | Core scoping |
+| `staff_profiles` | `apps/api/models/db/alerts.py` | Org-specific staff |
+| `camera_streams` | `apps/api/models/db/camera_streams.py` | Org-specific cameras |
+| `outgoing_webhooks` | `apps/api/models/db/webhooks.py` | Org-specific webhooks |
+| `push_subscriptions` | `apps/api/models/db/push_subscriptions.py` | Org-specific push |
+| `notification_queue` | `apps/api/models/db/alerts.py` | Org-specific notifications |
 
 Tables intentionally org-agnostic (platform-level):
 - `demo_scenarios` / `demo_timeline_events` — platform-level content
 
 ### 5.2 Migration Script
 
-Create `backend/migrations/add_organization_id.py` following the plain-SQL pattern in `backend/migrations/create_sensor_events.py`:
+Create `apps/api/migrations/add_organization_id.py` following the plain-SQL pattern in `apps/api/migrations/create_sensor_events.py`:
 
 ```python
 from sqlalchemy import text
@@ -597,7 +597,7 @@ __table_args__ = (
 
 ## 6. Phase 3: Backend Enforcement
 
-### 6.1 `backend/auth/models.py`
+### 6.1 `apps/api/auth/models.py`
 
 Add org fields to `AuthenticatedUser`:
 
@@ -620,7 +620,7 @@ class AuthenticatedUser(BaseModel):
     org_role: Optional[str] = None  # "owner" | "admin" | "member"
 ```
 
-### 6.2 `backend/auth/dependencies.py`
+### 6.2 `apps/api/auth/dependencies.py`
 
 Update `get_current_user` to extract org claims:
 
@@ -694,14 +694,14 @@ current_user: AuthenticatedUser = Depends(require_org_member())
 And pass `organization_id=current_user.organization_id` to every service call.
 
 Routes to update:
-- `backend/routes/alert_routes.py`
-- `backend/routes/staff_routes.py`
-- `backend/routes/deepface_routes.py`
-- `backend/routes/webhook_routes.py`
-- `backend/routes/notification_routes.py`
-- `backend/routes/events_routes.py`
-- `backend/routes/spatial_routes.py`
-- `backend/routes/anomaly_routes.py`
+- `apps/api/routes/alert_routes.py`
+- `apps/api/routes/staff_routes.py`
+- `apps/api/routes/deepface_routes.py`
+- `apps/api/routes/webhook_routes.py`
+- `apps/api/routes/notification_routes.py`
+- `apps/api/routes/events_routes.py`
+- `apps/api/routes/spatial_routes.py`
+- `apps/api/routes/anomaly_routes.py`
 - Any entity or graph routes
 
 ### 6.4 Service-Level Changes
@@ -720,7 +720,7 @@ query = db.query(Alert).filter(
 )
 ```
 
-### 6.5 `backend/config/__init__.py`
+### 6.5 `apps/api/config/__init__.py`
 
 Add to `Settings`:
 ```python
@@ -735,8 +735,8 @@ ARUBA_ORG_ID: str = ""       # Better Auth organization.id for this Aruba instan
 ### 7.1 Directory Restructure
 
 ```
-Before:                               After:
-src/app/(app)/                        src/app/(app)/
+Before:                                    After:
+apps/web/src/app/(app)/                    apps/web/src/app/(app)/
 ├── auth/page.tsx                     ├── auth/page.tsx        (3-step form)
 └── dashboard/                        ├── org-setup/page.tsx   (NEW)
     ├── layout.tsx                    └── [orgSlug]/
@@ -758,7 +758,7 @@ src/app/(app)/                        src/app/(app)/
                                               └── zones/
 ```
 
-### 7.2 `src/lib/auth-client.ts` — Add Organization Plugin
+### 7.2 `apps/web/src/lib/auth-client.ts` — Add Organization Plugin
 
 ```typescript
 import { createAuthClient } from "better-auth/react";
@@ -783,7 +783,7 @@ export const authClient = createAuthClient({
 export const { useSession, signOut, getSession } = authClient;
 ```
 
-### 7.3 `src/lib/auth-server.ts` — Add Org Fields to `FazriUser`
+### 7.3 `apps/web/src/lib/auth-server.ts` — Add Org Fields to `FazriUser`
 
 ```typescript
 export type FazriUser = {
@@ -808,7 +808,7 @@ export type FazriUser = {
 };
 ```
 
-### 7.4 `src/app/(app)/[orgSlug]/dashboard/layout.tsx` — Org Guard
+### 7.4 `apps/web/src/app/(app)/[orgSlug]/dashboard/layout.tsx` — Org Guard
 
 ```typescript
 import { redirect } from "next/navigation";
@@ -852,7 +852,7 @@ export default async function OrgDashboardLayout({
 }
 ```
 
-### 7.5 `src/components/auth/SigninForm.tsx` — 3-Step State Machine
+### 7.5 `apps/web/src/components/auth/SigninForm.tsx` — 3-Step State Machine
 
 Replace the 2-step `usernameChecked` boolean with a 3-step state machine:
 
@@ -955,9 +955,9 @@ function goBack() {
 }
 ```
 
-**Pre-fill support:** `src/app/(app)/auth/page.tsx` reads `searchParams.college` and passes it as `prefillSlug` prop to `SigninForm`. On mount, if `prefillSlug` is set, auto-submit step 1.
+**Pre-fill support:** `apps/web/src/app/(app)/auth/page.tsx` reads `searchParams.college` and passes it as `prefillSlug` prop to `SigninForm`. On mount, if `prefillSlug` is set, auto-submit step 1.
 
-### 7.6 `src/lib/api-client.ts` — Fix 401 Redirect
+### 7.6 `apps/web/src/lib/api-client.ts` — Fix 401 Redirect
 
 The current handler does `router.push("/auth")`. Change to:
 ```typescript
@@ -968,7 +968,7 @@ const redirectUrl = orgSlug ? `/auth?college=${orgSlug}` : "/auth";
 router.push(redirectUrl);
 ```
 
-### 7.7 `src/app/(app)/org-setup/page.tsx` — No Org Membership Page
+### 7.7 `apps/web/src/app/(app)/org-setup/page.tsx` — No Org Membership Page
 
 Simple page shown when a user signs in but has no org membership. Shows "Contact your college administrator to be added to your organization."
 
@@ -978,13 +978,13 @@ Simple page shown when a user signs in but has no org membership. Shows "Contact
 
 ### 8.1 Environment Variables
 
-Add to `backend/.env`:
+Add to `apps/api/.env`:
 ```env
 HIKVISION_ORG_ID=<org_id_from_better_auth_organization_table>
 ARUBA_ORG_ID=<org_id_from_better_auth_organization_table>
 ```
 
-### 8.2 `backend/services/event_ingestion_service.py`
+### 8.2 `apps/api/services/event_ingestion_service.py`
 
 `EventIngestionService` constructor takes `organization_id: str`:
 
@@ -1019,7 +1019,7 @@ def get_event_ingestion_service(
     return EventIngestionService(db, organization_id, resolution_svc)
 ```
 
-### 8.3 `backend/services/entity_resolution_service.py`
+### 8.3 `apps/api/services/entity_resolution_service.py`
 
 Scope all queries to org:
 
@@ -1045,7 +1045,7 @@ async def resolve(
 
 ### 8.4 Pollers
 
-In `backend/services/hikvision_poller.py` and `backend/services/aruba_poller.py`:
+In `apps/api/services/hikvision_poller.py` and `apps/api/services/aruba_poller.py`:
 
 ```python
 from config import settings
@@ -1063,7 +1063,7 @@ svc = get_event_ingestion_service(db, organization_id=settings.HIKVISION_ORG_ID)
 
 ### 9.1 Namespace Helpers
 
-Add to `backend/services/deepface_client.py` (or a new `backend/services/namespace.py`):
+Add to `apps/api/services/deepface_client.py` (or a new `apps/api/services/namespace.py`):
 
 ```python
 _SEPARATOR = "__"
@@ -1117,7 +1117,7 @@ f"unknown_face:{organization_id}:{tracker_id}"
 
 ### 9.6 One-Time Face Migration
 
-Create `backend/scripts/migrate_face_namespaces.py`:
+Create `apps/api/scripts/migrate_face_namespaces.py`:
 - List all registered faces from DeepFace server
 - For each label without `__`, prefix with the default org ID
 - Re-register embedding with namespaced label
@@ -1152,12 +1152,12 @@ Execute in this order — each phase must pass smoke tests before moving to the 
 
 New variables only (do not repeat existing env vars here):
 
-**`auth/.env`**
+**`apps/auth/.env`**
 ```env
 # No new variables needed — organization plugin uses existing BETTER_AUTH_SECRET + DATABASE_URL
 ```
 
-**`backend/.env`**
+**`apps/api/.env`**
 ```env
 # Organization ID for each sensor connector instance
 # Get these IDs from the organization table after creating orgs via Better Auth
@@ -1216,51 +1216,51 @@ ARUBA_ORG_ID=
 ### Files to Create (NEW)
 | File | Purpose |
 |------|---------|
-| `backend/migrations/add_organization_id.py` | Plain SQL migration for org_id columns |
-| `backend/scripts/migrate_face_namespaces.py` | One-time DeepFace label migration |
-| `src/app/(app)/[orgSlug]/dashboard/layout.tsx` | Org-guard server component |
-| `src/app/(app)/org-setup/page.tsx` | No-org-membership page |
-| `src/lib/org-context.tsx` | OrgProvider React context (optional) |
+| `apps/api/migrations/add_organization_id.py` | Plain SQL migration for org_id columns |
+| `apps/api/scripts/migrate_face_namespaces.py` | One-time DeepFace label migration |
+| `apps/web/src/app/(app)/[orgSlug]/dashboard/layout.tsx` | Org-guard server component |
+| `apps/web/src/app/(app)/org-setup/page.tsx` | No-org-membership page |
+| `apps/web/src/lib/org-context.tsx` | OrgProvider React context (optional) |
 
 ### Files to Modify
 | File | Changes |
 |------|---------|
-| `auth/package.json` | Pin `better-auth` to `^1.5.6` |
-| `auth/prisma/schema.prisma` | Add org tables + `activeOrganizationId` on session (via CLI) |
-| `auth/src/auth.ts` | Add `organization()` plugin, async `definePayload` |
-| `auth/src/index.ts` | Add `check-org-slug` endpoint, update `check-username` |
-| `backend/auth/models.py` | Add org fields to `AuthenticatedUser` |
-| `backend/auth/dependencies.py` | Add `require_org_member()`, `require_org_admin()` |
-| `backend/config/__init__.py` | Add `HIKVISION_ORG_ID`, `ARUBA_ORG_ID` settings |
-| `backend/models/db/sensor_events.py` | Add `organization_id` column |
-| `backend/models/db/entity_profiles.py` | Add `organization_id` column |
-| `backend/models/db/entity_identifiers.py` | Add `organization_id`, fix unique constraint |
-| `backend/models/db/alerts.py` | Add `organization_id` to alerts, staff_profiles, notification_queue |
-| `backend/models/db/camera_streams.py` | Add `organization_id` |
-| `backend/models/db/webhooks.py` | Add `organization_id` |
-| `backend/models/db/push_subscriptions.py` | Add `organization_id` |
-| `backend/services/event_ingestion_service.py` | Accept + stamp `organization_id` |
-| `backend/services/entity_resolution_service.py` | Scope queries to `organization_id` |
-| `backend/services/hikvision_poller.py` | Pass `HIKVISION_ORG_ID` to ingestion service |
-| `backend/services/aruba_poller.py` | Pass `ARUBA_ORG_ID` to ingestion service |
-| `backend/services/deepface_client.py` | Add namespace helpers |
-| `backend/routes/alert_routes.py` | `require_org_member()`, pass org_id to service |
-| `backend/routes/staff_routes.py` | `require_org_member()`, pass org_id to service |
-| `backend/routes/deepface_routes.py` | `require_org_member()`, namespaced face labels |
-| `backend/routes/events_routes.py` | `require_org_member()`, pass org_id to service |
-| `backend/routes/spatial_routes.py` | `require_org_member()`, pass org_id to service |
-| `backend/routes/webhook_routes.py` | `require_org_member()`, pass org_id to service |
-| `backend/routes/notification_routes.py` | `require_org_member()`, pass org_id to service |
-| `backend/routes/anomaly_routes.py` | `require_org_member()`, pass org_id to service |
-| `src/lib/auth-client.ts` | Add `organizationClient()` plugin |
-| `src/lib/auth-server.ts` | Add org fields to `FazriUser` type |
-| `src/lib/api-client.ts` | Fix 401 redirect to include `?college=<slug>` |
-| `src/components/auth/SigninForm.tsx` | 3-step state machine |
-| `src/app/(app)/auth/page.tsx` | Pass `prefillSlug` from `?college=` param |
-| `src/app/(app)/dashboard/layout.tsx` | Delete — replaced by `[orgSlug]/dashboard/layout.tsx` |
+| `apps/auth/package.json` | Pin `better-auth` to `^1.5.6` |
+| `packages/db/prisma/schema.prisma` | Add org tables + `activeOrganizationId` on session (via CLI) |
+| `apps/auth/src/auth.ts` | Add `organization()` plugin, async `definePayload` |
+| `apps/auth/src/index.ts` | Add `check-org-slug` endpoint, update `check-username` |
+| `apps/api/auth/models.py` | Add org fields to `AuthenticatedUser` |
+| `apps/api/auth/dependencies.py` | Add `require_org_member()`, `require_org_admin()` |
+| `apps/api/config/__init__.py` | Add `HIKVISION_ORG_ID`, `ARUBA_ORG_ID` settings |
+| `apps/api/models/db/sensor_events.py` | Add `organization_id` column |
+| `apps/api/models/db/entity_profiles.py` | Add `organization_id` column |
+| `apps/api/models/db/entity_identifiers.py` | Add `organization_id`, fix unique constraint |
+| `apps/api/models/db/alerts.py` | Add `organization_id` to alerts, staff_profiles, notification_queue |
+| `apps/api/models/db/camera_streams.py` | Add `organization_id` |
+| `apps/api/models/db/webhooks.py` | Add `organization_id` |
+| `apps/api/models/db/push_subscriptions.py` | Add `organization_id` |
+| `apps/api/services/event_ingestion_service.py` | Accept + stamp `organization_id` |
+| `apps/api/services/entity_resolution_service.py` | Scope queries to `organization_id` |
+| `apps/api/services/hikvision_poller.py` | Pass `HIKVISION_ORG_ID` to ingestion service |
+| `apps/api/services/aruba_poller.py` | Pass `ARUBA_ORG_ID` to ingestion service |
+| `apps/api/services/deepface_client.py` | Add namespace helpers |
+| `apps/api/routes/alert_routes.py` | `require_org_member()`, pass org_id to service |
+| `apps/api/routes/staff_routes.py` | `require_org_member()`, pass org_id to service |
+| `apps/api/routes/deepface_routes.py` | `require_org_member()`, namespaced face labels |
+| `apps/api/routes/events_routes.py` | `require_org_member()`, pass org_id to service |
+| `apps/api/routes/spatial_routes.py` | `require_org_member()`, pass org_id to service |
+| `apps/api/routes/webhook_routes.py` | `require_org_member()`, pass org_id to service |
+| `apps/api/routes/notification_routes.py` | `require_org_member()`, pass org_id to service |
+| `apps/api/routes/anomaly_routes.py` | `require_org_member()`, pass org_id to service |
+| `apps/web/src/lib/auth-client.ts` | Add `organizationClient()` plugin |
+| `apps/web/src/lib/auth-server.ts` | Add org fields to `FazriUser` type |
+| `apps/web/src/lib/api-client.ts` | Fix 401 redirect to include `?college=<slug>` |
+| `apps/web/src/components/auth/SigninForm.tsx` | 3-step state machine |
+| `apps/web/src/app/(app)/auth/page.tsx` | Pass `prefillSlug` from `?college=` param |
+| `apps/web/src/app/(app)/dashboard/layout.tsx` | Delete — replaced by `[orgSlug]/dashboard/layout.tsx` |
 
 ### Files to Move (directory rename)
 ```
-src/app/(app)/dashboard/  →  src/app/(app)/[orgSlug]/dashboard/
+apps/web/src/app/(app)/dashboard/  →  apps/web/src/app/(app)/[orgSlug]/dashboard/
 ```
 All page files inside `dashboard/` move as-is. Only `layout.tsx` changes content.

@@ -22,7 +22,8 @@ export function OrgSwitcher() {
 
   const switchOrg = async (orgId: string) => {
     if (orgId === organizationId) return;
-    await authClient.organization.setActive({ organizationId: orgId });
+    const { error } = await authClient.organization.setActive({ organizationId: orgId });
+    if (error) return;
     invalidateTokenCache();
     router.refresh();
   };

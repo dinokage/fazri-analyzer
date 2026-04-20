@@ -4,6 +4,7 @@ import { redirect } from "next/navigation";
 import { getAuthSession } from "@/lib/auth-server";
 import { SidebarLayout } from "@/components/sidebar-layout";
 import { OrgProvider } from "@/lib/org-context";
+import { AdminSubNav } from "@/components/admin/AdminSubNav";
 
 export default async function AdminLayout({
   children,
@@ -21,7 +22,12 @@ export default async function AdminLayout({
 
   return (
     <OrgProvider>
-      <SidebarLayout>{children}</SidebarLayout>
+      <SidebarLayout>
+        <div className="-mx-6 -mt-6 mb-6">
+          <AdminSubNav />
+        </div>
+        {children}
+      </SidebarLayout>
     </OrgProvider>
   );
 }
