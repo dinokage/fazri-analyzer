@@ -9,6 +9,7 @@
   },
   "dependencies": {
     "@better-auth/sso": "^1.6.5",
+    "samlify": "~2.10.2",
     "@fazri/db": "workspace:*",
     "@sentry/node": "^8",
     "bcryptjs": "^2.4.3",
