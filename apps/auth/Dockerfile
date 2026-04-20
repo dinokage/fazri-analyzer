@@ -2,8 +2,9 @@ FROM node:22-alpine AS builder
 RUN npm install -g pnpm
 WORKDIR /app
 
-# Copy workspace manifests
+# Copy workspace manifests + patches
 COPY package.json pnpm-lock.yaml pnpm-workspace.yaml ./
+COPY patches/ ./patches/
 COPY apps/auth/package.json ./apps/auth/
 COPY packages/db/package.json ./packages/db/
 
