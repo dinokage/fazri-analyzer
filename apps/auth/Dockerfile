@@ -2,9 +2,8 @@ FROM node:22-alpine AS builder
 RUN npm install -g pnpm
 WORKDIR /app
 
-# Copy workspace manifests + patches
+# Copy workspace manifests
 COPY package.json pnpm-lock.yaml pnpm-workspace.yaml ./
-COPY patches/ ./patches/
 COPY apps/auth/package.json ./apps/auth/
 COPY packages/db/package.json ./packages/db/
 
@@ -24,23 +23,9 @@ RUN pnpm --filter=@fazri/auth build
 # Create minimal production deployment with only auth's prod deps
 RUN pnpm deploy --filter=@fazri/auth --prod --legacy /deploy
 
-# Patch all samlify instances in /deploy AFTER pnpm deploy re-extracts from CAS
-RUN node -e " \
-  const fs = require('fs'); \
-  const { execSync } = require('child_process'); \
-  const files = execSync('find /deploy/node_modules -name \"index.js\" 2>/dev/null').toString().trim().split('\n').filter(f => f.includes('/samlify/build/index.js')); \
-  files.forEach(f => { \
-    let c = fs.readFileSync(f, 'utf8'); \
-    if (!c.includes('exports.default = exports')) { \
-      c = c.replace('Object.defineProperty(exports, \"__esModule\", { value: true });', 'Object.defineProperty(exports, \"__esModule\", { value: true });\nexports.default = exports;'); \
-      fs.writeFileSync(f, c); \
-      console.log('Patched:', f); \
-    } else { console.log('Already patched:', f); } \
-  }); \
-  if (!files.length) console.log('WARNING: no samlify/build/index.js found in /deploy'); \
-"
-
-# Copy patched prisma client into deploy
+# pnpm deploy copies @prisma/client from the store (pre-generate state).
+# prisma generate puts .prisma/ alongside @prisma/ inside the pnpm package's
+# node_modules — copy it into the same location in the deploy.
 RUN PRISMA_PKG=$(ls -d /app/node_modules/.pnpm/@prisma+client@* | head -1) && \
     DEPLOY_PKG="/deploy/node_modules/.pnpm/$(basename "$PRISMA_PKG")" && \
     cp -r "$PRISMA_PKG/node_modules/.prisma" "$DEPLOY_PKG/node_modules/.prisma"
@@ -48,6 +33,7 @@ RUN PRISMA_PKG=$(ls -d /app/node_modules/.pnpm/@prisma+client@* | head -1) && \
 FROM node:22-alpine AS runner
 WORKDIR /app
 
+# Minimal prod deps + workspace packages (includes @fazri/db with its dist/)
 COPY --from=builder /deploy ./
 
 # Compiled auth output
