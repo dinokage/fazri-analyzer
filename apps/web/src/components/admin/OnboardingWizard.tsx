@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import Link from "next/link";
 import { authClient } from "@/lib/auth-client";
 import { toast } from "sonner";
@@ -19,6 +19,8 @@ const ROLES = ["STUDENT", "STAFF", "FACULTY", "SUPER_ADMIN"] as const;
 const ORG_ROLES = ["member", "admin", "owner"] as const;
 const STEPS = ["Create Organization", "Create User", "Assign to Org", "Done"];
 
+const STORAGE_KEY = "fazri_admin_onboarding";
+
 interface State {
   orgName: string;
   orgSlug: string;
@@ -33,18 +35,60 @@ interface State {
   userId: string;
 }
 
+const DEFAULT_STATE: State = {
+  orgName: "", orgSlug: "", orgId: "",
+  userName: "", userEmail: "", userUsername: "", userPassword: "", userRole: "STAFF", userDepartment: "",
+  orgRole: "owner", userId: "",
+};
+
+function saveProgress(step: number, state: State) {
+  try {
+    const { userPassword: _, ...rest } = state;
+    localStorage.setItem(STORAGE_KEY, JSON.stringify({ step, state: rest }));
+  } catch {}
+}
+
+function clearProgress() {
+  try { localStorage.removeItem(STORAGE_KEY); } catch {}
+}
+
 export function OnboardingWizard() {
   const [step, setStep] = useState(0);
   const [loading, setLoading] = useState(false);
-  const [state, setState] = useState<State>({
-    orgName: "", orgSlug: "", orgId: "",
-    userName: "", userEmail: "", userUsername: "", userPassword: "", userRole: "STAFF", userDepartment: "",
-    orgRole: "owner", userId: "",
-  });
+  const [mounted, setMounted] = useState(false);
+  const [state, setState] = useState<State>(DEFAULT_STATE);
+
+  useEffect(() => {
+    try {
+      const raw = localStorage.getItem(STORAGE_KEY);
+      if (raw) {
+        const { step: savedStep, state: savedState } = JSON.parse(raw) as {
+          step: number;
+          state: Partial<State>;
+        };
+        if (typeof savedStep === "number" && savedStep > 0 && savedStep < 4) {
+          setStep(savedStep);
+          setState((s) => ({ ...s, ...savedState }));
+        }
+      }
+    } catch {}
+    setMounted(true);
+  }, []);
 
   const set = (key: keyof State, val: string) => setState((s) => ({ ...s, [key]: val }));
 
+  const reset = () => {
+    clearProgress();
+    setStep(0);
+    setState(DEFAULT_STATE);
+  };
+
   const stepZero = async () => {
+    // Org already created (user went Back from step 1) — just advance
+    if (state.orgId) {
+      setStep(1);
+      return;
+    }
     if (!state.orgName.trim() || !state.orgSlug.trim()) {
       toast.error("Name and slug are required.");
       return;
@@ -56,7 +100,9 @@ export function OnboardingWizard() {
     });
     setLoading(false);
     if (error) { toast.error(error.message ?? "Failed to create org."); return; }
-    set("orgId", (data as { id: string }).id);
+    const next = { ...state, orgId: (data as { id: string }).id };
+    setState(next);
+    saveProgress(1, next);
     toast.success(`Organization "${state.orgName}" created.`);
     setStep(1);
   };
@@ -80,7 +126,9 @@ export function OnboardingWizard() {
     });
     setLoading(false);
     if (error) { toast.error(error.message ?? "Failed to create user."); return; }
-    set("userId", (data as { user: { id: string } }).user.id);
+    const next = { ...state, userId: (data as { user: { id: string } }).user.id };
+    setState(next);
+    saveProgress(2, next);
     toast.success(`User "${state.userName}" created.`);
     setStep(2);
   };
@@ -95,34 +143,49 @@ export function OnboardingWizard() {
     });
     setLoading(false);
     if (error) { toast.error(error.message ?? "Failed to assign user."); return; }
+    saveProgress(3, state);
     toast.success(`${state.userName} added to ${state.orgName} as ${state.orgRole}.`);
     setStep(3);
   };
+
+  if (!mounted) {
+    return <div className="rounded-xl border bg-card h-48 animate-pulse" />;
+  }
 
   return (
     <div className="rounded-xl border bg-card">
       {/* Step indicator */}
       <div className="px-6 pt-6 pb-4 border-b">
-        <div className="flex items-center gap-2">
-          {STEPS.map((label, i) => (
-            <div key={i} className="flex items-center gap-2">
-              <div className={`flex h-7 w-7 items-center justify-center rounded-full text-xs font-medium border-2 transition-colors ${
-                i < step
-                  ? "bg-primary border-primary text-primary-foreground"
-                  : i === step
-                  ? "border-primary text-primary"
-                  : "border-muted-foreground/30 text-muted-foreground"
-              }`}>
-                {i < step ? <CheckCircle2 className="h-4 w-4" /> : i + 1}
+        <div className="flex items-center justify-between">
+          <div className="flex items-center gap-2">
+            {STEPS.map((label, i) => (
+              <div key={i} className="flex items-center gap-2">
+                <div className={`flex h-7 w-7 items-center justify-center rounded-full text-xs font-medium border-2 transition-colors ${
+                  i < step
+                    ? "bg-primary border-primary text-primary-foreground"
+                    : i === step
+                    ? "border-primary text-primary"
+                    : "border-muted-foreground/30 text-muted-foreground"
+                }`}>
+                  {i < step ? <CheckCircle2 className="h-4 w-4" /> : i + 1}
+                </div>
+                <span className={`text-xs hidden sm:block ${i === step ? "font-medium" : "text-muted-foreground"}`}>
+                  {label}
+                </span>
+                {i < STEPS.length - 1 && (
+                  <div className={`h-px flex-1 w-6 ${i < step ? "bg-primary" : "bg-border"}`} />
+                )}
               </div>
-              <span className={`text-xs hidden sm:block ${i === step ? "font-medium" : "text-muted-foreground"}`}>
-                {label}
-              </span>
-              {i < STEPS.length - 1 && (
-                <div className={`h-px flex-1 w-6 ${i < step ? "bg-primary" : "bg-border"}`} />
-              )}
-            </div>
-          ))}
+            ))}
+          </div>
+          {step > 0 && step < 3 && (
+            <button
+              onClick={reset}
+              className="text-xs text-muted-foreground hover:text-destructive transition-colors ml-4 shrink-0"
+            >
+              Start over
+            </button>
+          )}
         </div>
       </div>
 
@@ -133,16 +196,36 @@ export function OnboardingWizard() {
               <h3 className="font-medium">Create Organization</h3>
               <p className="text-sm text-muted-foreground mt-1">Add a new college or institution to the platform.</p>
             </div>
-            <Field label="Organization Name *">
-              <Input value={state.orgName} onChange={(e) => {
-                set("orgName", e.target.value);
-                set("orgSlug", e.target.value.toLowerCase().replace(/\s+/g, "-").replace(/[^a-z0-9-]/g, ""));
-              }} placeholder="KIIT University" />
-            </Field>
-            <Field label="Slug *">
-              <Input value={state.orgSlug} onChange={(e) => set("orgSlug", e.target.value.toLowerCase().replace(/[^a-z0-9-]/g, ""))} placeholder="kiit-university" />
-            </Field>
-            <Button onClick={stepZero} disabled={loading}>{loading ? "Creating…" : "Next: Create User"}</Button>
+
+            {state.orgId ? (
+              <>
+                <div className="rounded-xl border border-green-500/30 bg-green-500/5 p-4 space-y-1.5 text-sm">
+                  <div className="flex items-center gap-2 text-green-600 dark:text-green-400 font-medium mb-2">
+                    <CheckCircle2 className="h-4 w-4" />
+                    Organization already created
+                  </div>
+                  <p><span className="text-muted-foreground">Name:</span> {state.orgName}</p>
+                  <p><span className="text-muted-foreground">Slug:</span> <span className="font-mono">/{state.orgSlug}</span></p>
+                </div>
+                <div className="flex gap-2">
+                  <Button variant="outline" size="sm" onClick={reset}>Use different org</Button>
+                  <Button onClick={() => setStep(1)}>Next: Create User</Button>
+                </div>
+              </>
+            ) : (
+              <>
+                <Field label="Organization Name *">
+                  <Input value={state.orgName} onChange={(e) => {
+                    set("orgName", e.target.value);
+                    set("orgSlug", e.target.value.toLowerCase().replace(/\s+/g, "-").replace(/[^a-z0-9-]/g, ""));
+                  }} placeholder="KIIT University" />
+                </Field>
+                <Field label="Slug *">
+                  <Input value={state.orgSlug} onChange={(e) => set("orgSlug", e.target.value.toLowerCase().replace(/[^a-z0-9-]/g, ""))} placeholder="kiit-university" />
+                </Field>
+                <Button onClick={stepZero} disabled={loading}>{loading ? "Creating…" : "Next: Create User"}</Button>
+              </>
+            )}
           </div>
         )}
 
@@ -227,16 +310,7 @@ export function OnboardingWizard() {
               <Button asChild variant="outline" size="sm">
                 <Link href="/admin/users">View Users</Link>
               </Button>
-              <Button size="sm" onClick={() => {
-                setStep(0);
-                setState({
-                  orgName: "", orgSlug: "", orgId: "",
-                  userName: "", userEmail: "", userUsername: "", userPassword: "", userRole: "STAFF", userDepartment: "",
-                  orgRole: "owner", userId: "",
-                });
-              }}>
-                Onboard Another
-              </Button>
+              <Button size="sm" onClick={reset}>Onboard Another</Button>
             </div>
           </div>
         )}

@@ -19,7 +19,7 @@ model user {
   card_id       String?
   device_hash   String?      @unique(map: "User_device_hash_key")
   face_id       String?      @unique(map: "User_face_id_key")
-  password      String
+  password      String?
   image         String?
   username      String       @unique
   banned        Boolean?     @default(false)
