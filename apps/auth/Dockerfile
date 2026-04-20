@@ -2,29 +2,18 @@ FROM node:22-alpine AS builder
 RUN npm install -g pnpm
 WORKDIR /app
 
-# Copy everything needed for install + build
+# Copy workspace manifests + patches
 COPY package.json pnpm-lock.yaml pnpm-workspace.yaml ./
 COPY patches/ ./patches/
-COPY apps/auth/ ./apps/auth/
-COPY packages/db/ ./packages/db/
+COPY apps/auth/package.json ./apps/auth/
+COPY packages/db/package.json ./packages/db/
 
-# Install all workspace dependencies (patches applied here)
+# Install all workspace dependencies
 RUN pnpm install --frozen-lockfile
 
-# Patch all samlify instances for ESM named-export interop
-RUN node -e " \
-  const fs = require('fs'); \
-  const { execSync } = require('child_process'); \
-  const files = execSync('find node_modules/.pnpm -path \"*/samlify/build/index.js\" 2>/dev/null').toString().trim().split('\n').filter(Boolean); \
-  files.forEach(f => { \
-    let c = fs.readFileSync(f, 'utf8'); \
-    if (!c.includes('exports.default = exports')) { \
-      c = c.replace('Object.defineProperty(exports, \"__esModule\", { value: true });', 'Object.defineProperty(exports, \"__esModule\", { value: true });\nexports.default = exports;'); \
-      fs.writeFileSync(f, c); \
-      console.log('Patched:', f); \
-    } \
-  }); \
-"
+# Copy source files
+COPY apps/auth/ ./apps/auth/
+COPY packages/db/ ./packages/db/
 
 # Build @fazri/db (prisma generate + tsc → dist/)
 RUN pnpm --filter=@fazri/db build
@@ -32,12 +21,34 @@ RUN pnpm --filter=@fazri/db build
 # Build auth (tsc → dist/)
 RUN pnpm --filter=@fazri/auth build
 
+# Create minimal production deployment with only auth's prod deps
+RUN pnpm deploy --filter=@fazri/auth --prod --legacy /deploy
+
+# Patch all samlify instances in /deploy AFTER pnpm deploy re-extracts from CAS
+RUN node -e " \
+  const fs = require('fs'); \
+  const { execSync } = require('child_process'); \
+  const files = execSync('find /deploy/node_modules -name \"index.js\" 2>/dev/null').toString().trim().split('\n').filter(f => f.includes('/samlify/build/index.js')); \
+  files.forEach(f => { \
+    let c = fs.readFileSync(f, 'utf8'); \
+    if (!c.includes('exports.default = exports')) { \
+      c = c.replace('Object.defineProperty(exports, \"__esModule\", { value: true });', 'Object.defineProperty(exports, \"__esModule\", { value: true });\nexports.default = exports;'); \
+      fs.writeFileSync(f, c); \
+      console.log('Patched:', f); \
+    } else { console.log('Already patched:', f); } \
+  }); \
+  if (!files.length) console.log('WARNING: no samlify/build/index.js found in /deploy'); \
+"
+
+# Copy patched prisma client into deploy
+RUN PRISMA_PKG=$(ls -d /app/node_modules/.pnpm/@prisma+client@* | head -1) && \
+    DEPLOY_PKG="/deploy/node_modules/.pnpm/$(basename "$PRISMA_PKG")" && \
+    cp -r "$PRISMA_PKG/node_modules/.prisma" "$DEPLOY_PKG/node_modules/.prisma"
+
 FROM node:22-alpine AS runner
 WORKDIR /app
 
-# Copy the full patched node_modules directly (avoids pnpm deploy CAS re-extraction)
-COPY --from=builder /app/node_modules ./node_modules
-COPY --from=builder /app/packages/db ./packages/db
+COPY --from=builder /deploy ./
 
 # Compiled auth output
 COPY --from=builder /app/apps/auth/dist ./dist
