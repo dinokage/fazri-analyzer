@@ -10,20 +10,7 @@ export function Providers({children}: { children: React.ReactNode }) {
     <QueryClientProvider client={queryClient}>
     <HeroUIProvider>
       {children}
-      <Toaster
-        position="top-right"
-        expand={false}
-        richColors
-        closeButton
-        theme="dark"
-        toastOptions={{
-          style: {
-            background: '#1a1a2e',
-            border: '1px solid #2a2a4a',
-            color: '#fff',
-          },
-        }}
-      />
+      <Toaster position="bottom-right" />
     </HeroUIProvider>
     </QueryClientProvider>
   )

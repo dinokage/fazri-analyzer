@@ -109,7 +109,9 @@ export default function SigninPage() {
         rememberMe: true,
       });
       if (error) {
-        if (error.status === 429) {
+        if ((error as Record<string, unknown>).code === 'BANNED_USER' || error.status === 403) {
+          toast.error(error.message ?? 'Your account has been banned. Contact support for help.', { duration: 6000 });
+        } else if (error.status === 429) {
           toast.error('Too many attempts. Please try again later.');
         } else if (error.status === 401 || (error as Record<string, unknown>).code === 'INVALID_PASSWORD') {
           toast.error('Invalid password. Please try again.');
