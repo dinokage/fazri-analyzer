@@ -4,10 +4,11 @@ import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { authClient } from "@/lib/auth-client";
 import { toast } from "sonner";
-import { Building2, Plus, Trash2, Users } from "lucide-react";
+import { Building2, KeyRound, Plus, Trash2, Users } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { ManageMembersSheet } from "@/components/admin/ManageMembersSheet";
+import { OrgSSOSheet } from "@/components/admin/OrgSSOSheet";
 
 interface Org {
   id: string;
@@ -23,6 +24,7 @@ export default function AdminOrgsPage() {
   const [slug, setSlug] = useState("");
   const [submitting, setSubmitting] = useState(false);
   const [managingOrg, setManagingOrg] = useState<Org | null>(null);
+  const [ssoOrg, setSSOOrg] = useState<Org | null>(null);
 
   const orgIds = orgs?.map((o) => o.id) ?? [];
   const { data: memberCounts } = useQuery({
@@ -167,6 +169,15 @@ export default function AdminOrgsPage() {
               <Button
                 variant="ghost"
                 size="icon"
+                className="h-8 w-8"
+                title="Manage SSO"
+                onClick={() => setSSOOrg(org as unknown as Org)}
+              >
+                <KeyRound className="h-4 w-4" />
+              </Button>
+              <Button
+                variant="ghost"
+                size="icon"
                 className="h-8 w-8 text-destructive hover:text-destructive hover:bg-destructive/10"
                 onClick={() => deleteOrg(org.id, org.name)}
                 title="Delete organization"
@@ -183,6 +194,13 @@ export default function AdminOrgsPage() {
           open={!!managingOrg}
           onOpenChange={(open) => { if (!open) setManagingOrg(null); }}
           org={managingOrg}
+        />
+      )}
+      {ssoOrg && (
+        <OrgSSOSheet
+          open={!!ssoOrg}
+          onOpenChange={(open) => { if (!open) setSSOOrg(null); }}
+          org={ssoOrg}
         />
       )}
     </div>

@@ -1,9 +1,29 @@
 import { betterAuth } from "better-auth";
 import { prismaAdapter } from "better-auth/adapters/prisma";
 import { username, jwt, organization, admin } from "better-auth/plugins";
+import { sso } from "@better-auth/sso";
 import { prisma } from "@fazri/db";
 import { ac, ownerRole, adminRole, memberRole, adminPluginAc, superAdminPluginRole, regularPluginRole } from "./permissions";
 import bcrypt from "bcryptjs";
+
+let _ssoProviderIds: string[] | null = null;
+const trustedProviders: string[] = new Proxy([] as string[], {
+  get(target, prop, receiver) {
+    if (prop === "includes") {
+      return (providerId: string) =>
+        target.includes(providerId) || (_ssoProviderIds ?? []).includes(providerId);
+    }
+    return Reflect.get(target, prop, receiver);
+  },
+});
+
+export function refreshSSOProviderIds() {
+  prisma.ssoProvider
+    .findMany({ select: { providerId: true } })
+    .then((providers: { providerId: string }[]) => { _ssoProviderIds = providers.map((p) => p.providerId); })
+    .catch(() => { _ssoProviderIds = []; });
+}
+refreshSSOProviderIds();
 
 export const auth = betterAuth({
   database: prismaAdapter(prisma, { provider: "postgresql" }),
@@ -91,6 +111,35 @@ export const auth = betterAuth({
       adminRoles: ["SUPER_ADMIN"],
       defaultRole: "STUDENT",
     }),
+    sso({
+      trustEmailVerified: true,
+      provisionUser: async ({ user, provider }) => {
+        try {
+          const ssoProvider = await prisma.ssoProvider.findUnique({
+            where: { providerId: provider.providerId },
+            select: { organizationId: true },
+          });
+          if (!ssoProvider?.organizationId) return;
+
+          const existing = await prisma.member.findFirst({
+            where: { userId: user.id, organizationId: ssoProvider.organizationId },
+          });
+          if (existing) return;
+
+          await prisma.member.create({
+            data: {
+              id: crypto.randomUUID(),
+              userId: user.id,
+              organizationId: ssoProvider.organizationId,
+              role: "member",
+              createdAt: new Date(),
+            },
+          });
+        } catch (err) {
+          console.error("SSO provisionUser error:", err);
+        }
+      },
+    }),
   ],
 
   user: {
@@ -112,6 +161,13 @@ export const auth = betterAuth({
     cookieCache: {
       enabled: true,
       maxAge: 5 * 60,
+    },
+  },
+
+  account: {
+    accountLinking: {
+      enabled: true,
+      trustedProviders,
     },
   },
 

@@ -22,16 +22,16 @@ model user {
   password      String?
   image         String?
   username      String       @unique
-  banned        Boolean?     @default(false)
-  banReason     String?
-  banExpires    DateTime?
   createdAt     DateTime     @default(now())
   updatedAt     DateTime     @default(now()) @updatedAt
   emailVerified Boolean      @default(false)
+  banned        Boolean?     @default(false)
+  banReason     String?
+  banExpires    DateTime?
   accounts      account[]
-  sessions      session[]
-  members       member[]
   invitations   invitation[]
+  members       member[]
+  sessions      session[]
 }
 
 model session {
@@ -85,22 +85,15 @@ model jwks {
   createdAt  DateTime @default(now())
 }
 
-enum UserRole {
-  STUDENT
-  STAFF
-  FACULTY
-  SUPER_ADMIN
-}
-
 model organization {
   id          String       @id
   name        String
-  slug        String       @unique
+  slug        String       @unique(map: "Organization_slug_key")
   logo        String?
-  createdAt   DateTime
+  createdAt   DateTime     @db.Timestamptz(6)
   metadata    String?
-  members     member[]
   invitations invitation[]
+  members     member[]
 }
 
 model member {
@@ -108,9 +101,9 @@ model member {
   organizationId String
   userId         String
   role           String
-  createdAt      DateTime
-  organization   organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
-  user           user         @relation(fields: [userId], references: [id], onDelete: Cascade)
+  createdAt      DateTime     @db.Timestamptz(6)
+  organization   organization @relation(fields: [organizationId], references: [id], onDelete: Cascade, onUpdate: NoAction, map: "member_org_fk")
+  user           user         @relation(fields: [userId], references: [id], onDelete: Cascade, onUpdate: NoAction, map: "member_user_fk")
 }
 
 model invitation {
@@ -119,8 +112,419 @@ model invitation {
   email          String
   role           String?
   status         String
-  expiresAt      DateTime
+  expiresAt      DateTime     @db.Timestamptz(6)
   inviterId      String
-  organization   organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
-  user           user         @relation(fields: [inviterId], references: [id], onDelete: Cascade)
+  organization   organization @relation(fields: [organizationId], references: [id], onDelete: Cascade, onUpdate: NoAction, map: "invitation_org_fk")
+  user           user         @relation(fields: [inviterId], references: [id], onDelete: Cascade, onUpdate: NoAction, map: "invitation_user_fk")
+}
+
+model alert_assignments {
+  id                String         @id @db.Uuid
+  alert_id          String         @db.Uuid
+  staff_id          String         @db.Uuid
+  assigned_at       DateTime?      @db.Timestamp(6)
+  acknowledged_at   DateTime?      @db.Timestamp(6)
+  completed_at      DateTime?      @db.Timestamp(6)
+  assignment_reason String?        @db.VarChar(255)
+  proximity_score   Float?
+  is_active         Boolean?
+  organization_id   String         @default("default-org")
+  alerts            alerts         @relation(fields: [alert_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
+  staff_profiles    staff_profiles @relation(fields: [staff_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+
+  @@index([organization_id], map: "idx_alert_assignments_org")
+  @@index([alert_id, is_active], map: "ix_alert_assignments_alert_active")
+  @@index([staff_id, is_active], map: "ix_alert_assignments_staff_active")
+}
+
+model alert_audit_logs {
+  id              String          @id @db.Uuid
+  alert_id        String          @db.Uuid
+  action          auditaction
+  actor_id        String?         @db.Uuid
+  actor_type      actortype
+  details         Json?           @db.Json
+  ip_address      String?         @db.VarChar(45)
+  user_agent      String?         @db.VarChar(500)
+  is_mock         Boolean?
+  timestamp       DateTime        @db.Timestamp(6)
+  organization_id String          @default("default-org")
+  staff_profiles  staff_profiles? @relation(fields: [actor_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  alerts          alerts          @relation(fields: [alert_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
+
+  @@index([organization_id], map: "idx_alert_audit_logs_org")
+  @@index([action], map: "ix_audit_logs_action")
+  @@index([actor_id, timestamp], map: "ix_audit_logs_actor_timestamp")
+  @@index([alert_id, timestamp], map: "ix_audit_logs_alert_timestamp")
+}
+
+/// This table contains check constraints and requires additional setup for migrations. Visit https://pris.ly/d/check-constraints for more info.
+model alerts {
+  id                                                String               @id @db.Uuid
+  anomaly_id                                        String?              @db.VarChar(100)
+  anomaly_type                                      String?              @db.VarChar(50)
+  title                                             String               @db.VarChar(500)
+  description                                       String
+  severity                                          alertseverity
+  status                                            alertstatus
+  location                                          Json                 @db.Json
+  affected_entities                                 Json?                @db.Json
+  data_sources                                      Json?                @db.Json
+  evidence                                          Json?                @db.Json
+  assigned_to                                       String?              @db.Uuid
+  assigned_at                                       DateTime?            @db.Timestamp(6)
+  acknowledged_at                                   DateTime?            @db.Timestamp(6)
+  resolved_at                                       DateTime?            @db.Timestamp(6)
+  resolved_by                                       String?              @db.Uuid
+  resolution_type                                   resolutiontype?
+  resolution_notes                                  String?
+  escalation_count                                  Int?
+  escalation_history                                Json?                @db.Json
+  is_mock                                           Boolean?
+  mock_scenario                                     String?              @db.VarChar(100)
+  created_at                                        DateTime?            @db.Timestamp(6)
+  updated_at                                        DateTime?            @db.Timestamp(6)
+  organization_id                                   String               @default("default-org")
+  alert_assignments                                 alert_assignments[]
+  alert_audit_logs                                  alert_audit_logs[]
+  staff_profiles_alerts_assigned_toTostaff_profiles staff_profiles?      @relation("alerts_assigned_toTostaff_profiles", fields: [assigned_to], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  staff_profiles_alerts_resolved_byTostaff_profiles staff_profiles?      @relation("alerts_resolved_byTostaff_profiles", fields: [resolved_by], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  notification_queue                                notification_queue[]
+
+  @@index([organization_id], map: "idx_alerts_org")
+  @@index([anomaly_id], map: "ix_alerts_anomaly_id")
+  @@index([assigned_to, status], map: "ix_alerts_assigned_to_status")
+  @@index([created_at], map: "ix_alerts_created_at")
+  @@index([created_at], map: "ix_alerts_created_at_desc")
+  @@index([is_mock], map: "ix_alerts_is_mock")
+  @@index([status, severity], map: "ix_alerts_status_severity")
+}
+
+model anomalies {
+  id                  String   @id @db.VarChar
+  type                String   @db.VarChar
+  location            String   @db.VarChar
+  severity            String   @db.VarChar
+  timestamp           DateTime @db.Timestamp(6)
+  description         String
+  details             Json?    @db.Json
+  recommended_actions Json?    @db.Json
+  entity_id           String?  @db.VarChar
+}
+
+model camera_streams {
+  id                    String               @id @db.Uuid
+  stream_id             String               @unique(map: "ix_camera_streams_stream_id") @db.VarChar(100)
+  rtsp_url              String
+  zone_id               String               @db.VarChar(100)
+  building              String?              @db.VarChar(200)
+  floor                 String?              @db.VarChar(50)
+  alert_on_unknown_face Boolean
+  status                camera_stream_status
+  deepface_stream_id    String?              @db.VarChar(200)
+  created_by            String               @db.VarChar(200)
+  created_at            DateTime             @db.Timestamp(6)
+  updated_at            DateTime             @db.Timestamp(6)
+  last_event_at         DateTime?            @db.Timestamp(6)
+  error_message         String?
+  organization_id       String               @default("default-org")
+
+  @@index([organization_id], map: "idx_camera_streams_org")
+  @@index([zone_id], map: "ix_camera_streams_zone_id")
+}
+
+model demo_scenarios {
+  id                   String                 @id @db.VarChar(100)
+  name                 String                 @db.VarChar(255)
+  description          String
+  severity             alertseverity
+  duration_seconds     Int
+  alert_template       Json                   @db.Json
+  auto_advance         Boolean?
+  default_speed        Float?
+  display_order        Int?
+  is_active            Boolean?
+  created_at           DateTime?              @db.Timestamp(6)
+  updated_at           DateTime?              @db.Timestamp(6)
+  demo_timeline_events demo_timeline_events[]
+}
+
+model demo_timeline_events {
+  id             String         @id @db.Uuid
+  scenario_id    String         @db.VarChar(100)
+  step_number    Int
+  delay_seconds  Int
+  action         String         @db.VarChar(100)
+  description    String         @db.VarChar(500)
+  action_data    Json?          @db.Json
+  narration_text String?
+  demo_scenarios demo_scenarios @relation(fields: [scenario_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
+
+  @@index([scenario_id, step_number], map: "ix_demo_timeline_scenario_step")
+}
+
+model entity_identifiers {
+  id               String   @id @default(dbgenerated("uuid_generate_v4()")) @db.Uuid
+  entity_id        String   @db.VarChar
+  identifier_type  String   @db.VarChar
+  identifier_value String   @db.VarChar
+  source           String   @db.VarChar
+  confidence       Float
+  first_seen       DateTime @default(now()) @db.Timestamptz(6)
+  last_seen        DateTime @default(now()) @db.Timestamptz(6)
+  active           Boolean
+  created_at       DateTime @default(now()) @db.Timestamptz(6)
+  organization_id  String   @default("default-org")
+
+  @@unique([identifier_type, identifier_value], map: "uq_entity_identifiers_type_value")
+  @@index([organization_id], map: "idx_entity_identifiers_org")
+  @@index([entity_id], map: "ix_entity_identifiers_entity_id")
+  @@index([identifier_type], map: "ix_entity_identifiers_identifier_type")
+  @@index([identifier_value], map: "ix_entity_identifiers_identifier_value")
+  @@index([identifier_type], map: "ix_entity_identifiers_type")
+  @@index([identifier_type, identifier_value], map: "ix_entity_identifiers_type_value")
+  @@index([identifier_value], map: "ix_entity_identifiers_value")
+}
+
+model entity_profiles {
+  entity_id        String   @id @db.VarChar
+  name             String?  @db.VarChar
+  role             String?  @db.VarChar
+  email            String?  @db.VarChar
+  department       String?  @db.VarChar
+  authorized_zones Json     @db.Json
+  metadata         Json     @db.Json
+  created_at       DateTime @default(now()) @db.Timestamptz(6)
+  updated_at       DateTime @default(now()) @db.Timestamptz(6)
+  organization_id  String   @default("default-org")
+
+  @@index([organization_id], map: "idx_entity_profiles_org")
+  @@index([email], map: "ix_entity_profiles_email")
+  @@index([name(ops: raw("gin_trgm_ops"))], map: "ix_entity_profiles_name_trgm", type: Gin)
+}
+
+model notification_logs {
+  id                 String              @id @db.Uuid
+  notification_id    String?             @db.Uuid
+  channel            notificationchannel
+  recipient_id       String              @db.Uuid
+  recipient_address  String?             @db.VarChar(255)
+  status             notificationstatus
+  error_message      String?
+  external_id        String?             @db.VarChar(255)
+  response_data      Json?               @db.Json
+  sent_at            DateTime?           @db.Timestamp(6)
+  delivered_at       DateTime?           @db.Timestamp(6)
+  read_at            DateTime?           @db.Timestamp(6)
+  organization_id    String              @default("default-org")
+  notification_queue notification_queue? @relation(fields: [notification_id], references: [id], onUpdate: NoAction)
+  staff_profiles     staff_profiles      @relation(fields: [recipient_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+
+  @@index([organization_id], map: "idx_notification_logs_org")
+  @@index([notification_id], map: "ix_notification_logs_notification_id")
+  @@index([sent_at], map: "ix_notification_logs_sent_at")
+}
+
+model notification_queue {
+  id                String              @id @db.Uuid
+  alert_id          String              @db.Uuid
+  recipient_id      String              @db.Uuid
+  channel           notificationchannel
+  priority          alertseverity
+  title             String              @db.VarChar(255)
+  body              String
+  action_url        String?             @db.VarChar(500)
+  data              Json?               @db.Json
+  status            notificationstatus?
+  retry_count       Int?
+  max_retries       Int?
+  is_mock           Boolean?
+  created_at        DateTime?           @db.Timestamp(6)
+  scheduled_at      DateTime?           @db.Timestamp(6)
+  processed_at      DateTime?           @db.Timestamp(6)
+  organization_id   String              @default("default-org")
+  notification_logs notification_logs[]
+  alerts            alerts              @relation(fields: [alert_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
+  staff_profiles    staff_profiles      @relation(fields: [recipient_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+
+  @@index([organization_id], map: "idx_notification_queue_org")
+  @@index([recipient_id, status], map: "ix_notification_queue_recipient_status")
+  @@index([status, scheduled_at], map: "ix_notification_queue_status_scheduled")
+}
+
+model outgoing_webhooks {
+  id              String    @id @db.Uuid
+  url             String
+  events          String    @db.VarChar(500)
+  secret          String    @db.VarChar(100)
+  active          Boolean
+  created_at      DateTime? @db.Timestamp(6)
+  updated_at      DateTime? @db.Timestamp(6)
+  organization_id String    @default("default-org")
+
+  @@index([organization_id], map: "idx_outgoing_webhooks_org")
+}
+
+model push_subscriptions {
+  id              String   @id @db.Uuid
+  user_id         String   @db.VarChar(255)
+  endpoint        String   @unique
+  p256dh          String
+  auth            String
+  created_at      DateTime @db.Timestamp(6)
+  organization_id String   @default("default-org")
+
+  @@index([organization_id], map: "idx_push_subscriptions_org")
+  @@index([user_id], map: "ix_push_subscriptions_user_id")
+}
+
+model sensor_events {
+  id                 String   @id(map: "pk_sensor_events") @default(dbgenerated("uuid_generate_v4()")) @db.Uuid
+  event_id           String   @unique(map: "uq_sensor_events_event_id") @db.VarChar
+  sensor_type        String   @db.VarChar
+  event_type         String   @db.VarChar
+  timestamp          DateTime @db.Timestamptz(6)
+  zone_id            String   @db.VarChar
+  raw_identifier     String   @db.VarChar
+  identifier_type    String   @db.VarChar
+  resolved_entity_id String?  @db.VarChar
+  confidence         Float    @default(1.0)
+  source_device_id   String?  @db.VarChar
+  building           String?  @db.VarChar
+  floor              String?  @db.VarChar
+  raw_payload        Json?
+  metadata           Json?    @default("{}")
+  created_at         DateTime @default(now()) @db.Timestamptz(6)
+  organization_id    String?
+
+  @@index([organization_id], map: "idx_sensor_events_org")
+  @@index([resolved_entity_id, timestamp(sort: Desc)], map: "ix_sensor_events_entity_ts")
+  @@index([event_id], map: "ix_sensor_events_event_id")
+  @@index([raw_identifier], map: "ix_sensor_events_raw_identifier")
+  @@index([resolved_entity_id], map: "ix_sensor_events_resolved_entity")
+  @@index([sensor_type], map: "ix_sensor_events_sensor_type")
+  @@index([sensor_type, timestamp(sort: Desc)], map: "ix_sensor_events_sensor_type_ts")
+  @@index([timestamp], map: "ix_sensor_events_timestamp")
+  @@index([zone_id], map: "ix_sensor_events_zone_id")
+  @@index([zone_id, timestamp(sort: Desc)], map: "ix_sensor_events_zone_ts")
+}
+
+model staff_locations {
+  id             String         @id @db.Uuid
+  staff_id       String         @db.Uuid
+  zone_id        String         @db.VarChar(50)
+  building       String?        @db.VarChar(100)
+  floor          String?        @db.VarChar(20)
+  source         String?        @db.VarChar(50)
+  timestamp      DateTime?      @db.Timestamp(6)
+  staff_profiles staff_profiles @relation(fields: [staff_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
+
+  @@index([staff_id, timestamp], map: "ix_staff_locations_staff_timestamp")
+  @@index([timestamp], map: "ix_staff_locations_timestamp")
+  @@index([zone_id], map: "ix_staff_locations_zone_id")
+}
+
+model staff_profiles {
+  id                                        String               @id @db.Uuid
+  entity_id                                 String?              @unique(map: "ix_staff_profiles_entity_id") @db.VarChar(100)
+  name                                      String               @db.VarChar(255)
+  email                                     String               @unique @db.VarChar(255)
+  phone                                     String?              @db.VarChar(50)
+  role                                      staffrole
+  department                                String?              @db.VarChar(100)
+  on_duty                                   Boolean?
+  max_concurrent_assignments                Int?
+  contact_preferences                       Json?                @db.Json
+  is_mock_user                              Boolean?
+  created_at                                DateTime?            @db.Timestamp(6)
+  updated_at                                DateTime?            @db.Timestamp(6)
+  organization_id                           String               @default("default-org")
+  alert_assignments                         alert_assignments[]
+  alert_audit_logs                          alert_audit_logs[]
+  alerts_alerts_assigned_toTostaff_profiles alerts[]             @relation("alerts_assigned_toTostaff_profiles")
+  alerts_alerts_resolved_byTostaff_profiles alerts[]             @relation("alerts_resolved_byTostaff_profiles")
+  notification_logs                         notification_logs[]
+  notification_queue                        notification_queue[]
+  staff_locations                           staff_locations[]
+
+  @@index([organization_id], map: "idx_staff_profiles_org")
+  @@index([on_duty], map: "ix_staff_profiles_on_duty")
+  @@index([role], map: "ix_staff_profiles_role")
+}
+
+enum UserRole {
+  STUDENT
+  STAFF
+  FACULTY
+  SUPER_ADMIN
+}
+
+enum actortype {
+  ADMIN
+  STAFF
+  SYSTEM
+}
+
+enum alertseverity {
+  LOW
+  MEDIUM
+  HIGH
+  CRITICAL
+}
+
+enum alertstatus {
+  CREATED
+  ASSIGNED
+  ACKNOWLEDGED
+  INVESTIGATING
+  RESOLVED
+  ESCALATED
+}
+
+enum auditaction {
+  CREATED
+  ASSIGNED
+  ACKNOWLEDGED
+  STATUS_CHANGED
+  NOTE_ADDED
+  RESOLVED
+  ESCALATED
+  REASSIGNED
+  SEVERITY_CHANGED
+  BACKUP_REQUESTED
+}
+
+enum camera_stream_status {
+  ACTIVE
+  STOPPED
+  ERROR
+}
+
+enum notificationchannel {
+  WEBSOCKET
+  EMAIL
+  SMS
+  PUSH
+}
+
+enum notificationstatus {
+  PENDING
+  SENT
+  DELIVERED
+  FAILED
+  READ
+}
+
+enum resolutiontype {
+  FALSE_ALARM
+  RESOLVED
+  ESCALATED
+  NO_ACTION_REQUIRED
+}
+
+enum staffrole {
+  SECURITY
+  SUPERVISOR
+  ADMIN
+  LAB_SUPERVISOR
 }

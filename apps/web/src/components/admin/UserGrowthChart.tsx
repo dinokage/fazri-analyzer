@@ -1,6 +1,6 @@
 "use client";
 
-import { useQuery } from "@tanstack/react-query";
+import { useEffect, useState } from "react";
 import { LineChart, Line, CartesianGrid, XAxis, YAxis } from "recharts";
 import {
   ChartConfig,
@@ -24,46 +24,45 @@ interface Props {
 }
 
 export function UserGrowthChart({ days = 14 }: Props) {
-  const { data, isLoading } = useQuery({
-    queryKey: ["admin-user-growth", days],
-    queryFn: async () => {
-      const { data } = await authClient.admin.listUsers({
-        query: {
-          limit: 500,
-          sortBy: "createdAt",
-          sortDirection: "asc",
-        },
-      });
-      return data ?? null;
-    },
-    staleTime: 120_000,
-    retry: false,
-  });
+  const [chartData, setChartData] = useState<{ date: string; users: number }[] | null>(null);
 
-  const chartData = (() => {
-    if (!data?.users) return [];
-    const cutoff = subDays(new Date(), days);
-    const buckets = new Map<string, number>();
-    let cumulative = 0;
+  useEffect(() => {
+    let cancelled = false;
+    setChartData(null);
 
-    for (const user of data.users) {
-      const d = new Date(user.createdAt);
-      const weekKey = format(startOfWeek(d), "MMM d");
-      if (d >= cutoff) {
-        buckets.set(weekKey, (buckets.get(weekKey) ?? 0) + 1);
-      } else {
-        cumulative++;
+    authClient.admin.listUsers({
+      query: { limit: 500, sortBy: "createdAt", sortDirection: "asc" },
+    }).then(({ data }) => {
+      if (cancelled) return;
+      const users = data?.users ?? [];
+      const cutoff = subDays(new Date(), days);
+      const buckets = new Map<string, number>();
+      let cumulative = 0;
+
+      for (const user of users) {
+        const d = new Date(user.createdAt as string);
+        if (isNaN(d.getTime())) continue;
+        const weekKey = format(startOfWeek(d), "MMM d");
+        if (d >= cutoff) {
+          buckets.set(weekKey, (buckets.get(weekKey) ?? 0) + 1);
+        } else {
+          cumulative++;
+        }
       }
-    }
 
-    const result: { date: string; users: number }[] = [];
-    let running = cumulative;
-    for (const [date, count] of buckets) {
-      running += count;
-      result.push({ date, users: running });
-    }
-    return result;
-  })();
+      const result: { date: string; users: number }[] = [];
+      let running = cumulative;
+      for (const [date, count] of buckets) {
+        running += count;
+        result.push({ date, users: running });
+      }
+      setChartData(result);
+    }).catch(() => {
+      if (!cancelled) setChartData([]);
+    });
+
+    return () => { cancelled = true; };
+  }, [days]);
 
   return (
     <Card>
@@ -72,8 +71,12 @@ export function UserGrowthChart({ days = 14 }: Props) {
         <CardDescription>Cumulative registrations</CardDescription>
       </CardHeader>
       <CardContent>
-        {isLoading ? (
+        {chartData === null ? (
           <div className="h-[200px] animate-pulse rounded bg-muted" />
+        ) : chartData.length === 0 ? (
+          <div className="h-[200px] flex items-center justify-center text-sm text-muted-foreground">
+            No data available
+          </div>
         ) : (
           <ChartContainer config={chartConfig} className="aspect-video max-h-[200px] w-full">
             <LineChart data={chartData}>

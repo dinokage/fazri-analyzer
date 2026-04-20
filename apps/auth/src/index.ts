@@ -3,7 +3,7 @@ import * as Sentry from "@sentry/node";
 import express from "express";
 import cors from "cors";
 import { toNodeHandler } from "better-auth/node";
-import { auth } from "./auth";
+import { auth, refreshSSOProviderIds } from "./auth";
 import { prisma } from "@fazri/db";
 
 const app = express();
@@ -59,6 +59,99 @@ app.post("/api/add-org-member", async (req, res) => {
   } catch (err) {
     console.error("add-org-member error:", err);
     res.status(500).json({ error: "Failed to add member" });
+  }
+});
+
+app.get("/api/sso-providers/:organizationId", async (req, res) => {
+  try {
+    const session = await auth.api.getSession({
+      headers: new Headers({ cookie: req.headers.cookie ?? "" }),
+    });
+    if (!session) { res.status(401).json({ error: "Unauthorized" }); return; }
+
+    const { organizationId } = req.params;
+    const isSuperAdmin = (session.user as Record<string, unknown>).role === "SUPER_ADMIN";
+    const isOwner = isSuperAdmin || !!(await prisma.member.findFirst({
+      where: { userId: session.user.id, organizationId, role: "owner" },
+    }));
+    if (!isOwner) { res.status(403).json({ error: "Forbidden" }); return; }
+
+    const providers = await prisma.ssoProvider.findMany({
+      where: { organizationId },
+      select: { id: true, providerId: true, issuer: true, domain: true, oidcConfig: true, samlConfig: true, createdAt: true, updatedAt: true },
+    });
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const result = providers.map((p: any) => ({
+      id: p.id,
+      providerId: p.providerId,
+      issuer: p.issuer,
+      domain: p.domain,
+      type: p.samlConfig ? "saml" : "oidc",
+      createdAt: p.createdAt,
+      updatedAt: p.updatedAt,
+    }));
+    res.json(result);
+  } catch (err) {
+    console.error("sso-providers GET error:", err);
+    res.status(500).json({ error: "Internal server error" });
+  }
+});
+
+app.post("/api/sso-providers/link", async (req, res) => {
+  try {
+    const session = await auth.api.getSession({
+      headers: new Headers({ cookie: req.headers.cookie ?? "" }),
+    });
+    if (!session) { res.status(401).json({ error: "Unauthorized" }); return; }
+
+    const { providerId, organizationId } = req.body as { providerId: string; organizationId: string };
+    if (!providerId || !organizationId) { res.status(400).json({ error: "providerId and organizationId required" }); return; }
+
+    const isSuperAdmin = (session.user as Record<string, unknown>).role === "SUPER_ADMIN";
+    const isOwner = isSuperAdmin || !!(await prisma.member.findFirst({
+      where: { userId: session.user.id, organizationId, role: "owner" },
+    }));
+    if (!isOwner) { res.status(403).json({ error: "Forbidden" }); return; }
+
+    const provider = await prisma.ssoProvider.findUnique({ where: { providerId } });
+    if (!provider) { res.status(404).json({ error: "Provider not found" }); return; }
+
+    await prisma.ssoProvider.update({ where: { providerId }, data: { organizationId } });
+    refreshSSOProviderIds();
+    res.json({ success: true });
+  } catch (err) {
+    console.error("sso-providers link error:", err);
+    res.status(500).json({ error: "Internal server error" });
+  }
+});
+
+app.delete("/api/sso-providers/:providerId", async (req, res) => {
+  try {
+    const session = await auth.api.getSession({
+      headers: new Headers({ cookie: req.headers.cookie ?? "" }),
+    });
+    if (!session) { res.status(401).json({ error: "Unauthorized" }); return; }
+
+    const { providerId } = req.params;
+    const provider = await prisma.ssoProvider.findUnique({ where: { providerId } });
+    if (!provider) { res.status(404).json({ error: "Provider not found" }); return; }
+
+    const isSuperAdmin = (session.user as Record<string, unknown>).role === "SUPER_ADMIN";
+    if (provider.organizationId) {
+      const isOwner = isSuperAdmin || !!(await prisma.member.findFirst({
+        where: { userId: session.user.id, organizationId: provider.organizationId, role: "owner" },
+      }));
+      if (!isOwner) { res.status(403).json({ error: "Forbidden" }); return; }
+    } else if (!isSuperAdmin && provider.userId !== session.user.id) {
+      res.status(403).json({ error: "Forbidden" }); return;
+    }
+
+    await prisma.ssoProvider.delete({ where: { providerId } });
+    refreshSSOProviderIds();
+    res.json({ success: true });
+  } catch (err) {
+    console.error("sso-providers DELETE error:", err);
+    res.status(500).json({ error: "Internal server error" });
   }
 });
 

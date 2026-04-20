@@ -1,8 +1,8 @@
 'use client';
 
 import { AnimatePresence, motion } from 'framer-motion';
-import { ArrowLeft, Eye, EyeOff, Lock, Shield, User } from 'lucide-react';
-import { authClient } from '@/lib/auth-client';
+import { ArrowLeft, Eye, EyeOff, Globe, Lock, Shield, ShieldCheck, User } from 'lucide-react';
+import { authClient, signInWithSSO } from '@/lib/auth-client';
 import { useRouter } from 'next/navigation';
 import { useRef, useState, useEffect } from 'react';
 import { toast } from 'sonner';
@@ -43,9 +43,13 @@ export default function SigninPage() {
   const [step, setStep] = useState<Step>("username");
   const [checkingUsername, setCheckingUsername] = useState(false);
   const [submitted, setSubmitted] = useState(false);
+  const [ssoMode, setSsoMode] = useState(false);
+  const [ssoDomain, setSsoDomain] = useState('');
+  const [ssoLoading, setSsoLoading] = useState(false);
   const [direction, setDirection] = useState<1 | -1>(1);
   const [activeFeature, setActiveFeature] = useState(0);
   const passwordRef = useRef<HTMLInputElement>(null);
+  const ssoDomainRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
     const interval = setInterval(() => setActiveFeature(p => (p + 1) % features.length), 3000);
@@ -63,6 +67,10 @@ export default function SigninPage() {
       }, 420);
     }
   }, [step]);
+
+  useEffect(() => {
+    if (ssoMode) setTimeout(() => ssoDomainRef.current?.focus(), 300);
+  }, [ssoMode]);
 
   const handleUsernameContinue = async () => {
     const normalized = username.trim();
@@ -98,6 +106,28 @@ export default function SigninPage() {
     setDirection(-1);
     setStep('username');
     setPassword('');
+    setSsoMode(false);
+    setSsoDomain('');
+  };
+
+  const goToSSO = () => {
+    setDirection(1);
+    setSsoMode(true);
+  };
+
+  const handleSSOContinue = async () => {
+    if (!ssoDomain.trim()) return;
+    setSsoLoading(true);
+    const { error: ssoError } = await signInWithSSO({ domain: ssoDomain.trim() });
+    if (ssoError && (ssoError as Record<string, unknown>).status !== 429) {
+      const msg = (ssoError as Record<string, unknown>).message as string ?? '';
+      toast.error(
+        msg.toLowerCase().includes('no provider') || msg.toLowerCase().includes('issuer')
+          ? 'No SSO provider found for this domain. Check your organization settings.'
+          : msg || 'SSO sign-in failed. Check your domain and try again.'
+      );
+    }
+    setSsoLoading(false);
   };
 
   const login = async () => {
@@ -151,7 +181,7 @@ export default function SigninPage() {
           {/* Sliding content */}
           <div className="overflow-hidden">
             <AnimatePresence mode="wait" initial={false} custom={direction}>
-              {step === 'username' && (
+              {!ssoMode && step === 'username' && (
                 <motion.div
                   key="username"
                   custom={-direction}
@@ -203,11 +233,29 @@ export default function SigninPage() {
                     >
                       {checkingUsername ? <><Spinner /><span>Checking…</span></> : 'Continue'}
                     </button>
+
+                    <div className="relative">
+                      <div className="absolute inset-0 flex items-center">
+                        <div className="w-full border-t border-neutral-200 dark:border-neutral-700" />
+                      </div>
+                      <div className="relative flex justify-center text-xs">
+                        <span className="bg-white dark:bg-neutral-950 px-2 text-neutral-400 dark:text-neutral-500">or</span>
+                      </div>
+                    </div>
+
+                    <button
+                      type="button"
+                      onClick={goToSSO}
+                      className="relative flex w-full cursor-pointer items-center justify-center gap-3 rounded-lg border border-neutral-200 dark:border-neutral-700 bg-white dark:bg-neutral-800 px-4 py-2.5 text-sm font-medium text-neutral-700 dark:text-neutral-200 transition-all duration-200 hover:bg-neutral-50 hover:border-neutral-300 dark:hover:bg-neutral-700 dark:hover:border-neutral-600"
+                    >
+                      <ShieldCheck size={16} />
+                      Sign in with SSO
+                    </button>
                   </div>
                 </motion.div>
               )}
 
-              {step === 'password' && (
+              {!ssoMode && step === 'password' && (
                 <motion.div
                   key="password"
                   custom={direction}
@@ -278,6 +326,92 @@ export default function SigninPage() {
                   </div>
                 </motion.div>
               )}
+
+              {ssoMode && (
+                <motion.div
+                  key="sso"
+                  custom={direction}
+                  variants={slideVariants}
+                  initial="enter"
+                  animate="center"
+                  exit="exit"
+                  transition={{ duration: 0.32, ease: 'easeOut' }}
+                >
+                  <div className="mb-7">
+                    <h1 className="text-2xl font-semibold tracking-tight text-neutral-900 dark:text-neutral-50">
+                      Single Sign-On
+                    </h1>
+                    <p className="mt-1.5 text-sm text-neutral-500 dark:text-neutral-400">
+                      Use your work account to sign in.
+                    </p>
+                    <button
+                      type="button"
+                      onClick={goBack}
+                      className="mt-3 inline-flex cursor-pointer items-center gap-1.5 text-sm text-neutral-400 transition-colors hover:text-neutral-700 dark:text-neutral-500 dark:hover:text-neutral-300"
+                    >
+                      <ArrowLeft size={13} />
+                      Back to sign in
+                    </button>
+                  </div>
+
+                  <div className="space-y-4">
+                    <div>
+                      <label className="mb-1.5 block text-sm font-medium text-neutral-700 dark:text-neutral-300">
+                        Work domain
+                      </label>
+                      <div className="relative">
+                        <div className="pointer-events-none absolute inset-y-0 left-3.5 flex items-center">
+                          <Globe size={14} className="text-neutral-400 dark:text-neutral-500" />
+                        </div>
+                        <input
+                          ref={ssoDomainRef}
+                          type="text"
+                          value={ssoDomain}
+                          onChange={e => setSsoDomain(e.target.value)}
+                          onKeyDown={e => {
+                            if (e.key === 'Enter' && ssoDomain.trim()) {
+                              e.preventDefault();
+                              handleSSOContinue();
+                            }
+                          }}
+                          placeholder="college.edu"
+                          className={`${inputClass} pl-9`}
+                          autoComplete="off"
+                          spellCheck={false}
+                        />
+                      </div>
+                      <p className="mt-1.5 text-xs text-neutral-400 dark:text-neutral-500">
+                        e.g. <span className="font-medium text-neutral-600 dark:text-neutral-400">iitg.ac.in</span> — the domain your work email uses
+                      </p>
+                    </div>
+
+                    <button
+                      type="button"
+                      disabled={ssoLoading || !ssoDomain.trim()}
+                      onClick={handleSSOContinue}
+                      className="flex w-full cursor-pointer items-center justify-center gap-2 rounded-lg bg-neutral-900 dark:bg-neutral-50 px-4 py-2.5 text-sm font-semibold text-white dark:text-neutral-900 transition-all duration-200 hover:bg-neutral-800 dark:hover:bg-neutral-200 disabled:cursor-not-allowed disabled:opacity-50"
+                    >
+                      {ssoLoading ? <><Spinner /><span>Redirecting…</span></> : 'Continue with SSO'}
+                    </button>
+                  </div>
+
+                  <p className="mt-5 flex items-center gap-1.5 text-xs text-neutral-400 dark:text-neutral-500">
+                    <Lock size={11} />
+                    We'll redirect you to your institution's login page to sign in safely.
+                  </p>
+
+                  <p className="mt-8 text-sm text-neutral-500 dark:text-neutral-400">
+                    Not using SSO?{' '}
+                    <button
+                      type="button"
+                      onClick={goBack}
+                      className="cursor-pointer font-medium text-neutral-900 dark:text-neutral-50 underline underline-offset-2 hover:no-underline"
+                    >
+                      Sign in with username
+                    </button>
+                  </p>
+                </motion.div>
+              )}
             </AnimatePresence>
           </div>
 
@@ -314,7 +448,7 @@ export default function SigninPage() {
                   initial={{ opacity: 0, y: 16 }}
                   animate={{ opacity: 1, y: 0 }}
                   exit={{ opacity: 0, y: -16 }}
-                  transition={{ duration: 0.35, ease: [0.32, 0.72, 0, 1] }}
+                  transition={{ duration: 0.32, ease: 'easeOut' }}
                   className="flex items-start gap-3.5"
                 >
                   <div className="mt-0.5 flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-white/15">

@@ -5,6 +5,7 @@ import {
   organizationClient,
   adminClient,
 } from "better-auth/client/plugins";
+import { ssoClient } from "@better-auth/sso/client";
 import { toast } from "sonner";
 
 export const authClient = createAuthClient({
@@ -14,6 +15,7 @@ export const authClient = createAuthClient({
     jwtClient(),
     organizationClient(),
     adminClient(),
+    ssoClient(),
   ],
   fetchOptions: {
     onError: async (context) => {
@@ -29,3 +31,10 @@ export const authClient = createAuthClient({
 
 export const { useSession, signOut, getSession } = authClient;
 export const { organization } = authClient;
+
+export const signInWithSSO = (params: { email?: string; domain?: string; providerId?: string }) =>
+  authClient.signIn.sso({
+    ...params,
+    callbackURL: `${typeof window !== "undefined" ? window.location.origin : ""}/dashboard`,
+    errorCallbackURL: `${typeof window !== "undefined" ? window.location.origin : ""}/signin`,
+  });
