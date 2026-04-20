@@ -34,9 +34,10 @@ export function UserGrowthChart({ days = 14 }: Props) {
           sortDirection: "asc",
         },
       });
-      return data;
+      return data ?? null;
     },
     staleTime: 120_000,
+    retry: false,
   });
 
   const chartData = (() => {

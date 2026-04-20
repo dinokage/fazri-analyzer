@@ -55,7 +55,7 @@ export function ManageMembersSheet({ open, onOpenChange, org }: Props) {
       const { data } = await authClient.organization.getFullOrganization({
         query: { organizationId: org.id },
       });
-      return data;
+      return data ?? null;
     },
     enabled: open,
     staleTime: 30_000,

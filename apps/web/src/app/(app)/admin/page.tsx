@@ -17,7 +17,7 @@ export default function AdminPage() {
     queryKey: ["admin-users-count"],
     queryFn: async () => {
       const { data } = await authClient.admin.listUsers({ query: { limit: 1 } });
-      return data;
+      return data ?? null;
     },
   });
 
