@@ -78,7 +78,7 @@ app.get("/api/sso-providers/:organizationId", async (req, res) => {
 
     const providers = await prisma.ssoProvider.findMany({
       where: { organizationId },
-      select: { id: true, providerId: true, issuer: true, domain: true, oidcConfig: true, samlConfig: true, createdAt: true, updatedAt: true },
+      select: { id: true, providerId: true, issuer: true, domain: true, oidcConfig: true, samlConfig: true },
     });
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const result = providers.map((p: any) => ({
