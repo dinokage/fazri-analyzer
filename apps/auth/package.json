@@ -8,12 +8,12 @@
     "start": "node --require ./dist/instrument.js dist/index.js"
   },
   "dependencies": {
-    "@better-auth/sso": "^1.6.5",
+    "@better-auth/sso": "1.5.4",
     "samlify": "~2.10.2",
     "@fazri/db": "workspace:*",
     "@sentry/node": "^8",
     "bcryptjs": "^2.4.3",
-    "better-auth": "^1.6.5",
+    "better-auth": "1.5.4",
     "cors": "^2.8.5",
     "dotenv": "^16.4.7",
     "express": "^4.21.2"
