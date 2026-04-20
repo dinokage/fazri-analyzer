@@ -73,6 +73,7 @@ export function OnboardingWizard() {
       password: state.userPassword,
       role: state.userRole as "admin" | "user",
       data: {
+        entity_id: crypto.randomUUID(),
         username: state.userUsername,
         department: state.userDepartment || undefined,
       },

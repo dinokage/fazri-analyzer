@@ -61,6 +61,7 @@ export function CreateUserSheet({ open, onOpenChange, onSuccess }: Props) {
         password: form.password,
         role: form.role as "admin" | "user",
         data: {
+          entity_id: crypto.randomUUID(),
           username: form.username,
           department: form.department || undefined,
           student_id: form.student_id || undefined,

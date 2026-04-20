@@ -74,6 +74,7 @@ export default function AdminOnboardingPage() {
         password: row.password,
         role: row.role as "admin" | "user",
         data: {
+          entity_id: crypto.randomUUID(),
           username: row.username,
           department: row.department || undefined,
         },
