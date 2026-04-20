@@ -9,7 +9,7 @@ export const auth = betterAuth({
   database: prismaAdapter(prisma, { provider: "postgresql" }),
 
   emailAndPassword: {
-    enabled: false, // login is handled by username plugin
+    enabled: true, // required for password hashing in admin.createUser; username plugin handles sign-in
     password: {
       hash: async (password) => bcrypt.hash(password, 10),
       verify: async ({ hash, password }) => bcrypt.compare(password, hash),
