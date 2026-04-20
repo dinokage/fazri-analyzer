@@ -40,7 +40,7 @@ export function UserGrowthChart({ days = 14 }: Props) {
       let cumulative = 0;
 
       for (const user of users) {
-        const d = new Date(user.createdAt as string);
+        const d = new Date(user.createdAt as unknown as string);
         if (isNaN(d.getTime())) continue;
         const weekKey = format(startOfWeek(d), "MMM d");
         if (d >= cutoff) {
