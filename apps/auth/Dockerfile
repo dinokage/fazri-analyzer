@@ -2,34 +2,20 @@ FROM node:22-alpine AS builder
 RUN npm install -g pnpm
 WORKDIR /app
 
-# Copy workspace manifests
+# Copy everything needed for install + build
 COPY package.json pnpm-lock.yaml pnpm-workspace.yaml ./
 COPY patches/ ./patches/
-COPY apps/auth/package.json ./apps/auth/
-COPY packages/db/package.json ./packages/db/
-
-# Install all workspace dependencies
-RUN pnpm install --frozen-lockfile
-
-# Copy source files
 COPY apps/auth/ ./apps/auth/
 COPY packages/db/ ./packages/db/
 
-# Build @fazri/db (prisma generate + tsc → dist/)
-RUN pnpm --filter=@fazri/db build
+# Install all workspace dependencies (patches applied here)
+RUN pnpm install --frozen-lockfile
 
-# Build auth (tsc → dist/)
-RUN pnpm --filter=@fazri/auth build
-
-# Create minimal production deployment with only auth's prod deps
-RUN pnpm deploy --filter=@fazri/auth --prod --legacy /deploy
-
-# Patch all samlify instances in the deploy for ESM named-export interop.
-# Must run AFTER pnpm deploy since deploy re-extracts from the CAS store.
+# Patch all samlify instances for ESM named-export interop
 RUN node -e " \
   const fs = require('fs'); \
   const { execSync } = require('child_process'); \
-  const files = execSync('find /deploy/node_modules -path \"*/samlify/build/index.js\" 2>/dev/null').toString().trim().split('\n').filter(Boolean); \
+  const files = execSync('find node_modules/.pnpm -path \"*/samlify/build/index.js\" 2>/dev/null').toString().trim().split('\n').filter(Boolean); \
   files.forEach(f => { \
     let c = fs.readFileSync(f, 'utf8'); \
     if (!c.includes('exports.default = exports')) { \
@@ -40,18 +26,18 @@ RUN node -e " \
   }); \
 "
 
-# pnpm deploy copies @prisma/client from the store (pre-generate state).
-# prisma generate puts .prisma/ alongside @prisma/ inside the pnpm package's
-# node_modules — copy it into the same location in the deploy.
-RUN PRISMA_PKG=$(ls -d /app/node_modules/.pnpm/@prisma+client@* | head -1) && \
-    DEPLOY_PKG="/deploy/node_modules/.pnpm/$(basename "$PRISMA_PKG")" && \
-    cp -r "$PRISMA_PKG/node_modules/.prisma" "$DEPLOY_PKG/node_modules/.prisma"
+# Build @fazri/db (prisma generate + tsc → dist/)
+RUN pnpm --filter=@fazri/db build
+
+# Build auth (tsc → dist/)
+RUN pnpm --filter=@fazri/auth build
 
 FROM node:22-alpine AS runner
 WORKDIR /app
 
-# Minimal prod deps + workspace packages (includes @fazri/db with its dist/)
-COPY --from=builder /deploy ./
+# Copy the full patched node_modules directly (avoids pnpm deploy CAS re-extraction)
+COPY --from=builder /app/node_modules ./node_modules
+COPY --from=builder /app/packages/db ./packages/db
 
 # Compiled auth output
 COPY --from=builder /app/apps/auth/dist ./dist
