@@ -26,6 +26,7 @@ interface SSOProviderInfo {
 interface Org {
   id: string;
   name: string;
+  slug: string;
 }
 
 interface Props {
@@ -41,18 +42,22 @@ export function OrgSSOSheet({ open, onOpenChange, org }: Props) {
   const [providers, setProviders] = useState<SSOProviderInfo[]>([]);
   const [providerType, setProviderType] = useState<ProviderType>("oidc");
 
-  const [oidcProviderId, setOidcProviderId] = useState("");
+  const [oidcSuffix, setOidcSuffix] = useState("");
   const [oidcIssuer, setOidcIssuer] = useState("");
   const [oidcDomain, setOidcDomain] = useState("");
   const [oidcClientId, setOidcClientId] = useState("");
   const [oidcClientSecret, setOidcClientSecret] = useState("");
 
-  const [samlProviderId, setSamlProviderId] = useState("");
+  const [samlSuffix, setSamlSuffix] = useState("");
   const [samlIssuer, setSamlIssuer] = useState("");
   const [samlDomain, setSamlDomain] = useState("");
   const [samlEntryPoint, setSamlEntryPoint] = useState("");
   const [samlCert, setSamlCert] = useState("");
   const [samlIdpMetadata, setSamlIdpMetadata] = useState("");
+
+  // Provider IDs — org slug prefix guarantees global uniqueness, user picks the suffix
+  const oidcProviderId = oidcSuffix ? `${org.slug}-${oidcSuffix}` : "";
+  const samlProviderId = samlSuffix ? `${org.slug}-${samlSuffix}` : "";
 
   const [registering, setRegistering] = useState(false);
   const [deleting, setDeleting] = useState<string | null>(null);
@@ -84,11 +89,11 @@ export function OrgSSOSheet({ open, onOpenChange, org }: Props) {
     if (open) fetchProviders();
   }, [open, fetchProviders]);
 
-  const resetOidc = () => { setOidcProviderId(""); setOidcIssuer(""); setOidcDomain(""); setOidcClientId(""); setOidcClientSecret(""); };
-  const resetSaml = () => { setSamlProviderId(""); setSamlIssuer(""); setSamlDomain(""); setSamlEntryPoint(""); setSamlCert(""); setSamlIdpMetadata(""); };
+  const resetOidc = () => { setOidcSuffix(""); setOidcIssuer(""); setOidcDomain(""); setOidcClientId(""); setOidcClientSecret(""); };
+  const resetSaml = () => { setSamlSuffix(""); setSamlIssuer(""); setSamlDomain(""); setSamlEntryPoint(""); setSamlCert(""); setSamlIdpMetadata(""); };
 
   const handleRegisterOIDC = async () => {
-    if (!oidcProviderId || !oidcIssuer || !oidcDomain || !oidcClientId || !oidcClientSecret) {
+    if (!oidcSuffix || !oidcIssuer || !oidcDomain || !oidcClientId || !oidcClientSecret) {
       toast.error("Please fill in all fields"); return;
     }
     setRegistering(true);
@@ -127,7 +132,7 @@ export function OrgSSOSheet({ open, onOpenChange, org }: Props) {
   };
 
   const handleRegisterSAML = async () => {
-    if (!samlProviderId || !samlIssuer || !samlDomain || !samlEntryPoint || !samlCert || !samlIdpMetadata) {
+    if (!samlSuffix || !samlIssuer || !samlDomain || !samlEntryPoint || !samlCert || !samlIdpMetadata) {
       toast.error("Please fill in all fields"); return;
     }
     setRegistering(true);
@@ -194,9 +199,9 @@ export function OrgSSOSheet({ open, onOpenChange, org }: Props) {
 
   return (
     <Sheet open={open} onOpenChange={onOpenChange}>
-      <SheetContent className="w-[520px] sm:max-w-[520px] overflow-y-auto">
-        <SheetHeader>
-          <SheetTitle>{org.name} — SSO Settings</SheetTitle>
+      <SheetContent className="w-[680px] sm:max-w-[680px] overflow-y-auto px-6">
+        <SheetHeader className="pb-4 border-b">
+          <SheetTitle className="text-lg">{org.name} — SSO Settings</SheetTitle>
         </SheetHeader>
 
         <div className="mt-6 space-y-4">
@@ -212,7 +217,7 @@ export function OrgSSOSheet({ open, onOpenChange, org }: Props) {
               <Button size="sm" onClick={() => setPageState("register")}>Set up SSO</Button>
             </div>
           ) : pageState === "register" ? (
-            <div className="space-y-6">
+            <div className="space-y-5">
               <div className="flex gap-1 rounded-lg bg-muted p-1">
                 {(["oidc", "saml"] as ProviderType[]).map((type) => (
                   <button
@@ -231,8 +236,13 @@ export function OrgSSOSheet({ open, onOpenChange, org }: Props) {
 
               <AnimatePresence mode="wait">
                 {providerType === "oidc" ? (
-                  <motion.div key="oidc" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="space-y-4">
-                    <SSOField label="Provider ID"><Input value={oidcProviderId} onChange={(e) => setOidcProviderId(e.target.value)} placeholder="e.g. google-workspace" /></SSOField>
+                  <motion.div key="oidc" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="space-y-5">
+                    <SSOField label="Provider ID" hint={`Will be registered as: ${org.slug}-${oidcSuffix || "<name>"}`}>
+                      <div className="flex items-center">
+                        <span className="flex h-10 shrink-0 items-center rounded-l-md border border-r-0 bg-muted px-3 text-sm text-muted-foreground select-none whitespace-nowrap">{org.slug}-</span>
+                        <Input value={oidcSuffix} onChange={(e) => setOidcSuffix(e.target.value.toLowerCase().replace(/[^a-z0-9-]/g, ""))} placeholder="gsuite" className="rounded-l-none flex-1" />
+                      </div>
+                    </SSOField>
                     <SSOField label="Issuer URL" hint="Do not include /.well-known/openid-configuration">
                       <Input type="url" value={oidcIssuer} onChange={(e) => setOidcIssuer(e.target.value)} placeholder="https://accounts.google.com" />
                     </SSOField>
@@ -245,8 +255,20 @@ export function OrgSSOSheet({ open, onOpenChange, org }: Props) {
                     </div>
                   </motion.div>
                 ) : (
-                  <motion.div key="saml" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="space-y-4">
-                    <SSOField label="Provider ID"><Input value={samlProviderId} onChange={(e) => setSamlProviderId(e.target.value)} placeholder="e.g. okta-saml" /></SSOField>
+                  <motion.div key="saml" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="space-y-5">
+                    <SSOField label="Provider ID" hint={`Will be registered as: ${org.slug}-${samlSuffix || "<name>"}`}>
+                      <div className="flex items-center">
+                        <span className="flex h-10 shrink-0 items-center rounded-l-md border border-r-0 bg-muted px-3 text-sm text-muted-foreground select-none whitespace-nowrap">{org.slug}-</span>
+                        <Input value={samlSuffix} onChange={(e) => setSamlSuffix(e.target.value.toLowerCase().replace(/[^a-z0-9-]/g, ""))} placeholder="gsuite" className="rounded-l-none flex-1" />
+                      </div>
+                    </SSOField>
+                    {samlSuffix && (
+                      <div className="rounded-lg border bg-muted/50 p-3 text-xs text-muted-foreground space-y-1">
+                        <p className="font-medium text-foreground mb-1">Copy these into your Identity Provider:</p>
+                        <p><span className="font-medium">ACS URL:</span> <code className="bg-muted px-1 rounded break-all">{AUTH_URL}/api/auth/sso/saml2/callback/{samlProviderId}</code></p>
+                        <p><span className="font-medium">Entity ID:</span> <code className="bg-muted px-1 rounded break-all">{AUTH_URL}/api/auth/sso/saml2/sp/metadata</code></p>
+                      </div>
+                    )}
                     <SSOField label="Issuer / Entity ID"><Input value={samlIssuer} onChange={(e) => setSamlIssuer(e.target.value)} placeholder="https://idp.example.com" /></SSOField>
                     <SSOField label="Domain"><Input value={samlDomain} onChange={(e) => setSamlDomain(e.target.value)} placeholder="college.edu" /></SSOField>
                     <SSOField label="SSO Entry Point URL"><Input type="url" value={samlEntryPoint} onChange={(e) => setSamlEntryPoint(e.target.value)} /></SSOField>
@@ -256,12 +278,6 @@ export function OrgSSOSheet({ open, onOpenChange, org }: Props) {
                     <SSOField label="IdP Metadata XML">
                       <Textarea value={samlIdpMetadata} onChange={(e) => setSamlIdpMetadata(e.target.value)} rows={5} className="font-mono text-xs" placeholder="Paste IdP metadata XML here" />
                     </SSOField>
-                    {samlProviderId && (
-                      <div className="rounded-lg border bg-muted/50 p-3 text-xs text-muted-foreground space-y-1">
-                        <p><span className="font-medium">ACS URL:</span> <code className="bg-muted px-1 rounded">{AUTH_URL}/api/auth/sso/saml2/callback/{samlProviderId}</code></p>
-                        <p><span className="font-medium">SP Metadata:</span> <code className="bg-muted px-1 rounded">{AUTH_URL}/api/auth/sso/saml2/sp/metadata?providerId={samlProviderId}</code></p>
-                      </div>
-                    )}
                     <div className="flex gap-2 pt-2">
                       <Button size="sm" onClick={handleRegisterSAML} disabled={registering}>{registering ? "Registering…" : "Register SAML"}</Button>
                       <Button size="sm" variant="outline" onClick={() => { resetSaml(); setPageState(providers.length > 0 ? "configured" : "empty"); }}>Cancel</Button>
@@ -306,8 +322,8 @@ export function OrgSSOSheet({ open, onOpenChange, org }: Props) {
 
 function SSOField({ label, hint, children }: { label: string; hint?: string; children: React.ReactNode }) {
   return (
-    <div className="space-y-1.5">
-      <label className="text-xs font-medium text-muted-foreground">{label}</label>
+    <div className="space-y-2">
+      <label className="text-sm font-medium">{label}</label>
       {children}
       {hint && <p className="text-xs text-muted-foreground">{hint}</p>}
     </div>
