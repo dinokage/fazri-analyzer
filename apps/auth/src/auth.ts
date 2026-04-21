@@ -184,6 +184,7 @@ export const auth = betterAuth({
       enabled: true,
       trustedProviders,
     },
+    skipStateCookieCheck: true,
   },
 
   trustedOrigins: (process.env.TRUSTED_ORIGINS ?? "http://localhost:3000").split(","),
