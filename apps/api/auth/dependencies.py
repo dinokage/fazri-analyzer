@@ -144,7 +144,7 @@ async def require_org_admin(
     try:
         async with _httpx.AsyncClient(timeout=5) as client:
             resp = await client.get(
-                f"{settings.AUTH_SERVICE_URL}/api/auth/organization/get-full-organization",
+                f"{settings.AUTH_SERVICE_URL}/api/auth/organization/get-active-member",
                 params={"organizationId": current_user.organizationId},
                 headers=forward_headers,
             )
@@ -155,13 +155,8 @@ async def require_org_admin(
                     resp.text,
                 )
             else:
-                data = resp.json()
-                members = data.get("members", [])
-                user_member = next(
-                    (m for m in members if m.get("userId") == current_user.id),
-                    None,
-                )
-                if user_member and user_member.get("role") in ("owner", "admin"):
+                member = resp.json()
+                if member and member.get("role") in ("owner", "admin"):
                     return current_user
     except Exception:
         logger.exception("require_org_admin: unexpected error calling auth service")

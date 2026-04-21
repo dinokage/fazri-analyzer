@@ -11,7 +11,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { Trash2 } from "lucide-react";
 
 type ProviderType = "oidc" | "saml";
-type PageState = "loading" | "empty" | "configured" | "register";
+type PageState = "loading" | "empty" | "configured" | "register" | "error";
 
 interface SSOProviderInfo {
   id: string;
@@ -62,19 +62,29 @@ export function OrgSSOSheet({ open, onOpenChange, org }: Props) {
   const [registering, setRegistering] = useState(false);
   const [deleting, setDeleting] = useState<string | null>(null);
 
+  const resetOidc = useCallback(() => { setOidcSuffix(""); setOidcIssuer(""); setOidcDomain(""); setOidcClientId(""); setOidcClientSecret(""); }, []);
+  const resetSaml = useCallback(() => { setSamlSuffix(""); setSamlIssuer(""); setSamlDomain(""); setSamlEntryPoint(""); setSamlCert(""); setSamlIdpMetadata(""); }, []);
+
   const fetchProviders = useCallback(async () => {
     setPageState("loading");
     try {
       const res = await fetch(`${AUTH_URL}/api/sso-providers/${org.id}`, {
         credentials: "include",
       });
-      if (!res.ok) { setProviders([]); setPageState("empty"); return; }
+      if (!res.ok) {
+        const msg = await res.text().catch(() => "");
+        toast.error(`Failed to load SSO providers [${org.id}] — HTTP ${res.status}${msg ? `: ${msg}` : ""} (${AUTH_URL})`);
+        setProviders([]);
+        setPageState("error");
+        return;
+      }
       const data: SSOProviderInfo[] = await res.json();
       setProviders(data);
       setPageState(data.length > 0 ? "configured" : "empty");
     } catch {
+      toast.error("Network error loading SSO providers — check auth service connectivity");
       setProviders([]);
-      setPageState("empty");
+      setPageState("error");
     }
   }, [org.id]);
 
@@ -82,15 +92,11 @@ export function OrgSSOSheet({ open, onOpenChange, org }: Props) {
     setProviderType("oidc");
     resetOidc();
     resetSaml();
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [org.id, open]);
+  }, [org.id, open, resetOidc, resetSaml]);
 
   useEffect(() => {
     if (open) fetchProviders();
   }, [open, fetchProviders]);
-
-  const resetOidc = () => { setOidcSuffix(""); setOidcIssuer(""); setOidcDomain(""); setOidcClientId(""); setOidcClientSecret(""); };
-  const resetSaml = () => { setSamlSuffix(""); setSamlIssuer(""); setSamlDomain(""); setSamlEntryPoint(""); setSamlCert(""); setSamlIdpMetadata(""); };
 
   const handleRegisterOIDC = async () => {
     if (!oidcSuffix || !oidcIssuer || !oidcDomain || !oidcClientId || !oidcClientSecret) {
@@ -210,6 +216,11 @@ export function OrgSSOSheet({ open, onOpenChange, org }: Props) {
               {Array.from({ length: 2 }).map((_, i) => (
                 <div key={i} className="h-14 animate-pulse rounded-lg bg-muted" />
               ))}
+            </div>
+          ) : pageState === "error" ? (
+            <div className="space-y-3">
+              <p className="text-sm text-destructive">Failed to load SSO providers. Check the toast for details.</p>
+              <Button size="sm" variant="outline" onClick={fetchProviders}>Retry</Button>
             </div>
           ) : pageState === "empty" ? (
             <div className="space-y-4">
