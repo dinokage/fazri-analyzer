@@ -122,6 +122,7 @@ async def require_org_member(
 
 
 async def require_org_admin(
+    request: Request,
     current_user: AuthenticatedUser = Depends(require_org_member),
 ) -> AuthenticatedUser:
     """
@@ -131,14 +132,26 @@ async def require_org_admin(
     effect immediately without re-login.
     """
     import httpx as _httpx
+    import logging
+
+    logger = logging.getLogger(__name__)
+    auth_header = request.headers.get("Authorization")
+    forward_headers = {"Authorization": auth_header} if auth_header else {}
 
     try:
         async with _httpx.AsyncClient(timeout=5) as client:
             resp = await client.get(
                 f"{settings.AUTH_SERVICE_URL}/api/auth/organization/get-full-organization",
                 params={"organizationId": current_user.organizationId},
+                headers=forward_headers,
             )
-            if resp.status_code == 200:
+            if resp.status_code != 200:
+                logger.error(
+                    "require_org_admin: auth service returned %s — %s",
+                    resp.status_code,
+                    resp.text,
+                )
+            else:
                 data = resp.json()
                 members = data.get("members", [])
                 user_member = next(
@@ -148,6 +161,6 @@ async def require_org_admin(
                 if user_member and user_member.get("role") in ("owner", "admin"):
                     return current_user
     except Exception:
-        pass
+        logger.exception("require_org_admin: unexpected error calling auth service")
 
     raise PermissionDeniedError(detail="Admin access required for this organization.")

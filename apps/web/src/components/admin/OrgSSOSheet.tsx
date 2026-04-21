@@ -97,14 +97,20 @@ export function OrgSSOSheet({ open, onOpenChange, org }: Props) {
       setRegistering(false); return;
     }
     try {
-      await fetch(`${AUTH_URL}/api/sso-providers/link`, {
+      const res = await fetch(`${AUTH_URL}/api/sso-providers/link`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         credentials: "include",
         body: JSON.stringify({ providerId: oidcProviderId, organizationId: org.id }),
       });
+      if (!res.ok) {
+        const body = await res.json().catch(() => ({}));
+        toast.error((body as { error?: string }).error ?? "Failed to link provider to organization");
+        setRegistering(false); return;
+      }
     } catch {
       toast.error("Provider registered but failed to link to organization");
+      setRegistering(false); return;
     }
     toast.success("OIDC provider registered successfully");
     resetOidc(); setRegistering(false);
@@ -135,14 +141,20 @@ export function OrgSSOSheet({ open, onOpenChange, org }: Props) {
       setRegistering(false); return;
     }
     try {
-      await fetch(`${AUTH_URL}/api/sso-providers/link`, {
+      const res = await fetch(`${AUTH_URL}/api/sso-providers/link`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         credentials: "include",
         body: JSON.stringify({ providerId: samlProviderId, organizationId: org.id }),
       });
+      if (!res.ok) {
+        const body = await res.json().catch(() => ({}));
+        toast.error((body as { error?: string }).error ?? "Failed to link provider to organization");
+        setRegistering(false); return;
+      }
     } catch {
       toast.error("Provider registered but failed to link to organization");
+      setRegistering(false); return;
     }
     toast.success("SAML provider registered successfully");
     resetSaml(); setRegistering(false);
