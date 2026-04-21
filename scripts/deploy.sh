@@ -101,6 +101,11 @@ docker compose --env-file "$ENV_FILE" -f "$COMPOSE_FILE" exec -T backend \
   python migrations/create_entity_tables.py \
   && info "entity_tables migration OK" || warn "entity_tables migration skipped/failed"
 
+# Multi-tenant: organization_id columns (idempotent — safe to re-run)
+docker compose --env-file "$ENV_FILE" -f "$COMPOSE_FILE" exec -T backend \
+  python migrations/add_organization_id.py \
+  && info "add_organization_id migration OK" || warn "add_organization_id migration failed — check backend logs"
+
 # ── Step 7: Print status ──────────────────────────────────────────────────────
 
 echo ""

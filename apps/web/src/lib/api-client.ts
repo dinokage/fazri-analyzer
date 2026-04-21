@@ -1,4 +1,4 @@
-import { authClient, getSession } from "@/lib/auth-client";
+import { getSession } from "@/lib/auth-client";
 import * as Sentry from "@sentry/nextjs";
 
 const API_BASE_URL = process.env.NEXT_PUBLIC_FASTAPI_BASE_URL || 'http://localhost:8000';
@@ -14,40 +14,53 @@ class ApiError extends Error {
   }
 }
 
+// Module-level token cache — avoids a round-trip on every API call.
+// Invalidated on 401 and when org changes via OrgSwitcher.
+let tokenCache: { value: string; expiresAt: number } | null = null;
+
+export function invalidateTokenCache() {
+  tokenCache = null;
+}
+
 async function getAuthHeaders(): Promise<HeadersInit> {
-  // Check session first — get-session returns 200+null when unauthenticated,
-  // avoiding the 401 console error from /api/auth/token.
-  const session = await getSession();
+  if (tokenCache && Date.now() < tokenCache.expiresAt) {
+    return {
+      'Content-Type': 'application/json',
+      'Authorization': `Bearer ${tokenCache.value}`,
+    };
+  }
+
+  let jwt: string | null = null;
+  const session = await getSession({
+    fetchOptions: {
+      onSuccess: (ctx) => {
+        jwt = ctx.response.headers.get("set-auth-jwt");
+      },
+    },
+  });
+
   if (!session?.data) {
     throw new ApiError("No active session. Please log in.", 401);
   }
-
-  const { data } = await authClient.token();
-  if (!data?.token) {
-    throw new ApiError("No active session. Please log in.", 401);
+  if (!jwt) {
+    throw new ApiError("Could not retrieve auth token.", 401);
   }
 
+  tokenCache = { value: jwt, expiresAt: Date.now() + 4 * 60 * 1000 };
   return {
     'Content-Type': 'application/json',
-    'Authorization': `Bearer ${data.token}`,
+    'Authorization': `Bearer ${jwt}`,
   };
 }
 
 async function handleResponse(response: Response) {
   if (response.status === 401) {
-    // Log authentication errors to Sentry as warnings
+    invalidateTokenCache();
     Sentry.captureMessage('Session expired - authentication required', {
       level: 'warning',
-      tags: {
-        type: 'auth_expired',
-        status_code: '401',
-      },
-      extra: {
-        url: response.url,
-      },
+      tags: { type: 'auth_expired', status_code: '401' },
+      extra: { url: response.url },
     });
-
-    // Redirect to login on auth failure
     if (typeof window !== 'undefined') {
       window.location.href = '/auth';
     }
@@ -914,13 +927,11 @@ export const apiClient = {
   },
 
   async registerFace(entityId: string, file: File) {
-    // Do NOT use getAuthHeaders() here — it always sets Content-Type: application/json,
+    // Do NOT use getAuthHeaders() here — it sets Content-Type: application/json,
     // which prevents the browser from setting the multipart/form-data boundary that
-    // FastAPI's UploadFile parser requires.
-    const session = await getSession();
-    if (!session?.data) throw new ApiError('No active session. Please log in.', 401);
-    const { data } = await authClient.token();
-    if (!data?.token) throw new ApiError('No active session. Please log in.', 401);
+    // FastAPI's UploadFile parser requires. Extract just the Bearer token instead.
+    const headers = await getAuthHeaders();
+    const token = (headers as Record<string, string>)['Authorization'];
 
     const formData = new FormData();
     formData.append('image', file);
@@ -929,7 +940,7 @@ export const apiClient = {
       `${API_BASE_URL}/api/v1/deepface/entities/${encodeURIComponent(entityId)}/register`,
       {
         method: 'POST',
-        headers: { Authorization: `Bearer ${data.token}` },
+        headers: { Authorization: token },
         body: formData,
       }
     );

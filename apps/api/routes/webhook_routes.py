@@ -14,7 +14,7 @@ from fastapi import APIRouter, Depends, HTTPException, status
 from pydantic import BaseModel, field_validator
 from sqlalchemy.orm import Session
 
-from auth.dependencies import require_admin
+from auth.dependencies import require_admin, require_org_admin
 from auth.models import AuthenticatedUser
 from database.connection import get_db
 from services.webhook_service import WEBHOOK_EVENTS, WebhookService
@@ -116,7 +116,7 @@ class WebhookResponse(BaseModel):
 @router.get("", response_model=List[WebhookResponse])
 async def list_webhooks(
     db: Session = Depends(get_db),
-    current_user: AuthenticatedUser = Depends(require_admin()),
+    current_user: AuthenticatedUser = Depends(require_org_admin),
 ):
     """List all configured outgoing webhooks."""
     webhooks = WebhookService.list_webhooks(db)
@@ -137,7 +137,7 @@ async def list_webhooks(
 async def create_webhook(
     body: WebhookCreate,
     db: Session = Depends(get_db),
-    current_user: AuthenticatedUser = Depends(require_admin()),
+    current_user: AuthenticatedUser = Depends(require_org_admin),
 ):
     """Create a new outgoing webhook endpoint."""
     webhook = WebhookService.create_webhook(db, url=body.url, events=body.events)
@@ -156,7 +156,7 @@ async def update_webhook(
     webhook_id: str,
     body: WebhookUpdate,
     db: Session = Depends(get_db),
-    current_user: AuthenticatedUser = Depends(require_admin()),
+    current_user: AuthenticatedUser = Depends(require_org_admin),
 ):
     """Update URL, events, or active status of a webhook."""
     webhook = WebhookService.update_webhook(
@@ -182,7 +182,7 @@ async def update_webhook(
 async def delete_webhook(
     webhook_id: str,
     db: Session = Depends(get_db),
-    current_user: AuthenticatedUser = Depends(require_admin()),
+    current_user: AuthenticatedUser = Depends(require_org_admin),
 ):
     """Delete a webhook endpoint."""
     deleted = WebhookService.delete_webhook(db, webhook_id)
@@ -194,7 +194,7 @@ async def delete_webhook(
 async def test_webhook(
     webhook_id: str,
     db: Session = Depends(get_db),
-    current_user: AuthenticatedUser = Depends(require_admin()),
+    current_user: AuthenticatedUser = Depends(require_org_admin),
 ) -> Dict[str, Any]:
     """Send a test event to verify the webhook endpoint is reachable."""
     result = await WebhookService.send_test(db, webhook_id)

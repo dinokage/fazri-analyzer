@@ -22,7 +22,7 @@ from models.schemas.alerts import (
     NotificationQueueStatusResponse,
     ProcessQueueResponse,
 )
-from auth.dependencies import require_staff
+from auth.dependencies import require_staff, require_org_member
 from auth.models import AuthenticatedUser
 
 logger = logging.getLogger(__name__)
@@ -33,7 +33,7 @@ router = APIRouter(prefix="/api/v1/notifications", tags=["notifications"])
 @router.get("/status", response_model=NotificationQueueStatusResponse)
 async def get_queue_status(
     db: Session = Depends(get_db),
-    current_user: AuthenticatedUser = Depends(require_staff())
+    current_user: AuthenticatedUser = Depends(require_org_member)
 ):
     """
     Get the current status of the notification queue.
@@ -50,7 +50,7 @@ async def get_queue_status(
 async def process_notification_queue(
     batch_size: int = Query(50, ge=1, le=200, description="Number of notifications to process"),
     db: Session = Depends(get_db),
-    current_user: AuthenticatedUser = Depends(require_staff())
+    current_user: AuthenticatedUser = Depends(require_org_member)
 ):
     """
     Process pending notifications in the queue.
@@ -76,7 +76,7 @@ async def get_notification_history(
     alert_id: Optional[UUID] = Query(None, description="Filter by alert"),
     limit: int = Query(50, ge=1, le=200, description="Maximum results to return"),
     db: Session = Depends(get_db),
-    current_user: AuthenticatedUser = Depends(require_staff())
+    current_user: AuthenticatedUser = Depends(require_org_member)
 ):
     """
     Get notification delivery history.
@@ -101,7 +101,7 @@ async def get_staff_notification_history(
     staff_id: UUID,
     limit: int = Query(50, ge=1, le=200, description="Maximum results to return"),
     db: Session = Depends(get_db),
-    current_user: AuthenticatedUser = Depends(require_staff())
+    current_user: AuthenticatedUser = Depends(require_org_member)
 ):
     """
     Get notification history for a specific staff member.
@@ -123,7 +123,7 @@ async def get_alert_notification_history(
     alert_id: UUID,
     limit: int = Query(50, ge=1, le=200, description="Maximum results to return"),
     db: Session = Depends(get_db),
-    current_user: AuthenticatedUser = Depends(require_staff())
+    current_user: AuthenticatedUser = Depends(require_org_member)
 ):
     """
     Get notification history for a specific alert.
@@ -175,7 +175,7 @@ class PushSubscriptionBody(BaseModel):
 
 @router.get("/vapid-public-key", summary="Get VAPID public key for browser push subscription")
 async def get_vapid_public_key(
-    current_user: AuthenticatedUser = Depends(require_staff()),
+    current_user: AuthenticatedUser = Depends(require_org_member),
 ) -> Dict[str, Any]:
     """Return the VAPID public key so the client can create a PushSubscription."""
     if not settings.VAPID_PUBLIC_KEY:
@@ -187,7 +187,7 @@ async def get_vapid_public_key(
 async def save_push_subscription(
     body: PushSubscriptionBody,
     db: Session = Depends(get_db),
-    current_user: AuthenticatedUser = Depends(require_staff()),
+    current_user: AuthenticatedUser = Depends(require_org_member),
 ) -> Dict[str, str]:
     """
     Upsert a Web Push subscription for the current user.
@@ -215,7 +215,7 @@ async def save_push_subscription(
 async def delete_push_subscription(
     body: PushSubscriptionBody,
     db: Session = Depends(get_db),
-    current_user: AuthenticatedUser = Depends(require_staff()),
+    current_user: AuthenticatedUser = Depends(require_org_member),
 ) -> Dict[str, str]:
     """Remove a push subscription (called when the user disables notifications)."""
     db.query(PushSubscription).filter(PushSubscription.endpoint == body.endpoint).delete()

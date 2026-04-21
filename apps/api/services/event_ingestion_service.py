@@ -99,7 +99,7 @@ class EventIngestionService:
     # Public API
     # ------------------------------------------------------------------
 
-    async def ingest(self, event: SensorEvent) -> Optional[ResolvedEvent]:
+    async def ingest(self, event: SensorEvent, organization_id: str = "default-org") -> Optional[ResolvedEvent]:
         """
         Ingest a single normalised SensorEvent through the full pipeline.
 
@@ -139,14 +139,14 @@ class EventIngestionService:
             )
 
         # Step 2: Persist to sensor_events
-        self._persist(resolved or event)
+        self._persist(resolved or event, organization_id=organization_id)
 
         if resolved is None:
             return None
 
         # Step 3 + 4: Anomaly detection & alerting (CAMERA events only)
         if event.sensor_type == SensorType.CAMERA:
-            await self._run_anomaly_detection(resolved, profile)
+            await self._run_anomaly_detection(resolved, profile, organization_id=organization_id)
 
         # Step 5: Neo4j graph projection (fire-and-forget)
         task = asyncio.create_task(self._project_to_graph(resolved))
@@ -160,7 +160,7 @@ class EventIngestionService:
         return resolved
 
     async def ingest_batch(
-        self, events: List[SensorEvent]
+        self, events: List[SensorEvent], organization_id: str = "default-org"
     ) -> List[Optional[ResolvedEvent]]:
         """
         Ingest a list of SensorEvents sequentially.
@@ -170,7 +170,7 @@ class EventIngestionService:
         """
         results: List[Optional[ResolvedEvent]] = []
         for event in events:
-            result = await self.ingest(event)
+            result = await self.ingest(event, organization_id=organization_id)
             results.append(result)
         return results
 
@@ -178,7 +178,7 @@ class EventIngestionService:
     # Internal pipeline steps
     # ------------------------------------------------------------------
 
-    def _persist(self, event: SensorEvent) -> None:
+    def _persist(self, event: SensorEvent, organization_id: str = "default-org") -> None:
         """Write the event to the sensor_events table."""
         metadata = dict(event.metadata) if event.metadata else {}
         record = SensorEventRecord(
@@ -196,6 +196,7 @@ class EventIngestionService:
             floor=event.floor,
             raw_payload=event.raw_payload,
             metadata_=metadata,
+            organization_id=organization_id,
         )
         self.db.add(record)
         self.db.flush()
@@ -204,6 +205,7 @@ class EventIngestionService:
         self,
         resolved: ResolvedEvent,
         profile: EntityProfileDTO,
+        organization_id: str = "default-org",
     ) -> None:
         """Run anomaly rules and create an alert if one fires."""
         try:
@@ -261,7 +263,7 @@ class EventIngestionService:
                     resolved.zone_id,
                     anomaly["anomaly_type"],
                 )
-                await self._create_alert(resolved, anomaly)
+                await self._create_alert(resolved, anomaly, organization_id=organization_id)
 
         except Exception as exc:
             logger.error("Anomaly detection failed for %s: %s", resolved.event_id, exc)
@@ -270,6 +272,7 @@ class EventIngestionService:
         self,
         resolved: ResolvedEvent,
         anomaly: dict,
+        organization_id: str = "default-org",
     ) -> None:
         """
         Create an alert from a fired anomaly rule.
@@ -284,7 +287,7 @@ class EventIngestionService:
         entity_key = resolved.resolved_entity_id
 
         # Atomic cooldown gate — returns True only when freshly created
-        if not set_alert_cooldown(anomaly_type, source_device, entity_key):
+        if not set_alert_cooldown(anomaly_type, source_device, entity_key, organization_id):
             logger.debug(
                 "Alert suppressed (cooldown): %s source=%s entity=%s",
                 anomaly_type,
@@ -335,6 +338,7 @@ class EventIngestionService:
             alert = alert_svc.create_alert(
                 alert_data=alert_data,
                 actor_type=ActorType.SYSTEM,
+                organization_id=organization_id,
             )
             logger.info("Alert created: id=%s type=%s", alert.id, anomaly_type)
 
@@ -355,7 +359,7 @@ class EventIngestionService:
 
         except Exception as exc:
             # Release cooldown so the alert can be retried next time
-            delete_alert_cooldown(anomaly_type, source_device, entity_key)
+            delete_alert_cooldown(anomaly_type, source_device, entity_key, organization_id)
             logger.error("Alert creation failed: %s", exc)
 
     async def _project_to_graph(self, resolved: ResolvedEvent) -> None:

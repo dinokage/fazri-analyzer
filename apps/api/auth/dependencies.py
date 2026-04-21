@@ -4,6 +4,7 @@ from fastapi import Header, Depends, Request
 from auth.jwt import decode_jwt_token
 from auth.models import AuthenticatedUser, UserRole
 from auth.exceptions import AuthenticationError, PermissionDeniedError
+from config import settings
 
 
 async def get_current_user(
@@ -49,6 +50,8 @@ async def get_current_user(
             student_id=payload.get("student_id"),
             staff_id=payload.get("staff_id"),
             department=payload.get("department"),
+            sessionId=payload.get("sessionId"),
+            organizationId=payload.get("organizationId"),
         )
 
         # Store user in request state for Sentry middleware
@@ -102,3 +105,60 @@ def require_faculty() -> Callable:
 def require_admin() -> Callable:
     """Require SUPER_ADMIN role"""
     return require_role([UserRole.SUPER_ADMIN])
+
+
+async def require_org_member(
+    current_user: AuthenticatedUser = Depends(get_current_user),
+) -> AuthenticatedUser:
+    """Require user to have an active organization set in their JWT.
+    SUPER_ADMIN bypasses this check — they operate across all orgs."""
+    if current_user.role == UserRole.SUPER_ADMIN:
+        return current_user
+    if not current_user.organizationId:
+        raise PermissionDeniedError(
+            detail="No active organization. Please select a college first."
+        )
+    return current_user
+
+
+async def require_org_admin(
+    request: Request,
+    current_user: AuthenticatedUser = Depends(require_org_member),
+) -> AuthenticatedUser:
+    """
+    Require admin or owner role within the active org.
+
+    Checks membership via the auth service so role changes take
+    effect immediately without re-login.
+    """
+    if current_user.role == UserRole.SUPER_ADMIN:
+        return current_user
+
+    import httpx as _httpx
+    import logging
+
+    logger = logging.getLogger(__name__)
+    auth_header = request.headers.get("Authorization")
+    forward_headers = {"Authorization": auth_header} if auth_header else {}
+
+    try:
+        async with _httpx.AsyncClient(timeout=5) as client:
+            resp = await client.get(
+                f"{settings.AUTH_SERVICE_URL}/api/auth/organization/get-active-member",
+                params={"organizationId": current_user.organizationId},
+                headers=forward_headers,
+            )
+            if resp.status_code != 200:
+                logger.error(
+                    "require_org_admin: auth service returned %s — %s",
+                    resp.status_code,
+                    resp.text,
+                )
+            else:
+                member = resp.json()
+                if member and member.get("role") in ("owner", "admin"):
+                    return current_user
+    except Exception:
+        logger.exception("require_org_admin: unexpected error calling auth service")
+
+    raise PermissionDeniedError(detail="Admin access required for this organization.")

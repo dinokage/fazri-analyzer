@@ -1,7 +1,7 @@
 # FAZRI Multi-Tenant Migration — Claude Code Runbook
 
-**Repo**: `github.com/dinokage/fazri-analyzer` branch `core-feature-speedrun`
-**Date**: 2026-04-03
+**Repo**: `github.com/dinokage/fazri-analyzer` branch `multi-tenant-auth`
+**Date**: 2026-04-12
 **Objective**: Add organization-based multi-tenancy using Better Auth organization plugin.
 **Each college = one org. URL slug routing. All data org-scoped.**
 
@@ -25,43 +25,45 @@
 The project uses `^1.2.7`. The organization plugin API has changed between 1.2 and 1.5 (organizationCreation hooks deprecated, new organizationHooks API, checkSlug endpoint added).
 
 ```bash
-cd auth && npm install better-auth@^1.5.6
+cd apps/auth && npm install better-auth@^1.5.6
 cd .. && pnpm install better-auth@^1.5.6
+cd apps/web && npm install better-auth@^1.5.6
 ```
 
 **Verify**:
 ```bash
-grep '"better-auth"' auth/package.json | head -1
+grep '"better-auth"' apps/auth/package.json | head -1
+grep '"better-auth"' apps/web/package.json | head -1
 grep '"better-auth"' package.json | head -1
-# Both should show ^1.5.6 or a resolved version >=1.5.6
+# All should show ^1.5.6 or a resolved version >=1.5.6
 ```
 
 ### Step 0.2 — Set up Alembic in the backend
 
 ```bash
-cd backend
+cd apps/api
 pip install alembic --break-system-packages
 alembic init alembic
 ```
 
-Edit `backend/alembic/env.py`:
+Edit `apps/api/alembic/env.py`:
 - Set `target_metadata = Base.metadata` (import Base from `database.connection`)
 - Set `sqlalchemy.url` from `config.settings.DATABASE_URL` (or from env)
 - Add `sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))` at the top so backend modules are importable
 
-Edit `backend/alembic.ini`:
+Edit `apps/api/alembic.ini`:
 - Set `script_location = alembic`
 
 Create baseline migration:
 ```bash
-cd backend
+cd apps/api
 alembic revision --autogenerate -m "baseline"
 alembic stamp head  # mark current DB state as baseline without running anything
 ```
 
 **Verify**:
 ```bash
-cd backend && alembic current
+cd apps/api && alembic current
 # Should show the baseline revision hash with "(head)"
 ```
 
@@ -73,7 +75,7 @@ cd backend && alembic current
 
 ### Step 1.1 — Create shared permissions file
 
-Create `auth/src/permissions.ts`:
+Create `apps/auth/src/permissions.ts`:
 
 ```typescript
 /**
@@ -150,18 +152,18 @@ export const memberRole = ac.newRole({
 
 **Verify**:
 ```bash
-cd auth && npx tsx -e "import './src/permissions'; console.log('permissions OK')"
+cd apps/auth && npx tsx -e "import './src/permissions'; console.log('permissions OK')"
 ```
 
 ### Step 1.2 — Update auth.ts with organization plugin
 
-Replace `auth/src/auth.ts` entirely:
+Replace `apps/auth/src/auth.ts` entirely:
 
 ```typescript
 import { betterAuth } from "better-auth";
 import { prismaAdapter } from "better-auth/adapters/prisma";
 import { username, jwt, organization } from "better-auth/plugins";
-import { prisma } from "./lib/prisma";
+import { prisma } from "@fazri/db";
 import { ac, ownerRole, adminRole, memberRole } from "./permissions";
 import bcrypt from "bcryptjs";
 
@@ -261,8 +263,10 @@ export type Auth = typeof auth;
 ### Step 1.3 — Generate Prisma schema and migrate
 
 ```bash
-cd auth
-npx @better-auth/cli generate --output prisma
+cd apps/auth
+npx @better-auth/cli generate \
+  --output ../../../packages/db/prisma/schema.prisma
+cd ../../packages/db
 npx prisma migrate dev --name add_organizations
 ```
 
@@ -270,13 +274,13 @@ This auto-creates the `organization`, `member`, `invitation` tables and adds `ac
 
 **Verify**:
 ```bash
-cd auth && npx prisma db pull --print 2>/dev/null | grep -c "organization\|member\|invitation"
+cd packages/db && npx prisma db pull --print 2>/dev/null | grep -c "organization\|member\|invitation"
 # Should show 3+ matches (the table definitions)
 ```
 
 ### Step 1.4 — Add org check endpoints to auth service
 
-Edit `auth/src/index.ts`. Add these routes AFTER `app.use(express.json());` and BEFORE the existing `app.post("/api/check-username", ...)`:
+Edit `apps/auth/src/index.ts`. Add these routes AFTER `app.use(express.json());` and BEFORE the existing `app.post("/api/check-username", ...)`:
 
 ```typescript
 // ── Org slug validation (unauthenticated — used by login step 1) ──────────
@@ -357,7 +361,7 @@ app.post("/api/check-username", async (req, res) => {
 
 **Verify**:
 ```bash
-cd auth && npx tsx -e "import './src/index'; console.log('compiles')" 2>&1 | head -5
+cd apps/auth && npx tsx -e "import './src/index'; console.log('compiles')" 2>&1 | head -5
 # Should not show TypeScript errors (may show "listen" log)
 ```
 
@@ -413,7 +417,7 @@ pnpm exec tsc --noEmit --skipLibCheck 2>&1 | head -10
 
 The following tables ALL need `organization_id = Column(String, nullable=False, index=True)`:
 
-**File: `backend/models/db/alerts.py`** — Add to these classes:
+**File: `apps/api/models/db/alerts.py`** — Add to these classes:
 - `StaffProfile` (after `department` field)
 - `Alert` (after `is_mock` field)
 - `AlertAssignment` (after `unassigned_reason` or last field)
@@ -426,33 +430,33 @@ For each class, add this line in the column definitions section:
 organization_id = Column(String, nullable=False, index=True, default="default-org")
 ```
 
-**File: `backend/models/db/camera_streams.py`** — Add to `CameraStream`:
+**File: `apps/api/models/db/camera_streams.py`** — Add to `CameraStream`:
 ```python
 organization_id = Column(String, nullable=False, index=True, default="default-org")
 ```
 
-**File: `backend/models/db/webhooks.py`** — Add to `OutgoingWebhook`:
+**File: `apps/api/models/db/webhooks.py`** — Add to `OutgoingWebhook`:
 ```python
 organization_id = Column(String, nullable=False, index=True, default="default-org")
 ```
 
-**File: `backend/models/db/push_subscriptions.py`** — Add to `PushSubscription`:
+**File: `apps/api/models/db/push_subscriptions.py`** — Add to `PushSubscription`:
 ```python
 organization_id = Column(String, nullable=False, index=True, default="default-org")
 ```
 
-**File: `backend/models/db/sensor_events.py`** — Add to `SensorEventRecord`:
+**File: `apps/api/models/db/sensor_events.py`** — Add to `SensorEventRecord`:
 ```python
 organization_id = Column(String, nullable=True, index=True)
 ```
 Note: `nullable=True` here because the pollers will need to be updated to pass org_id. Existing events won't have it.
 
-**File: `backend/models/db/entity_profiles.py`** — Add to `EntityProfile`:
+**File: `apps/api/models/db/entity_profiles.py`** — Add to `EntityProfile`:
 ```python
 organization_id = Column(String, nullable=False, index=True, default="default-org")
 ```
 
-**File: `backend/models/db/entity_identifiers.py`** — Add to `EntityIdentifier`:
+**File: `apps/api/models/db/entity_identifiers.py`** — Add to `EntityIdentifier`:
 ```python
 organization_id = Column(String, nullable=False, index=True, default="default-org")
 ```
@@ -461,7 +465,7 @@ Import `Column` and `String` are already present in all these files.
 
 **Verify**:
 ```bash
-cd backend && python -c "
+cd apps/api && python -c "
 from models.db.alerts import Alert, StaffProfile, AlertAssignment, AlertAuditLog, NotificationQueue, NotificationLog
 from models.db.camera_streams import CameraStream
 from models.db.webhooks import OutgoingWebhook
@@ -485,7 +489,7 @@ print('All models have organization_id')
 ### Step 2.2 — Create Alembic migration
 
 ```bash
-cd backend
+cd apps/api
 alembic revision --autogenerate -m "add_organization_id_to_all_tables"
 ```
 
@@ -527,12 +531,12 @@ After all `op.add_column(...)` calls, add:
 
 Run the migration:
 ```bash
-cd backend && alembic upgrade head
+cd apps/api && alembic upgrade head
 ```
 
 **Verify**:
 ```bash
-cd backend && python -c "
+cd apps/api && python -c "
 from sqlalchemy import inspect
 from database.connection import engine
 inspector = inspect(engine)
@@ -553,7 +557,7 @@ print('All tables migrated')
 
 ### Step 3.1 — Update AuthenticatedUser model
 
-Edit `backend/auth/models.py`. Add `organizationId` field to `AuthenticatedUser`:
+Edit `apps/api/auth/models.py`. Add `organizationId` field to `AuthenticatedUser`:
 
 ```python
 class AuthenticatedUser(BaseModel):
@@ -574,7 +578,7 @@ class AuthenticatedUser(BaseModel):
 
 ### Step 3.2 — Update get_current_user in dependencies.py
 
-Edit `backend/auth/dependencies.py`. In the `get_current_user` function, update the `AuthenticatedUser` construction to include the new fields:
+Edit `apps/api/auth/dependencies.py`. In the `get_current_user` function, update the `AuthenticatedUser` construction to include the new fields:
 
 ```python
 user = AuthenticatedUser(
@@ -594,7 +598,7 @@ user = AuthenticatedUser(
 
 ### Step 3.3 — Add org dependency functions
 
-Add these new dependency functions to `backend/auth/dependencies.py`:
+Add these new dependency functions to `apps/api/auth/dependencies.py`:
 
 ```python
 async def require_org_member(
@@ -647,7 +651,7 @@ from config import settings
 
 **Verify**:
 ```bash
-cd backend && python -c "
+cd apps/api && python -c "
 from auth.dependencies import get_current_user, require_org_member, require_org_admin, require_staff, require_admin
 print('All dependencies import OK')
 "
@@ -655,7 +659,7 @@ print('All dependencies import OK')
 
 ### Step 3.4 — Update alert_cooldown.py for org-scoped keys
 
-Edit `backend/services/alert_cooldown.py`. Change the `cooldown_key` function:
+Edit `apps/api/services/alert_cooldown.py`. Change the `cooldown_key` function:
 
 **Current**:
 ```python
@@ -695,7 +699,7 @@ def delete_alert_cooldown(
 
 ### Step 3.5 — Update EventIngestionService to accept organization_id
 
-Edit `backend/services/event_ingestion_service.py`.
+Edit `apps/api/services/event_ingestion_service.py`.
 
 Update the `ingest` method signature:
 ```python
@@ -755,7 +759,7 @@ async def ingest_batch(
 
 ### Step 3.6 — Update EntityResolutionService to scope by organization_id
 
-Edit `backend/services/entity_resolution_service.py`.
+Edit `apps/api/services/entity_resolution_service.py`.
 
 Update the `resolve` method to accept and filter by `organization_id`:
 
@@ -793,14 +797,14 @@ In the body, set `organization_id` on both the `EntityProfile` and `EntityIdenti
 
 ### Step 3.7 — Add organization_id to Hikvision and Aruba pollers
 
-Edit `backend/config/__init__.py`. Add these settings:
+Edit `apps/api/config/__init__.py`. Add these settings:
 ```python
 # Organization scoping for pollers (single-campus deployment)
 HIKVISION_ORGANIZATION_ID: str = "default-org"
 ARUBA_ORGANIZATION_ID: str = "default-org"
 ```
 
-Edit `backend/services/hikvision_poller.py`. Pass `organization_id` to `ingest_batch`:
+Edit `apps/api/services/hikvision_poller.py`. Pass `organization_id` to `ingest_batch`:
 ```python
 results = await svc.ingest_batch(
     events,
@@ -808,7 +812,7 @@ results = await svc.ingest_batch(
 )
 ```
 
-Edit `backend/services/aruba_poller.py`. Same pattern:
+Edit `apps/api/services/aruba_poller.py`. Same pattern:
 ```python
 results = await svc.ingest_batch(
     events,
@@ -818,7 +822,7 @@ results = await svc.ingest_batch(
 
 ### Step 3.8 — Update AlertService.create_alert to accept organization_id
 
-Edit `backend/services/alerts/alert_service.py`.
+Edit `apps/api/services/alerts/alert_service.py`.
 
 Update `create_alert` method signature:
 ```python
@@ -867,15 +871,15 @@ current_user: AuthenticatedUser = Depends(require_org_member)
 And update service calls to pass `organization_id=current_user.organizationId`.
 
 Apply this pattern to ALL handlers in:
-- `backend/routes/alert_routes.py`
-- `backend/routes/staff_routes.py`
-- `backend/routes/events_routes.py`
-- `backend/routes/spatial_routes.py`
-- `backend/routes/webhook_routes.py`
-- `backend/routes/notification_routes.py`
-- `backend/routes/deepface_routes.py`
-- `backend/routes/import_routes.py`
-- `backend/entity_routes.py`
+- `apps/api/routes/alert_routes.py`
+- `apps/api/routes/staff_routes.py`
+- `apps/api/routes/events_routes.py`
+- `apps/api/routes/spatial_routes.py`
+- `apps/api/routes/webhook_routes.py`
+- `apps/api/routes/notification_routes.py`
+- `apps/api/routes/deepface_routes.py`
+- `apps/api/routes/import_routes.py`
+- `apps/api/entity_routes.py`
 
 **IMPORTANT**: Do not change `require_admin()` dependencies to `require_org_member`. Change them to `require_org_admin` instead for admin-only routes.
 
@@ -886,7 +890,7 @@ from auth.dependencies import require_org_member, require_org_admin
 
 **Verify** (after all route changes):
 ```bash
-cd backend && python -c "
+cd apps/api && python -c "
 import ast
 import sys
 errors = []
@@ -1180,7 +1184,7 @@ pnpm exec tsc --noEmit --skipLibCheck 2>&1 | grep -c "error TS"
 
 ### Step 5.1 — Create namespace helpers
 
-Create `backend/services/face_namespace.py`:
+Create `apps/api/services/face_namespace.py`:
 
 ```python
 """
@@ -1214,7 +1218,7 @@ def parse_namespaced_face_id(namespaced_id: str) -> Tuple[str, str]:
 
 ### Step 5.2 — Update deepface_routes.py face registration
 
-In `backend/routes/deepface_routes.py`, find the `register_face` endpoint. Update it to use namespaced IDs:
+In `apps/api/routes/deepface_routes.py`, find the `register_face` endpoint. Update it to use namespaced IDs:
 
 ```python
 from services.face_namespace import build_namespaced_face_id
@@ -1250,7 +1254,7 @@ go2rtc_stream_name = f"{user.organizationId}/{body.stream_id}"
 
 ### Step 5.5 — Write face embedding migration script
 
-Create `backend/scripts/migrate_face_embeddings.py`:
+Create `apps/api/scripts/migrate_face_embeddings.py`:
 
 ```python
 """
@@ -1309,7 +1313,7 @@ if __name__ == "__main__":
 
 ### Step 6.1 — Create default-org in Better Auth
 
-Create `backend/scripts/seed_default_org.py`:
+Create `apps/api/scripts/seed_default_org.py`:
 
 ```python
 """
@@ -1389,7 +1393,7 @@ print(f"Assigned {len(admins)} SUPER_ADMIN users as owners of default-org")
 ### Check 1: Auth service starts with organization plugin
 
 ```bash
-cd auth && npm run dev &
+cd apps/auth && npm run dev &
 sleep 3
 curl -s http://localhost:4000/health | jq .
 curl -s -X POST http://localhost:4000/api/check-org-slug \
@@ -1401,7 +1405,7 @@ curl -s -X POST http://localhost:4000/api/check-org-slug \
 ### Check 2: Backend starts with org-scoped models
 
 ```bash
-cd backend && python -c "from main import app; print('FastAPI app created OK')"
+cd apps/api && python -c "from main import app; print('FastAPI app created OK')"
 ```
 
 ### Check 3: Frontend compiles
@@ -1424,40 +1428,40 @@ grep -n '"/dashboard' src/components/sidebar-layout.tsx | grep -v "basePath\|org
 
 | File | Change Type | Phase |
 |------|-------------|-------|
-| `auth/package.json` | Modified (upgrade) | 0 |
+| `apps/auth/package.json` | Modified (upgrade) | 0 |
 | `package.json` | Modified (upgrade) | 0 |
-| `backend/alembic/` | New directory | 0 |
-| `auth/src/permissions.ts` | **New file** | 1 |
-| `auth/src/auth.ts` | Replaced | 1 |
-| `auth/prisma/schema.prisma` | Auto-generated | 1 |
-| `auth/src/index.ts` | Modified (2 endpoints) | 1 |
+| `apps/api/alembic/` | New directory | 0 |
+| `apps/auth/src/permissions.ts` | **New file** | 1 |
+| `apps/auth/src/auth.ts` | Replaced | 1 |
+| `packages/db/prisma/schema.prisma` | Auto-generated | 1 |
+| `apps/auth/src/index.ts` | Modified (2 endpoints) | 1 |
 | `src/lib/auth-client.ts` | Modified | 1 |
-| `backend/models/db/alerts.py` | Modified (org_id × 6 models) | 2 |
-| `backend/models/db/camera_streams.py` | Modified | 2 |
-| `backend/models/db/webhooks.py` | Modified | 2 |
-| `backend/models/db/push_subscriptions.py` | Modified | 2 |
-| `backend/models/db/sensor_events.py` | Modified | 2 |
-| `backend/models/db/entity_profiles.py` | Modified | 2 |
-| `backend/models/db/entity_identifiers.py` | Modified | 2 |
-| `backend/alembic/versions/xxx_add_org_id.py` | **New file** | 2 |
-| `backend/auth/models.py` | Modified | 3 |
-| `backend/auth/dependencies.py` | Modified (2 new deps) | 3 |
-| `backend/services/alert_cooldown.py` | Modified | 3 |
-| `backend/services/event_ingestion_service.py` | Modified | 3 |
-| `backend/services/entity_resolution_service.py` | Modified | 3 |
-| `backend/services/hikvision_poller.py` | Modified | 3 |
-| `backend/services/aruba_poller.py` | Modified | 3 |
-| `backend/services/alerts/alert_service.py` | Modified | 3 |
-| `backend/config/__init__.py` | Modified (2 new settings) | 3 |
-| `backend/routes/alert_routes.py` | Modified (all handlers) | 3 |
-| `backend/routes/staff_routes.py` | Modified (all handlers) | 3 |
-| `backend/routes/events_routes.py` | Modified | 3 |
-| `backend/routes/spatial_routes.py` | Modified | 3 |
-| `backend/routes/webhook_routes.py` | Modified | 3 |
-| `backend/routes/notification_routes.py` | Modified | 3 |
-| `backend/routes/deepface_routes.py` | Modified | 3+5 |
-| `backend/routes/import_routes.py` | Modified | 3 |
-| `backend/entity_routes.py` | Modified | 3 |
+| `apps/api/models/db/alerts.py` | Modified (org_id × 6 models) | 2 |
+| `apps/api/models/db/camera_streams.py` | Modified | 2 |
+| `apps/api/models/db/webhooks.py` | Modified | 2 |
+| `apps/api/models/db/push_subscriptions.py` | Modified | 2 |
+| `apps/api/models/db/sensor_events.py` | Modified | 2 |
+| `apps/api/models/db/entity_profiles.py` | Modified | 2 |
+| `apps/api/models/db/entity_identifiers.py` | Modified | 2 |
+| `apps/api/alembic/versions/xxx_add_org_id.py` | **New file** | 2 |
+| `apps/api/auth/models.py` | Modified | 3 |
+| `apps/api/auth/dependencies.py` | Modified (2 new deps) | 3 |
+| `apps/api/services/alert_cooldown.py` | Modified | 3 |
+| `apps/api/services/event_ingestion_service.py` | Modified | 3 |
+| `apps/api/services/entity_resolution_service.py` | Modified | 3 |
+| `apps/api/services/hikvision_poller.py` | Modified | 3 |
+| `apps/api/services/aruba_poller.py` | Modified | 3 |
+| `apps/api/services/alerts/alert_service.py` | Modified | 3 |
+| `apps/api/config/__init__.py` | Modified (2 new settings) | 3 |
+| `apps/api/routes/alert_routes.py` | Modified (all handlers) | 3 |
+| `apps/api/routes/staff_routes.py` | Modified (all handlers) | 3 |
+| `apps/api/routes/events_routes.py` | Modified | 3 |
+| `apps/api/routes/spatial_routes.py` | Modified | 3 |
+| `apps/api/routes/webhook_routes.py` | Modified | 3 |
+| `apps/api/routes/notification_routes.py` | Modified | 3 |
+| `apps/api/routes/deepface_routes.py` | Modified | 3+5 |
+| `apps/api/routes/import_routes.py` | Modified | 3 |
+| `apps/api/entity_routes.py` | Modified | 3 |
 | `src/lib/org-context.tsx` | **New file** | 4 |
 | `src/app/(app)/[orgSlug]/dashboard/layout.tsx` | **New file** | 4 |
 | `src/app/(app)/[orgSlug]/dashboard/*` | Moved from dashboard/ | 4 |
@@ -1465,6 +1469,6 @@ grep -n '"/dashboard' src/components/sidebar-layout.tsx | grep -v "basePath\|org
 | `src/components/auth/SigninForm.tsx` | Modified (3-step flow) | 4 |
 | `src/app/(app)/auth/page.tsx` | Modified (prefillSlug) | 4 |
 | `src/app/(app)/org-setup/page.tsx` | **New file** | 4 |
-| `backend/services/face_namespace.py` | **New file** | 5 |
-| `backend/scripts/migrate_face_embeddings.py` | **New file** | 5 |
-| `backend/scripts/seed_default_org.py` | **New file** | 6 |
+| `apps/api/services/face_namespace.py` | **New file** | 5 |
+| `apps/api/scripts/migrate_face_embeddings.py` | **New file** | 5 |
+| `apps/api/scripts/seed_default_org.py` | **New file** | 6 |

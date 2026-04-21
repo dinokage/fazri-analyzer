@@ -8,37 +8,44 @@ datasource db {
 }
 
 model user {
-  id            String    @id(map: "User_pkey") @default(cuid())
-  entity_id     String    @unique(map: "User_entity_id_key")
+  id            String       @id(map: "User_pkey") @default(cuid())
+  entity_id     String       @unique(map: "User_entity_id_key")
   name          String
-  role          UserRole  @default(STUDENT)
-  email         String    @unique(map: "User_email_key")
+  role          UserRole     @default(STUDENT)
+  email         String       @unique(map: "User_email_key")
   department    String?
   student_id    String?
   staff_id      String?
   card_id       String?
-  device_hash   String?   @unique(map: "User_device_hash_key")
-  face_id       String?   @unique(map: "User_face_id_key")
-  password      String
+  device_hash   String?      @unique(map: "User_device_hash_key")
+  face_id       String?      @unique(map: "User_face_id_key")
+  password      String?
   image         String?
-  username      String    @unique
-  createdAt     DateTime  @default(now())
-  updatedAt     DateTime  @default(now()) @updatedAt
-  emailVerified Boolean   @default(false)
+  username      String       @unique
+  banned        Boolean?     @default(false)
+  banReason     String?
+  banExpires    DateTime?
+  createdAt     DateTime     @default(now())
+  updatedAt     DateTime     @default(now()) @updatedAt
+  emailVerified Boolean      @default(false)
   accounts      account[]
   sessions      session[]
+  members       member[]
+  invitations   invitation[]
 }
 
 model session {
-  id        String   @id(map: "Session_pkey") @default(cuid())
-  token     String   @unique(map: "Session_sessionToken_key")
-  userId    String
-  expiresAt DateTime
-  createdAt DateTime @default(now())
-  updatedAt DateTime @default(now()) @updatedAt
-  ipAddress String?
-  userAgent String?
-  user      user     @relation(fields: [userId], references: [id], onDelete: Cascade, map: "Session_userId_fkey")
+  id                   String   @id(map: "Session_pkey") @default(cuid())
+  token                String   @unique(map: "Session_sessionToken_key")
+  userId               String
+  expiresAt            DateTime
+  createdAt            DateTime @default(now())
+  updatedAt            DateTime @default(now()) @updatedAt
+  ipAddress            String?
+  userAgent            String?
+  activeOrganizationId String?
+  impersonatedBy       String?
+  user                 user     @relation(fields: [userId], references: [id], onDelete: Cascade, map: "Session_userId_fkey")
 }
 
 model account {
@@ -83,4 +90,48 @@ enum UserRole {
   STAFF
   FACULTY
   SUPER_ADMIN
+}
+
+model organization {
+  id          String       @id
+  name        String
+  slug        String       @unique
+  logo        String?
+  createdAt   DateTime
+  metadata    String?
+  members     member[]
+  invitations invitation[]
+}
+
+model member {
+  id             String       @id
+  organizationId String
+  userId         String
+  role           String
+  createdAt      DateTime
+  organization   organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  user           user         @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+model invitation {
+  id             String       @id
+  organizationId String
+  email          String
+  role           String?
+  status         String
+  expiresAt      DateTime
+  inviterId      String
+  organization   organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  user           user         @relation(fields: [inviterId], references: [id], onDelete: Cascade)
+}
+
+model ssoProvider {
+  id             String   @id
+  issuer         String
+  oidcConfig     String?
+  samlConfig     String?
+  providerId     String   @unique
+  userId         String?
+  organizationId String?
+  domain         String?
 }

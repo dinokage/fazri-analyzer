@@ -29,7 +29,7 @@ from models.schemas.alerts import (
     ActorTypeEnum,
 )
 from models.db.alerts import ActorType
-from auth.dependencies import require_staff, require_admin
+from auth.dependencies import require_staff, require_admin, require_org_member, require_org_admin
 from auth.models import AuthenticatedUser
 
 logger = logging.getLogger(__name__)
@@ -100,7 +100,7 @@ async def create_alert(
     request: Request,
     auto_assign: bool = Query(True, description="Automatically assign to nearest available staff"),
     db: Session = Depends(get_db),
-    current_user: AuthenticatedUser = Depends(require_staff())
+    current_user: AuthenticatedUser = Depends(require_org_member)
 ):
     """
     Create a new alert.
@@ -121,6 +121,7 @@ async def create_alert(
         actor_type=ActorType.SYSTEM,
         ip_address=ip_address,
         user_agent=user_agent,
+        organization_id=current_user.organizationId,
     )
 
     # Auto-assign if requested and not a mock alert (mock alerts are handled by demo system)
@@ -155,7 +156,7 @@ async def list_alerts(
     limit: int = Query(20, ge=1, le=100, description="Maximum results"),
     offset: int = Query(0, ge=0, description="Results to skip"),
     db: Session = Depends(get_db),
-    current_user: AuthenticatedUser = Depends(require_staff())
+    current_user: AuthenticatedUser = Depends(require_org_member)
 ):
     """
     List alerts with optional filters.
@@ -173,6 +174,7 @@ async def list_alerts(
         include_resolved=include_resolved,
         limit=limit,
         offset=offset,
+        organization_id=current_user.organizationId,
     )
 
     return AlertListResponse(
@@ -189,7 +191,7 @@ async def list_active_alerts(
     severity: Optional[AlertSeverityEnum] = Query(None, description="Filter by severity"),
     limit: int = Query(50, ge=1, le=100, description="Maximum results"),
     db: Session = Depends(get_db),
-    current_user: AuthenticatedUser = Depends(require_staff())
+    current_user: AuthenticatedUser = Depends(require_org_member)
 ):
     """
     List all active (non-resolved) alerts.
@@ -203,6 +205,7 @@ async def list_active_alerts(
         include_resolved=False,
         limit=limit,
         offset=0,
+        organization_id=current_user.organizationId,
     )
 
     return AlertListResponse(
@@ -218,7 +221,7 @@ async def list_active_alerts(
 async def get_alert(
     alert_id: UUID,
     db: Session = Depends(get_db),
-    current_user: AuthenticatedUser = Depends(require_staff())
+    current_user: AuthenticatedUser = Depends(require_org_member)
 ):
     """Get a specific alert by ID"""
     service = AlertService(db)
@@ -236,7 +239,7 @@ async def update_alert(
     update_data: AlertUpdate,
     request: Request,
     db: Session = Depends(get_db),
-    current_user: AuthenticatedUser = Depends(require_admin())
+    current_user: AuthenticatedUser = Depends(require_org_admin)
 ):
     """
     Update an alert's basic information.
@@ -265,7 +268,7 @@ async def update_alert(
 async def delete_alert(
     alert_id: UUID,
     db: Session = Depends(get_db),
-    current_user: AuthenticatedUser = Depends(require_admin())
+    current_user: AuthenticatedUser = Depends(require_org_admin)
 ):
     """
     Delete an alert.
@@ -293,7 +296,7 @@ async def update_alert_status(
     request: Request,
     staff_id: Optional[UUID] = Query(None, description="Staff ID making the update"),
     db: Session = Depends(get_db),
-    current_user: AuthenticatedUser = Depends(require_staff())
+    current_user: AuthenticatedUser = Depends(require_org_member)
 ):
     """
     Update an alert's status.
@@ -334,7 +337,7 @@ async def assign_alert(
     request: Request,
     assigned_by: Optional[UUID] = Query(None, description="Admin ID making the assignment"),
     db: Session = Depends(get_db),
-    current_user: AuthenticatedUser = Depends(require_staff())
+    current_user: AuthenticatedUser = Depends(require_org_member)
 ):
     """
     Assign an alert to a staff member.
@@ -370,7 +373,7 @@ async def acknowledge_alert(
     staff_id: UUID = Query(..., description="Staff ID acknowledging the alert"),
     request: Request = None,
     db: Session = Depends(get_db),
-    current_user: AuthenticatedUser = Depends(require_staff())
+    current_user: AuthenticatedUser = Depends(require_org_member)
 ):
     """
     Acknowledge an alert (staff action).
@@ -403,7 +406,7 @@ async def resolve_alert(
     staff_id: UUID = Query(..., description="Staff ID resolving the alert"),
     request: Request = None,
     db: Session = Depends(get_db),
-    current_user: AuthenticatedUser = Depends(require_staff())
+    current_user: AuthenticatedUser = Depends(require_org_member)
 ):
     """
     Resolve an alert.
@@ -436,7 +439,7 @@ async def escalate_alert(
     escalated_by: Optional[UUID] = Query(None, description="Staff ID initiating escalation"),
     request: Request = None,
     db: Session = Depends(get_db),
-    current_user: AuthenticatedUser = Depends(require_staff())
+    current_user: AuthenticatedUser = Depends(require_org_member)
 ):
     """
     Escalate an alert to a supervisor or admin.
@@ -469,7 +472,7 @@ async def add_note(
     staff_id: UUID = Query(..., description="Staff ID adding the note"),
     request: Request = None,
     db: Session = Depends(get_db),
-    current_user: AuthenticatedUser = Depends(require_staff())
+    current_user: AuthenticatedUser = Depends(require_org_member)
 ):
     """Add a note to an alert"""
     ip_address, user_agent = get_client_info(request)
@@ -499,7 +502,7 @@ async def get_alert_audit_trail(
     limit: int = Query(50, ge=1, le=100, description="Maximum results"),
     offset: int = Query(0, ge=0, description="Results to skip"),
     db: Session = Depends(get_db),
-    current_user: AuthenticatedUser = Depends(require_staff())
+    current_user: AuthenticatedUser = Depends(require_org_member)
 ):
     """
     Get the complete audit trail for an alert.
@@ -556,7 +559,7 @@ async def get_alert_audit_trail(
 @router.delete("/mock", status_code=200)
 async def clear_mock_alerts(
     db: Session = Depends(get_db),
-    current_user: AuthenticatedUser = Depends(require_admin())
+    current_user: AuthenticatedUser = Depends(require_org_admin)
 ):
     """
     Clear all mock/demo alerts.
@@ -573,7 +576,7 @@ async def clear_mock_alerts(
 async def get_staff_active_alerts(
     staff_id: UUID,
     db: Session = Depends(get_db),
-    current_user: AuthenticatedUser = Depends(require_staff())
+    current_user: AuthenticatedUser = Depends(require_org_member)
 ):
     """Get all active alerts assigned to a specific staff member"""
     service = AlertService(db)
@@ -596,7 +599,7 @@ async def get_staff_active_alerts(
 async def auto_assign_alert(
     alert_id: UUID,
     db: Session = Depends(get_db),
-    current_user: AuthenticatedUser = Depends(require_staff())
+    current_user: AuthenticatedUser = Depends(require_org_member)
 ):
     """
     Automatically assign an alert to the best available staff member.
@@ -633,7 +636,7 @@ async def auto_assign_alert(
 @router.post("/escalation-check", status_code=200)
 async def trigger_escalation_check(
     db: Session = Depends(get_db),
-    current_user: AuthenticatedUser = Depends(require_admin())
+    current_user: AuthenticatedUser = Depends(require_org_admin)
 ):
     """
     Trigger the escalation check manually.
@@ -658,7 +661,7 @@ async def get_assignment_candidates(
     zone_id: str,
     alert_type: Optional[str] = Query(None, description="Alert type for skill matching"),
     db: Session = Depends(get_db),
-    current_user: AuthenticatedUser = Depends(require_staff())
+    current_user: AuthenticatedUser = Depends(require_org_member)
 ):
     """
     Get ranked list of staff candidates for assignment to a zone.

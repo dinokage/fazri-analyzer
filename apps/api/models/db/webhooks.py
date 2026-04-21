@@ -19,6 +19,7 @@ class OutgoingWebhook(Base):
     active = Column(Boolean, default=True, nullable=False)
     created_at = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
     updated_at = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc), onupdate=lambda: datetime.now(timezone.utc))
+    organization_id = Column(String, nullable=False, index=True, default="default-org")
 
     @property
     def events_list(self):

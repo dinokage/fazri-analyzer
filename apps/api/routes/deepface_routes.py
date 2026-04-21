@@ -35,7 +35,7 @@ from fastapi.responses import StreamingResponse
 from starlette.responses import Response
 from sqlalchemy.orm import Session
 
-from auth.dependencies import require_staff, require_admin
+from auth.dependencies import require_staff, require_admin, require_org_member, require_org_admin
 from auth.models import AuthenticatedUser
 from config import settings
 from database.connection import get_db
@@ -56,6 +56,7 @@ from models.schemas.deepface import (
 from services.deepface_client import get_deepface_client
 from services.cctv_graph_service import get_cctv_graph_service
 from services.alert_cooldown import get_alert_redis as _get_alert_redis_shared
+from services.face_namespace import build_namespaced_face_id, parse_namespaced_face_id
 
 logger = logging.getLogger(__name__)
 
@@ -269,18 +270,24 @@ async def deepface_webhook(
     detection_overlays: List[Dict[str, Any]] = []
 
     for match in payload.matches:
-        face_id = match.img_name
-        is_unknown = face_id == "UNKNOWN_FACE"
+        face_id_raw = match.img_name
+        is_unknown = face_id_raw == "UNKNOWN_FACE"
+
+        # Parse namespaced face label: {org_id}/{entity_id}
+        # Falls back gracefully for legacy un-namespaced labels.
+        org_id, entity_id = parse_namespaced_face_id(face_id_raw)
+        if not org_id:
+            org_id = "default-org"
 
         # Quick name lookup for frontend overlays (PG, not Neo4j)
         entity_name: Optional[str] = None
         if not is_unknown:
-            profile = entity_resolver.resolve("face_id", face_id, db=db)
+            profile = entity_resolver.resolve("face_id", entity_id, db=db)
             if profile:
                 entity_name = profile.name
 
         detection_overlays.append({
-            "img_name": face_id,
+            "img_name": entity_id,
             "entity_name": entity_name,
             "confidence": match.confidence,
             "distance": match.distance,
@@ -298,7 +305,7 @@ async def deepface_webhook(
             event_type=EventType.FACE_UNKNOWN if is_unknown else EventType.FACE_RECOGNIZED,
             timestamp=payload.timestamp,
             zone_id=zone_id,
-            raw_identifier=face_id,
+            raw_identifier=entity_id,
             identifier_type="face_id",
             confidence=conf_normalised,
             source_device_id=payload.stream_id,
@@ -314,7 +321,7 @@ async def deepface_webhook(
         except Exception as exc:
             logger.error(
                 "Ingestion failed for face=%s stream=%s: %s",
-                face_id, payload.stream_id, exc, exc_info=True,
+                entity_id, payload.stream_id, exc, exc_info=True,
             )
 
         processed += 1
@@ -358,7 +365,7 @@ async def create_stream(
     body: StreamCreateRequest,
     request: Request,
     db: Session = Depends(get_db),
-    current_user: AuthenticatedUser = Depends(require_admin()),
+    current_user: AuthenticatedUser = Depends(require_org_admin),
 ) -> StreamResponse:
     """
     Create a CameraStream DB record, then instruct the DeepFace server to
@@ -391,10 +398,11 @@ async def create_stream(
     # Pre-register the stream with go2rtc so the relay is ready for live view /
     # snapshot requests.  DeepFace always connects directly to the camera —
     # go2rtc is only used for browser WebRTC and JPEG snapshots.
+    go2rtc_stream_name = f"{current_user.organizationId or 'default-org'}/{body.stream_id}"
     if settings.GO2RTC_ENABLED:
         try:
             async with httpx.AsyncClient(timeout=5) as rtc_client:
-                for reg_url in _go2rtc_register_urls(body.stream_id, body.rtsp_url):
+                for reg_url in _go2rtc_register_urls(go2rtc_stream_name, body.rtsp_url):
                     resp = await rtc_client.put(reg_url)
                     if resp.status_code == 200:
                         logger.info("go2rtc stream registered: %s", reg_url.split("name=")[1].split("&")[0])
@@ -457,7 +465,7 @@ async def create_stream(
 )
 async def list_streams(
     db: Session = Depends(get_db),
-    current_user: AuthenticatedUser = Depends(require_staff()),
+    current_user: AuthenticatedUser = Depends(require_org_member),
 ) -> StreamListResponse:
     """Return all camera streams ordered by creation time."""
     streams = db.query(CameraStream).order_by(CameraStream.created_at).all()
@@ -476,7 +484,7 @@ async def update_stream(
     stream_id: str,
     body: StreamUpdateRequest,
     db: Session = Depends(get_db),
-    current_user: AuthenticatedUser = Depends(require_admin()),
+    current_user: AuthenticatedUser = Depends(require_org_admin),
 ) -> StreamResponse:
     """Update mutable fields on a camera stream (zone_id, floor, alert config)."""
     cam_stream = (
@@ -512,7 +520,7 @@ async def update_stream(
 async def delete_stream(
     stream_id: str,
     db: Session = Depends(get_db),
-    current_user: AuthenticatedUser = Depends(require_admin()),
+    current_user: AuthenticatedUser = Depends(require_org_admin),
 ) -> None:
     """Stop DeepFace monitoring for this stream and remove the DB record."""
     cam_stream = (
@@ -565,7 +573,7 @@ async def delete_stream(
 async def get_stream_snapshot(
     stream_id: str,
     db: Session = Depends(get_db),
-    current_user: AuthenticatedUser = Depends(require_staff()),
+    current_user: AuthenticatedUser = Depends(require_org_member),
 ) -> StreamingResponse:
     """
     Connects to the RTSP URL of the given stream and returns one JPEG frame.
@@ -633,7 +641,7 @@ async def webrtc_offer(
     stream_id: str,
     request: Request,
     db: Session = Depends(get_db),
-    current_user: AuthenticatedUser = Depends(require_staff()),
+    current_user: AuthenticatedUser = Depends(require_org_member),
 ) -> Response:
     """
     Proxies WebRTC signaling (WHEP) to go2rtc. The frontend sends an SDP
@@ -728,7 +736,7 @@ async def webrtc_offer(
 )
 async def get_stream_detections(
     stream_id: str,
-    current_user: AuthenticatedUser = Depends(require_staff()),
+    current_user: AuthenticatedUser = Depends(require_org_member),
 ) -> Dict[str, Any]:
     """
     Returns the most recent face detection results for the given stream,
@@ -761,7 +769,7 @@ async def get_stream_detections(
 )
 async def probe_onvif(
     body: Dict[str, Any],
-    current_user: AuthenticatedUser = Depends(require_admin()),
+    current_user: AuthenticatedUser = Depends(require_org_admin),
 ) -> Dict[str, Any]:
     """
     Attempt an ONVIF connection to the given IP camera or NVR.
@@ -906,7 +914,7 @@ def _onvif_attempt(ip: str, port: int, username: str, password: str, use_https: 
 )
 async def get_entity_registration_status(
     entity_id: str,
-    current_user: AuthenticatedUser = Depends(require_staff()),
+    current_user: AuthenticatedUser = Depends(require_org_member),
 ) -> Dict[str, Any]:
     """
     Query the DeepFace pgvector DB for face embeddings where img_name = entity_id.
@@ -966,7 +974,7 @@ async def get_entity_registration_status(
 async def register_face(
     entity_id: str,
     image: UploadFile = File(..., description="Face photo (JPEG or PNG)"),
-    current_user: AuthenticatedUser = Depends(require_admin()),
+    current_user: AuthenticatedUser = Depends(require_org_admin),
 ) -> FaceRegistrationResponse:
     """
     Upload a face photo for the given entity_id and register it in the
@@ -982,14 +990,17 @@ async def register_face(
             detail="Uploaded image is empty",
         )
 
+    namespaced_face_id = build_namespaced_face_id(
+        current_user.organizationId or "default-org", entity_id
+    )
     deepface_client = get_deepface_client()
     try:
         result = await deepface_client.register_face(
-            entity_id=entity_id,
+            entity_id=namespaced_face_id,
             image_data=image_data,
             content_type=image.content_type or "image/jpeg",
         )
-        logger.info("Face registered for entity_id=%s: %s", entity_id, result)
+        logger.info("Face registered for entity_id=%s (namespaced=%s): %s", entity_id, namespaced_face_id, result)
         return FaceRegistrationResponse(
             entity_id=entity_id,
             registered=True,
@@ -1015,7 +1026,7 @@ async def register_face(
 )
 async def search_face(
     image: UploadFile = File(..., description="Query face image (JPEG or PNG)"),
-    current_user: AuthenticatedUser = Depends(require_staff()),
+    current_user: AuthenticatedUser = Depends(require_org_member),
 ) -> FaceSearchResponse:
     """
     Upload a query face image and return all matching entities enriched with
@@ -1076,7 +1087,7 @@ async def search_face(
     summary="Trigger DeepFace ANN index rebuild",
 )
 async def build_index(
-    current_user: AuthenticatedUser = Depends(require_admin()),
+    current_user: AuthenticatedUser = Depends(require_org_admin),
 ) -> Dict[str, Any]:
     """
     Tell the DeepFace server to rebuild its approximate-nearest-neighbour

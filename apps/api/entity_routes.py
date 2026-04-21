@@ -10,7 +10,7 @@ from pydantic import BaseModel
 from sqlalchemy import text as sa_text
 from sqlalchemy.orm import Session
 
-from auth.dependencies import get_current_user, require_staff
+from auth.dependencies import get_current_user, require_staff, require_org_member
 from auth.exceptions import PermissionDeniedError
 from auth.models import AuthenticatedUser, UserRole
 from config import settings
@@ -178,7 +178,7 @@ async def search_entity(
 async def fuzzy_search_by_name(
     name: str = Query(..., description="Name to search"),
     threshold: float = Query(0.85, ge=0.0, le=1.0),
-    current_user: AuthenticatedUser = Depends(require_staff()),
+    current_user: AuthenticatedUser = Depends(require_org_member),
     db: Session = Depends(get_db),
 ):
     """Fuzzy name search across auth users and staff_profiles (STAFF+ only)."""
@@ -385,7 +385,7 @@ async def list_entities(
     limit: int = 100,
     department: Optional[str] = Query(None, description="Filter by department"),
     entity_type: Optional[str] = Query(None, description="Filter by role"),
-    current_user: AuthenticatedUser = Depends(require_staff()),
+    current_user: AuthenticatedUser = Depends(require_org_member),
     db: Session = Depends(get_db),
 ):
     """List all entities (STAFF+ only)."""

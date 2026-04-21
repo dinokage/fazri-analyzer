@@ -61,6 +61,8 @@ class EntityIdentifier(Base):
     created_at = Column(DateTime(timezone=True), nullable=False,
                         server_default=sa.text("now()"))
 
+    organization_id = Column(String, nullable=False, index=True, default="default-org")
+
     __table_args__ = (
         UniqueConstraint(
             "identifier_type",

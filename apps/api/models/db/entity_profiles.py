@@ -49,5 +49,7 @@ class EntityProfile(Base):
         onupdate=sa.text("now()"),
     )
 
+    organization_id = Column(String, nullable=False, index=True, default="default-org")
+
     def __repr__(self) -> str:
         return f"<EntityProfile {self.entity_id} name={self.name} role={self.role}>"

@@ -192,6 +192,10 @@ class Settings(BaseSettings):
     # JSON string mapping AP names to zone_ids, e.g. '{"AP-LIB-1F-01": "LIB_ENT"}'
     ARUBA_AP_ZONE_MAP: str = "{}"
 
+    # Organization scoping for pollers (single-campus deployment)
+    HIKVISION_ORGANIZATION_ID: str = "default-org"
+    ARUBA_ORGANIZATION_ID: str = "default-org"
+
     # =========================================================================
     # Web Push (VAPID)
     # =========================================================================

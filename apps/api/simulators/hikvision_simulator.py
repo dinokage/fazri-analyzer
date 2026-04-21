@@ -19,7 +19,8 @@ import os
 import random
 import sys
 import time
-import defusedxml.ElementTree as ET
+import xml.etree.ElementTree as ET
+from defusedxml.ElementTree import fromstring as _safe_fromstring
 from datetime import datetime, timezone, timedelta
 from typing import Optional
 
@@ -212,7 +213,7 @@ async def search_acs_events(request: Request) -> Response:
     end_time: Optional[datetime] = None
 
     try:
-        tree = ET.fromstring(body)
+        tree = _safe_fromstring(body)
         ns = {"h": "http://www.hikvision.com/ver20/XMLSchema"}
         # Fix: client sends <searchResultPosition>, not <searchPosition>
         pos_el = tree.find(".//searchResultPosition")

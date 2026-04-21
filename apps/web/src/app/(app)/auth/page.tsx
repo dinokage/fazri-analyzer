@@ -1,10 +1,14 @@
-import SigninPage from '@/components/auth/SigninForm';
-import { Metadata } from 'next';
+import { Suspense } from "react";
+import SigninForm from "@/components/auth/SigninForm";
 
-export const metadata:Metadata = {
-  title: `Sign In `,
+export const metadata = {
+  title: "Sign In",
 };
 
-export default function page() {
-  return <SigninPage />;
+export default function AuthPage() {
+  return (
+    <Suspense>
+      <SigninForm />
+    </Suspense>
+  );
 }

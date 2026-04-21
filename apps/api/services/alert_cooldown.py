@@ -50,14 +50,15 @@ def get_alert_redis() -> Optional[Any]:
     return _alert_redis
 
 
-def cooldown_key(anomaly_type: str, source_device: str, entity_key: str) -> str:
-    return f"fazri:alert_cd:{anomaly_type}:{source_device}:{entity_key}"
+def cooldown_key(anomaly_type: str, source_device: str, entity_key: str, organization_id: str = "default-org") -> str:
+    return f"fazri:alert_cd:{organization_id}:{anomaly_type}:{source_device}:{entity_key}"
 
 
 def set_alert_cooldown(
     anomaly_type: str,
     source_device: str,
     entity_key: str,
+    organization_id: str = "default-org",
 ) -> bool:
     """
     Atomic NX gate.
@@ -72,7 +73,7 @@ def set_alert_cooldown(
     if not r:
         logger.warning("Cooldown gate skipped — Redis unavailable, allowing alert")
         return True
-    key = cooldown_key(anomaly_type, source_device, entity_key)
+    key = cooldown_key(anomaly_type, source_device, entity_key, organization_id)
     try:
         result = r.set(key, "1", ex=settings.ALERT_COOLDOWN_SECONDS, nx=True)
         created = result is not None
@@ -92,12 +93,13 @@ def delete_alert_cooldown(
     anomaly_type: str,
     source_device: str,
     entity_key: str,
+    organization_id: str = "default-org",
 ) -> None:
     """Delete the cooldown key so alert creation can be retried immediately."""
     r = get_alert_redis()
     if not r:
         return
-    key = cooldown_key(anomaly_type, source_device, entity_key)
+    key = cooldown_key(anomaly_type, source_device, entity_key, organization_id)
     try:
         r.delete(key)
         logger.debug("Cooldown key deleted for retry: key=%s", key)
