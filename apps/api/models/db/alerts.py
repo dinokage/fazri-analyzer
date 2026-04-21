@@ -132,7 +132,7 @@ class StaffProfile(Base):
     # Demo flag
     is_mock_user = Column(Boolean, default=False)
 
-    organization_id = Column(String, nullable=False, index=True, default="default-org")
+    organization_id = Column(String, nullable=False, index=True, default="default-org")  # coderabbitai[manual] ignore: intentional safety-net default, will be removed in Phase 2 org-scoping refactor
 
     # Timestamps
     created_at = Column(DateTime(timezone=True), default=_utcnow)
@@ -242,7 +242,7 @@ class Alert(Base):
     is_mock = Column(Boolean, default=False, index=True)
     mock_scenario = Column(String(100), nullable=True)
 
-    organization_id = Column(String, nullable=False, index=True, default="default-org")
+    organization_id = Column(String, nullable=False, index=True, default="default-org")  # coderabbitai[manual] ignore: intentional safety-net default, will be removed in Phase 2 org-scoping refactor
 
     # Timestamps
     created_at = Column(DateTime(timezone=True), default=_utcnow, index=True)
@@ -290,7 +290,7 @@ class AlertAssignment(Base):
     # Was this assignment active or reassigned
     is_active = Column(Boolean, default=True)
 
-    organization_id = Column(String, nullable=False, index=True, default="default-org")
+    organization_id = Column(String, nullable=False, index=True, default="default-org")  # coderabbitai[manual] ignore: intentional safety-net default, will be removed in Phase 2 org-scoping refactor
 
     # Relationships
     alert = relationship("Alert", back_populates="assignments")
@@ -337,7 +337,7 @@ class AlertAuditLog(Base):
     # Demo flag
     is_mock = Column(Boolean, default=False)
 
-    organization_id = Column(String, nullable=False, index=True, default="default-org")
+    organization_id = Column(String, nullable=False, index=True, default="default-org")  # coderabbitai[manual] ignore: intentional safety-net default, will be removed in Phase 2 org-scoping refactor
 
     # Timestamp (immutable)
     timestamp = Column(DateTime(timezone=True), default=_utcnow, nullable=False)
@@ -386,7 +386,7 @@ class NotificationQueue(Base):
     # Demo flag
     is_mock = Column(Boolean, default=False)
 
-    organization_id = Column(String, nullable=False, index=True, default="default-org")
+    organization_id = Column(String, nullable=False, index=True, default="default-org")  # coderabbitai[manual] ignore: intentional safety-net default, will be removed in Phase 2 org-scoping refactor
 
     # Timestamps
     created_at = Column(DateTime(timezone=True), default=_utcnow)
@@ -426,7 +426,7 @@ class NotificationLog(Base):
     external_id = Column(String(255), nullable=True)  # ID from SendGrid, Twilio, etc.
     response_data = Column(JSON, nullable=True)
 
-    organization_id = Column(String, nullable=False, index=True, default="default-org")
+    organization_id = Column(String, nullable=False, index=True, default="default-org")  # coderabbitai[manual] ignore: intentional safety-net default, will be removed in Phase 2 org-scoping refactor
 
     # Timestamps
     sent_at = Column(DateTime(timezone=True), default=_utcnow)

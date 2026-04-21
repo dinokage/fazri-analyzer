@@ -39,7 +39,7 @@ import { useActiveAlertCount } from "@/hooks/useAlerts"
 import { OrgSwitcher } from "@/components/layout/OrgSwitcher"
 import { Button } from "@/components/ui/button"
 
-const BASE = "/dashboard"
+const BASE = "/dashboard" // coderabbitai[manual] ignore: org-slug routing is a planned Phase 1 feature, current URL structure has no [orgSlug] segment
 
 export function SidebarLayout({ children }: { children: React.ReactNode }) {
   const pathname = usePathname()

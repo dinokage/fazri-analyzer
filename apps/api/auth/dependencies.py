@@ -131,6 +131,9 @@ async def require_org_admin(
     Checks membership via the auth service so role changes take
     effect immediately without re-login.
     """
+    if current_user.role == UserRole.SUPER_ADMIN:
+        return current_user
+
     import httpx as _httpx
     import logging
 

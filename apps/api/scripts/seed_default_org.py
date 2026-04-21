@@ -25,25 +25,22 @@ def seed():
     org_id = "default-org"
     now = datetime.now(timezone.utc)
 
-    # Check if already exists
+    # Insert org only if it doesn't already exist
     cur.execute("SELECT id FROM organization WHERE id = %s", (org_id,))
-    if cur.fetchone():
-        print(f"Organization '{org_id}' already exists — skipping")
-        cur.close()
-        conn.close()
-        return
+    if not cur.fetchone():
+        cur.execute(
+            """
+            INSERT INTO organization (id, name, slug, "createdAt")
+            VALUES (%s, %s, %s, %s)
+            """,
+            (org_id, "Default Campus", "default", now),
+        )
+        conn.commit()
+        print(f"Created organization: id={org_id} slug=default name='Default Campus'")
+    else:
+        print(f"Organization '{org_id}' already exists — skipping insert")
 
-    cur.execute(
-        """
-        INSERT INTO organization (id, name, slug, "createdAt")
-        VALUES (%s, %s, %s, %s)
-        """,
-        (org_id, "Default Campus", "default", now),
-    )
-    conn.commit()
-    print(f"Created organization: id={org_id} slug=default name='Default Campus'")
-
-    # Assign existing SUPER_ADMIN users as owners
+    # Always backfill SUPER_ADMIN users as owners (ON CONFLICT DO NOTHING keeps it idempotent)
     cur.execute("SELECT id FROM \"user\" WHERE role = 'SUPER_ADMIN'")
     admins = cur.fetchall()
     for (user_id,) in admins:
@@ -56,7 +53,7 @@ def seed():
             (org_id, user_id, now),
         )
     conn.commit()
-    print(f"Assigned {len(admins)} SUPER_ADMIN users as owners of default-org")
+    print(f"Assigned {len(admins)} SUPER_ADMIN users as owners of {org_id}")
 
     cur.close()
     conn.close()

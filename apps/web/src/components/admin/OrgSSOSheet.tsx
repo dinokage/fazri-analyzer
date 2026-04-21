@@ -74,6 +74,13 @@ export function OrgSSOSheet({ open, onOpenChange, org }: Props) {
   }, [org.id]);
 
   useEffect(() => {
+    setProviderType("oidc");
+    resetOidc();
+    resetSaml();
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [org.id, open]);
+
+  useEffect(() => {
     if (open) fetchProviders();
   }, [open, fetchProviders]);
 
@@ -105,10 +112,12 @@ export function OrgSSOSheet({ open, onOpenChange, org }: Props) {
       });
       if (!res.ok) {
         const body = await res.json().catch(() => ({}));
+        await fetch(`${AUTH_URL}/api/sso-providers/${oidcProviderId}`, { method: "DELETE", credentials: "include" }).catch(() => {});
         toast.error((body as { error?: string }).error ?? "Failed to link provider to organization");
         setRegistering(false); return;
       }
     } catch {
+      await fetch(`${AUTH_URL}/api/sso-providers/${oidcProviderId}`, { method: "DELETE", credentials: "include" }).catch(() => {});
       toast.error("Provider registered but failed to link to organization");
       setRegistering(false); return;
     }
@@ -149,10 +158,12 @@ export function OrgSSOSheet({ open, onOpenChange, org }: Props) {
       });
       if (!res.ok) {
         const body = await res.json().catch(() => ({}));
+        await fetch(`${AUTH_URL}/api/sso-providers/${samlProviderId}`, { method: "DELETE", credentials: "include" }).catch(() => {});
         toast.error((body as { error?: string }).error ?? "Failed to link provider to organization");
         setRegistering(false); return;
       }
     } catch {
+      await fetch(`${AUTH_URL}/api/sso-providers/${samlProviderId}`, { method: "DELETE", credentials: "include" }).catch(() => {});
       toast.error("Provider registered but failed to link to organization");
       setRegistering(false); return;
     }
