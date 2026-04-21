@@ -29,7 +29,7 @@ export const auth = betterAuth({
   database: prismaAdapter(prisma, { provider: "postgresql" }),
 
   emailAndPassword: {
-    enabled: false, // login is handled by username plugin
+    enabled: false,
     password: {
       hash: async (password) => bcrypt.hash(password, 10),
       verify: async ({ hash, password }) => bcrypt.compare(password, hash),
@@ -37,6 +37,21 @@ export const auth = betterAuth({
   },
 
   databaseHooks: {
+    user: {
+      create: {
+        before: async (user) => {
+          if (!(user as Record<string, unknown>).entity_id) {
+            return {
+              data: {
+                ...user,
+                entity_id: crypto.randomUUID(),
+                username: (user as Record<string, unknown>).username ?? user.email,
+              },
+            };
+          }
+        },
+      },
+    },
     session: {
       create: {
         before: async (session) => {
