@@ -7,6 +7,7 @@ COPY package.json pnpm-lock.yaml pnpm-workspace.yaml ./
 COPY patches/ ./patches/
 COPY apps/auth/package.json ./apps/auth/
 COPY packages/db/package.json ./packages/db/
+COPY packages/npm-sdk/package.json ./packages/npm-sdk/
 
 # Install all workspace dependencies
 RUN pnpm install --frozen-lockfile
@@ -14,9 +15,13 @@ RUN pnpm install --frozen-lockfile
 # Copy source files
 COPY apps/auth/ ./apps/auth/
 COPY packages/db/ ./packages/db/
+COPY packages/npm-sdk/ ./packages/npm-sdk/
 
 # Build @fazri/db (prisma generate + tsc → dist/)
 RUN pnpm --filter=@fazri/db build
+
+# Build @fazri/npm-sdk (tsc → dist/)
+RUN pnpm --filter=@fazri/npm-sdk build
 
 # Build auth (tsc → dist/)
 RUN pnpm --filter=@fazri/auth build
