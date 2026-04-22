@@ -30,6 +30,9 @@ importers:
       '@fazri/db':
         specifier: workspace:*
         version: link:../../packages/db
+      '@fazri/npm-sdk':
+        specifier: workspace:*
+        version: link:../../packages/npm-sdk
       '@sentry/node':
         specifier: ^8
         version: 8.55.1
@@ -254,6 +257,15 @@ importers:
       prisma:
         specifier: ^6.0.0
         version: 6.16.3(typescript@5.9.3)
+      typescript:
+        specifier: ^5.7.3
+        version: 5.9.3
+
+  packages/npm-sdk:
+    devDependencies:
+      '@types/node':
+        specifier: ^22.0.0
+        version: 22.19.15
       typescript:
         specifier: ^5.7.3
         version: 5.9.3
