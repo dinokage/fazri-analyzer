@@ -34,6 +34,8 @@ import {
   Radio,
   Heart,
   Settings,
+  KeyRound,
+  Globe,
 } from "lucide-react"
 import { useActiveAlertCount } from "@/hooks/useAlerts"
 import { OrgSwitcher } from "@/components/layout/OrgSwitcher"
@@ -165,6 +167,30 @@ export function SidebarLayout({ children }: { children: React.ReactNode }) {
                         <Link href={`${BASE}/system`} className="flex items-center gap-3">
                           <Heart className="h-5 w-5 flex-shrink-0" />
                           <span className="truncate">System Health</span>
+                        </Link>
+                      </SidebarMenuButton>
+                    </SidebarMenuItem>
+                  </SidebarMenu>
+                </SidebarGroup>
+
+                <SidebarSeparator />
+
+                <SidebarGroup>
+                  <SidebarGroupLabel>Settings</SidebarGroupLabel>
+                  <SidebarMenu>
+                    <SidebarMenuItem>
+                      <SidebarMenuButton asChild data-active={isActive(`${BASE}/settings/sso`)}>
+                        <Link href={`${BASE}/settings/sso`} className="flex items-center gap-3">
+                          <KeyRound className="h-5 w-5 flex-shrink-0" />
+                          <span className="truncate">Single Sign-On</span>
+                        </Link>
+                      </SidebarMenuButton>
+                    </SidebarMenuItem>
+                    <SidebarMenuItem>
+                      <SidebarMenuButton asChild data-active={isActive(`${BASE}/settings/custom-domain`)}>
+                        <Link href={`${BASE}/settings/custom-domain`} className="flex items-center gap-3">
+                          <Globe className="h-5 w-5 flex-shrink-0" />
+                          <span className="truncate">Custom Domain</span>
                         </Link>
                       </SidebarMenuButton>
                     </SidebarMenuItem>
