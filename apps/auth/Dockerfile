@@ -36,6 +36,10 @@ RUN PRISMA_PKG=$(ls -d /app/node_modules/.pnpm/@prisma+client@* | head -1) && \
     DEPLOY_PKG="/deploy/node_modules/.pnpm/$(basename "$PRISMA_PKG")" && \
     cp -r "$PRISMA_PKG/node_modules/.prisma" "$DEPLOY_PKG/node_modules/.prisma"
 
+# pnpm deploy copies workspace package source but not compiled dist/.
+# Copy @fazri/npm-sdk dist explicitly so the runner can resolve it.
+RUN cp -r /app/packages/npm-sdk/dist /deploy/node_modules/@fazri/npm-sdk/dist
+
 FROM node:22-alpine AS runner
 WORKDIR /app
 

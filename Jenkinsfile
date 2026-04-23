@@ -48,6 +48,16 @@ pipeline {
         AUTH_DATABASE_URL    = credentials('fazri-auth-database-url')
         BETTER_AUTH_SECRET   = credentials('fazri-better-auth-secret')
         AUTH_TRUSTED_ORIGINS = credentials('fazri-auth-trusted-origins')
+        AUTH_COOKIE_DOMAIN   = credentials('fazri-cookie-domain')
+
+        // ── NPM (Nginx Proxy Manager) ─────────────────────────────────────────
+        NPM_API_URL          = credentials('fazri-npm-api-url')
+        NPM_EMAIL            = credentials('fazri-npm-email')
+        NPM_PASSWORD         = credentials('fazri-npm-password')
+
+        // ── Multi-tenant domain routing ───────────────────────────────────────
+        FAZRI_BASE_DOMAIN    = credentials('fazri-base-domain')
+        FAZRI_SERVER_IP      = credentials('fazri-server-ip')
 
         // ── Notification credentials ──────────────────────────────────────────
         DISCORD_WEBHOOK_URL  = credentials('fazri-discord-webhook-url')
@@ -358,6 +368,12 @@ pipeline {
                                 -e BETTER_AUTH_SECRET="${BETTER_AUTH_SECRET}" \
                                 -e TRUSTED_ORIGINS="${AUTH_TRUSTED_ORIGINS}" \
                                 -e AUTH_SERVICE_URL="${AUTH_SERVICE_URL}" \
+                                -e COOKIE_DOMAIN="${AUTH_COOKIE_DOMAIN}" \
+                                -e NPM_API_URL="${NPM_API_URL}" \
+                                -e NPM_EMAIL="${NPM_EMAIL}" \
+                                -e NPM_PASSWORD="${NPM_PASSWORD}" \
+                                -e FAZRI_BASE_DOMAIN="${FAZRI_BASE_DOMAIN}" \
+                                -e FAZRI_SERVER_IP="${FAZRI_SERVER_IP}" \
                                 -e NODE_ENV=production \
                                 -e PORT=4000 \
                                 -e SENTRY_DSN="${AUTH_SENTRY_DSN}" \
