@@ -53,5 +53,22 @@ export function validateDomainNames(domains: string[] | undefined): void {
     if (domain.length > 253) {
       throw new Error(`Domain name too long: "${domain}" (max 253 characters)`);
     }
+
+    if (domain.startsWith('.') || domain.endsWith('.')) {
+      throw new Error(`Invalid domain name: "${domain}" must not start or end with a dot`);
+    }
+
+    if (domain.includes('..')) {
+      throw new Error(`Invalid domain name: "${domain}" must not contain consecutive dots`);
+    }
+
+    for (const label of domain.split('.')) {
+      if (label.length === 0) {
+        throw new Error(`Invalid domain name: "${domain}" contains an empty label`);
+      }
+      if (label.length > 63) {
+        throw new Error(`Invalid domain name: "${domain}" label "${label}" exceeds 63 characters`);
+      }
+    }
   }
 }

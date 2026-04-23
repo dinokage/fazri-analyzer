@@ -3,13 +3,15 @@ import * as Sentry from "@sentry/node";
 import express from "express";
 import cors from "cors";
 import { promises as dns, setServers as dnsSetServers } from "dns";
-
-dnsSetServers(["1.1.1.1", "1.0.0.1"]);
 import net from "net";
 import { toNodeHandler } from "better-auth/node";
 import { auth, refreshSSOProviderIds } from "./auth";
 import { prisma } from "@fazri/db";
 import { provisionCustomDomain, reprovisionCustomDomain, deprovisionCustomDomain, syncNpmSettings, createNpmClient, type NpmProvisionConfig } from "./npm-provision";
+
+// Process-global DNS override — affects all dns.resolve* calls but NOT dns.lookup / libuv getaddrinfo.
+// Forces Cloudflare resolvers to avoid split-horizon or ISP caching issues.
+dnsSetServers(["1.1.1.1", "1.0.0.1"]);
 
 async function getSystemSetting(key: string, fallback: string): Promise<string> {
   const row = await prisma.systemSetting.findUnique({ where: { key } });
@@ -215,7 +217,7 @@ app.get("/api/org/resolve", async (req, res) => {
       }
       const org = await prisma.organization.findUnique({ where: { slug } });
       if (!org) { res.status(404).json({ error: "Organization not found" }); return; }
-      res.json({ organizationId: org.id, slug: org.slug, name: org.name });
+      res.json({ organizationId: org.id, slug: org.slug });
       return;
     }
 
@@ -227,7 +229,6 @@ app.get("/api/org/resolve", async (req, res) => {
     res.json({
       organizationId: orgDomain.organizationId,
       slug: orgDomain.organization.slug,
-      name: orgDomain.organization.name,
     });
   } catch (err) {
     console.error("org-resolve error:", err);
@@ -639,7 +640,7 @@ app.post("/api/domain/:id/sync-npm", async (req, res) => {
     }
     syncNpmLastCalled.set(record.id, Date.now());
 
-    const result = await syncNpmSettings(record.domain);
+    const result = await syncNpmSettings(record.domain, record.npmProxyHostId);
     res.json({ success: true, hostId: result.id });
   } catch (err) {
     console.error("domain-sync-npm error:", err);

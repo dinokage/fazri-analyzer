@@ -140,8 +140,6 @@ export class NpmClient {
 
         return await res.json() as T;
       } catch (err) {
-        clearTimeout(timer);
-
         if (err instanceof Error && err.name === 'AbortError') {
           throw new Error(`Request timeout after ${timeoutMs}ms: ${method} ${path}`);
         }
@@ -173,6 +171,10 @@ export class NpmClient {
     if (this.email && this.password) {
       await this.login();
       return;
+    }
+
+    if (this.token && (!this.tokenExpires || this.tokenExpires <= new Date())) {
+      throw new Error('NPM token expired and no credentials available for refresh');
     }
 
     if (!this.token) {

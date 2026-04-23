@@ -189,6 +189,7 @@ export default function CustomDomainPage() {
 
   // DNS check state for the cname-instructions wizard step
   const [dnsCheck, setDnsCheck] = useState<DnsCheckResult | null>(null);
+  const dnsCheckRef = useRef<DnsCheckResult | null>(null);
   const dnsCheckIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
   // Per-domain DNS check results for the inline list view step 2
@@ -269,12 +270,17 @@ export default function CustomDomainPage() {
     }
   }, []);
 
+  // Keep ref in sync so the interval callback always reads the latest dnsCheck status
+  useEffect(() => {
+    dnsCheckRef.current = dnsCheck;
+  }, [dnsCheck]);
+
   // DNS poll for the wizard cname-instructions state
   useEffect(() => {
     if (pageState === "cname-instructions" && cnameDomain) {
       checkDns(cnameDomain, "wizard");
       dnsCheckIntervalRef.current = setInterval(() => {
-        if (dnsCheck?.status !== "ok") checkDns(cnameDomain, "wizard");
+        if (dnsCheckRef.current?.status !== "ok") checkDns(cnameDomain, "wizard");
       }, 15_000);
     } else {
       if (dnsCheckIntervalRef.current) {
@@ -539,7 +545,7 @@ export default function CustomDomainPage() {
               </div>
               <div className="space-y-1.5">
                 <DnsRow label="Type" value="A" />
-                <DnsRow label="Name" value={cnameDomain.split(".")[0]} />
+                <DnsRow label="Name" value={cnameDomain} />
                 <DnsRow label="Value" value={SERVER_IP} />
               </div>
               <DnsStatusBanner check={dnsCheck} />

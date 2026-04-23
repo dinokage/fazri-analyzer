@@ -3,14 +3,14 @@ import { NextRequest, NextResponse } from "next/server";
 const AUTH_SERVICE_URL = process.env.NEXT_PUBLIC_AUTH_SERVICE_URL ?? "http://localhost:4000";
 const ORG_COOKIE = "fazri-org-id";
 const CACHE_TTL_MS = 5 * 60 * 1000;
+const MAX_CACHE_ENTRIES = 500;
 
 interface OrgResolution {
   organizationId: string;
   slug: string;
-  name: string;
 }
 
-// In-memory cache for hostname → orgId. Persists for the edge worker lifetime (~minutes).
+// In-memory cache for hostname → org. Persists for the edge worker lifetime (~minutes).
 const hostnameCache = new Map<string, { data: OrgResolution; expiresAt: number }>();
 
 async function resolveOrgFromHostname(hostname: string): Promise<OrgResolution | null> {
@@ -24,6 +24,12 @@ async function resolveOrgFromHostname(hostname: string): Promise<OrgResolution |
     );
     if (!res.ok) return null;
     const data = (await res.json()) as OrgResolution;
+
+    // Evict oldest entry when at cap to keep the map bounded
+    if (hostnameCache.size >= MAX_CACHE_ENTRIES) {
+      const oldestKey = hostnameCache.keys().next().value;
+      if (oldestKey) hostnameCache.delete(oldestKey);
+    }
     hostnameCache.set(hostname, { data, expiresAt: Date.now() + CACHE_TTL_MS });
     return data;
   } catch {

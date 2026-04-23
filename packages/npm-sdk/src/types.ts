@@ -60,7 +60,7 @@ export interface CreateProxyHostPayload {
   locations?: ProxyHostLocation[];
 }
 
-export interface UpdateProxyHostPayload extends Partial<CreateProxyHostPayload> {}
+export type UpdateProxyHostPayload = Partial<CreateProxyHostPayload>;
 
 export interface ProxyHost {
   id: number;
@@ -132,7 +132,7 @@ export interface Certificate {
 }
 
 export interface TestHttpResult {
-  [domain: string]: 'ok' | 'no-host' | 'failed' | '404' | 'wrong-data' | string;
+  [domain: string]: 'ok' | 'no-host' | 'failed' | '404' | 'wrong-data' | (string & {});
 }
 
 // ---------------------------------------------------------------------------

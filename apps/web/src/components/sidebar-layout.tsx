@@ -47,7 +47,7 @@ export function SidebarLayout({ children }: { children: React.ReactNode }) {
   const pathname = usePathname()
   const router = useRouter()
   const { data: session, isPending } = useSession()
-  const isActive = (href: string) => pathname === href
+  const isActive = (href: string) => pathname === href || pathname.startsWith(href + "/")
 
   const user = session?.user as Record<string, unknown> | undefined
   const isSuperAdmin = user?.role === "SUPER_ADMIN"

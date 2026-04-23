@@ -42,13 +42,16 @@ export default function AdminSystemPage() {
 
   useEffect(() => {
     fetch(`${AUTH_URL}/api/system/npm-config`, { credentials: "include" })
-      .then((r) => r.json())
+      .then(async (r) => {
+        if (!r.ok) throw new Error((await r.json().catch(() => ({}))).error ?? "Failed to load");
+        return r.json();
+      })
       .then((data: NpmConfig) => {
         setFrontendHost(data.frontendHost);
         setFrontendPort(String(data.frontendPort));
         setUpdatedAt(data.updatedAt);
       })
-      .catch(() => toast.error("Failed to load current NPM config"))
+      .catch((e: unknown) => toast.error(e instanceof Error ? e.message : "Failed to load current NPM config"))
       .finally(() => setLoading(false));
   }, []);
 

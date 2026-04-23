@@ -90,10 +90,9 @@ export async function reprovisionCustomDomain(
     throw new Error(`[npm-provision] HTTP-01 pre-flight failed for ${domain}: ${describeTestHttpResult(test[domain])}`);
   }
 
-  // If we have an existing host ID, try to update it to re-trigger LE cert
+  // If we have an existing host ID, update it to re-trigger LE cert
   if (existingHostId) {
     try {
-      await client.proxyHosts.get(existingHostId);
       const updated = await client.proxyHosts.update(existingHostId, {
         ...buildProxyDefaults(cfg),
         certificate_id: "new",
@@ -164,8 +163,23 @@ const NPM_SETTINGS = {
   allow_websocket_upgrade: true,
 } as const;
 
-export async function syncNpmSettings(domain: string): Promise<{ id: number }> {
+export async function syncNpmSettings(domain: string, hostId?: number | null): Promise<{ id: number }> {
   const client = createNpmClient();
+
+  if (hostId) {
+    try {
+      await client.proxyHosts.update(hostId, NPM_SETTINGS);
+      console.log(`[npm-provision] synced settings for ${domain} (host id=${hostId})`);
+      return { id: hostId };
+    } catch (err) {
+      if (err instanceof NpmApiError && err.statusCode === 404) {
+        console.warn(`[npm-provision] host id=${hostId} not found — falling back to domain scan`);
+      } else {
+        throw err;
+      }
+    }
+  }
+
   const hosts = await client.proxyHosts.list();
   const existing = hosts.find((h) => h.domain_names.includes(domain));
   if (!existing) throw new Error(`[npm-provision] No proxy host found for ${domain}`);
