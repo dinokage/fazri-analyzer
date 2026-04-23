@@ -200,8 +200,9 @@ app.delete("/api/sso-providers/:providerId", async (req, res) => {
 // ─── Org resolution (used by Next.js middleware — no auth required) ──────────
 
 app.get("/api/org/resolve", async (req, res) => {
-  const hostname = (req.query.hostname as string) ?? "";
-  if (!hostname) {
+  const raw = req.query.hostname;
+  const hostname = (Array.isArray(raw) ? raw[0] : raw) ?? "";
+  if (!hostname || typeof hostname !== "string") {
     res.status(400).json({ error: "hostname required" });
     return;
   }
@@ -496,7 +497,7 @@ app.post("/api/domain/activate", async (req, res) => {
         });
       } catch (err) {
         const msg = err instanceof Error ? err.message : String(err);
-        console.error(`[domain-activate] SSL provisioning failed for ${domain}:`, msg);
+        console.error("[domain-activate] SSL provisioning failed for domain:", domain, msg);
         await prisma.organizationDomain.update({
           where: { domain },
           data: { sslStatus: "failed", sslError: msg },

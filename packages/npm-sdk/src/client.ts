@@ -30,7 +30,8 @@ export class NpmClient {
   public readonly certificates: Certificates;
 
   constructor(config: NpmClientConfig) {
-    const url = config.baseUrl.replace(/\/+$/, '');
+    let url = config.baseUrl;
+    while (url.endsWith('/')) url = url.slice(0, -1);
     try {
       const parsed = new URL(url);
       if (!['http:', 'https:'].includes(parsed.protocol)) {
