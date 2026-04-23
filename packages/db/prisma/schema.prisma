@@ -93,14 +93,32 @@ enum UserRole {
 }
 
 model organization {
-  id          String       @id
-  name        String
-  slug        String       @unique
-  logo        String?
-  createdAt   DateTime
-  metadata    String?
-  members     member[]
-  invitations invitation[]
+  id            String               @id
+  name          String
+  slug          String               @unique
+  logo          String?
+  createdAt     DateTime
+  metadata      String?
+  members       member[]
+  invitations   invitation[]
+  customDomains organizationDomain[]
+}
+
+model organizationDomain {
+  id                       String    @id @default(cuid())
+  organizationId           String
+  organization             organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  domain                   String    @unique
+  verificationToken        String    @default(cuid())
+  ownershipVerified        Boolean   @default(false)
+  ownershipVerifiedAt      DateTime?
+  verified                 Boolean   @default(false)
+  verifiedAt               DateTime?
+  createdAt                DateTime  @default(now())
+  sslStatus                String?
+  sslProvisioningStartedAt DateTime?
+  sslError                 String?
+  npmProxyHostId           Int?
 }
 
 model member {
@@ -134,4 +152,10 @@ model ssoProvider {
   userId         String?
   organizationId String?
   domain         String?
+}
+
+model systemSetting {
+  key       String   @id
+  value     String
+  updatedAt DateTime @updatedAt
 }

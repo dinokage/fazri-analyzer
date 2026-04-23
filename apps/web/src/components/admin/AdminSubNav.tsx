@@ -11,6 +11,7 @@ const NAV_ITEMS = [
   { label: "Analytics", href: "/admin/analytics" },
   { label: "Sessions", href: "/admin/sessions" },
   { label: "Onboarding", href: "/admin/onboarding" },
+  { label: "System", href: "/admin/system" },
 ];
 
 export function AdminSubNav() {

@@ -7,6 +7,7 @@ COPY package.json pnpm-lock.yaml pnpm-workspace.yaml ./
 COPY patches/ ./patches/
 COPY apps/auth/package.json ./apps/auth/
 COPY packages/db/package.json ./packages/db/
+COPY packages/npm-sdk/package.json ./packages/npm-sdk/
 
 # Install all workspace dependencies
 RUN pnpm install --frozen-lockfile
@@ -14,9 +15,13 @@ RUN pnpm install --frozen-lockfile
 # Copy source files
 COPY apps/auth/ ./apps/auth/
 COPY packages/db/ ./packages/db/
+COPY packages/npm-sdk/ ./packages/npm-sdk/
 
 # Build @fazri/db (prisma generate + tsc → dist/)
 RUN pnpm --filter=@fazri/db build
+
+# Build @fazri/npm-sdk (tsc → dist/)
+RUN pnpm --filter=@fazri/npm-sdk build
 
 # Build auth (tsc → dist/)
 RUN pnpm --filter=@fazri/auth build
@@ -30,6 +35,11 @@ RUN pnpm deploy --filter=@fazri/auth --prod --legacy /deploy
 RUN PRISMA_PKG=$(ls -d /app/node_modules/.pnpm/@prisma+client@* | head -1) && \
     DEPLOY_PKG="/deploy/node_modules/.pnpm/$(basename "$PRISMA_PKG")" && \
     cp -r "$PRISMA_PKG/node_modules/.prisma" "$DEPLOY_PKG/node_modules/.prisma"
+
+# pnpm deploy copies workspace package source but not compiled dist/.
+# Copy @fazri/npm-sdk dist explicitly so the runner can resolve it.
+RUN mkdir -p /deploy/node_modules/@fazri/npm-sdk && \
+    cp -rL /app/packages/npm-sdk/dist /deploy/node_modules/@fazri/npm-sdk/dist
 
 FROM node:22-alpine AS runner
 WORKDIR /app
