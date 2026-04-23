@@ -153,3 +153,9 @@ model ssoProvider {
   organizationId String?
   domain         String?
 }
+
+model systemSetting {
+  key       String   @id
+  value     String
+  updatedAt DateTime @updatedAt
+}

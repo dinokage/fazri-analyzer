@@ -1,9 +1,11 @@
 import { NpmClient, NpmApiError } from "@fazri/npm-sdk";
 
-const FRONTEND_HOST = process.env.FRONTEND_HOST ?? "frontend";
-const FRONTEND_PORT = parseInt(process.env.FRONTEND_PORT ?? "3000", 10);
+export interface NpmProvisionConfig {
+  frontendHost: string;
+  frontendPort: number;
+}
 
-function createNpmClient(): NpmClient {
+export function createNpmClient(): NpmClient {
   const baseUrl = process.env.NPM_API_URL;
   if (!baseUrl) throw new Error("NPM_API_URL is not set");
 
@@ -27,22 +29,24 @@ function describeTestHttpResult(result: string | undefined): string {
   return result;
 }
 
-const PROXY_HOST_DEFAULTS = {
-  forward_scheme: "http" as const,
-  forward_host: FRONTEND_HOST,
-  forward_port: FRONTEND_PORT,
-  ssl_forced: true,
-  http2_support: true,
-  hsts_enabled: true,
-  hsts_subdomains: true,
-  trust_forwarded_proto: true,
-  caching_enabled: true,
-  block_exploits: true,
-  allow_websocket_upgrade: true,
-  enabled: true,
-};
+function buildProxyDefaults(cfg: NpmProvisionConfig) {
+  return {
+    forward_scheme: "http" as const,
+    forward_host: cfg.frontendHost,
+    forward_port: cfg.frontendPort,
+    ssl_forced: true,
+    http2_support: true,
+    hsts_enabled: true,
+    hsts_subdomains: true,
+    trust_forwarded_proto: true,
+    caching_enabled: true,
+    block_exploits: true,
+    allow_websocket_upgrade: true,
+    enabled: true,
+  };
+}
 
-export async function provisionCustomDomain(domain: string, orgName: string): Promise<{ hostId: number }> {
+export async function provisionCustomDomain(domain: string, orgName: string, cfg: NpmProvisionConfig): Promise<{ hostId: number }> {
   if (!process.env.NPM_API_URL) {
     console.warn(`[npm-provision] NPM_API_URL not set — skipping provisioning for ${domain}`);
     return { hostId: 0 };
@@ -58,7 +62,7 @@ export async function provisionCustomDomain(domain: string, orgName: string): Pr
 
   const host = await client.proxyHosts.create({
     domain_names: [domain],
-    ...PROXY_HOST_DEFAULTS,
+    ...buildProxyDefaults(cfg),
     certificate_id: "new",
     meta: { orgName },
   });
@@ -71,6 +75,7 @@ export async function reprovisionCustomDomain(
   domain: string,
   orgName: string,
   existingHostId: number | null,
+  cfg: NpmProvisionConfig,
 ): Promise<{ hostId: number }> {
   if (!process.env.NPM_API_URL) {
     console.warn(`[npm-provision] NPM_API_URL not set — skipping re-provisioning for ${domain}`);
@@ -90,7 +95,7 @@ export async function reprovisionCustomDomain(
     try {
       await client.proxyHosts.get(existingHostId);
       const updated = await client.proxyHosts.update(existingHostId, {
-        ...PROXY_HOST_DEFAULTS,
+        ...buildProxyDefaults(cfg),
         certificate_id: "new",
         meta: { orgName },
       });
@@ -108,7 +113,7 @@ export async function reprovisionCustomDomain(
   // Create new proxy host
   const host = await client.proxyHosts.create({
     domain_names: [domain],
-    ...PROXY_HOST_DEFAULTS,
+    ...buildProxyDefaults(cfg),
     certificate_id: "new",
     meta: { orgName },
   });

@@ -9,7 +9,20 @@ import net from "net";
 import { toNodeHandler } from "better-auth/node";
 import { auth, refreshSSOProviderIds } from "./auth";
 import { prisma } from "@fazri/db";
-import { provisionCustomDomain, reprovisionCustomDomain, deprovisionCustomDomain, syncNpmSettings } from "./npm-provision";
+import { provisionCustomDomain, reprovisionCustomDomain, deprovisionCustomDomain, syncNpmSettings, createNpmClient, type NpmProvisionConfig } from "./npm-provision";
+
+async function getSystemSetting(key: string, fallback: string): Promise<string> {
+  const row = await prisma.systemSetting.findUnique({ where: { key } });
+  return row?.value ?? process.env[key] ?? fallback;
+}
+
+async function getNpmProvisionConfig(): Promise<NpmProvisionConfig> {
+  const [frontendHost, frontendPortStr] = await Promise.all([
+    getSystemSetting("FRONTEND_HOST", process.env.FRONTEND_HOST ?? "frontend"),
+    getSystemSetting("FRONTEND_PORT", process.env.FRONTEND_PORT ?? "3000"),
+  ]);
+  return { frontendHost, frontendPort: parseInt(frontendPortStr, 10) };
+}
 
 // Cloudflare published IPv4 CIDRs — used to detect domains behind CF proxy
 const CLOUDFLARE_CIDRS = [
@@ -474,7 +487,8 @@ app.post("/api/domain/activate", async (req, res) => {
     // Tracked async — updates sslStatus in DB on both success and failure
     void (async () => {
       try {
-        const { hostId } = await provisionCustomDomain(domain, record.organization.name);
+        const npmCfg = await getNpmProvisionConfig();
+        const { hostId } = await provisionCustomDomain(domain, record.organization.name, npmCfg);
         await prisma.organizationDomain.update({
           where: { domain },
           data: { sslStatus: "active", npmProxyHostId: hostId, sslError: null },
@@ -579,7 +593,8 @@ app.post("/api/domain/:id/retry-ssl", async (req, res) => {
     // Tracked async provisioning
     void (async () => {
       try {
-        const { hostId } = await reprovisionCustomDomain(record.domain, record.organization.name, record.npmProxyHostId);
+        const npmCfg = await getNpmProvisionConfig();
+        const { hostId } = await reprovisionCustomDomain(record.domain, record.organization.name, record.npmProxyHostId, npmCfg);
         await prisma.organizationDomain.update({
           where: { id: record.id },
           data: { sslStatus: "active", npmProxyHostId: hostId, sslError: null },
@@ -659,6 +674,146 @@ app.delete("/api/domain/:id", async (req, res) => {
     }
   } catch (err) {
     console.error("domain-delete error:", err);
+    res.status(500).json({ error: "Internal server error" });
+  }
+});
+
+// ─── System settings (SUPER_ADMIN only) ──────────────────────────────────────
+
+app.get("/api/system/npm-config", async (req, res) => {
+  try {
+    const session = await auth.api.getSession({
+      headers: new Headers({ cookie: req.headers.cookie ?? "" }),
+    });
+    if (!session || (session.user as Record<string, unknown>).role !== "SUPER_ADMIN") {
+      res.status(403).json({ error: "Forbidden" });
+      return;
+    }
+
+    const [hostRow, portRow] = await Promise.all([
+      prisma.systemSetting.findUnique({ where: { key: "FRONTEND_HOST" } }),
+      prisma.systemSetting.findUnique({ where: { key: "FRONTEND_PORT" } }),
+    ]);
+
+    res.json({
+      frontendHost: hostRow?.value ?? process.env.FRONTEND_HOST ?? "frontend",
+      frontendPort: parseInt(portRow?.value ?? process.env.FRONTEND_PORT ?? "3000", 10),
+      updatedAt: hostRow?.updatedAt ?? portRow?.updatedAt ?? null,
+    });
+  } catch (err) {
+    console.error("system/npm-config GET error:", err);
+    res.status(500).json({ error: "Internal server error" });
+  }
+});
+
+app.put("/api/system/npm-config", async (req, res) => {
+  try {
+    const session = await auth.api.getSession({
+      headers: new Headers({ cookie: req.headers.cookie ?? "" }),
+    });
+    if (!session || (session.user as Record<string, unknown>).role !== "SUPER_ADMIN") {
+      res.status(403).json({ error: "Forbidden" });
+      return;
+    }
+
+    const { frontendHost, frontendPort } = req.body as { frontendHost: string; frontendPort: number };
+    if (!frontendHost || typeof frontendHost !== "string" || !frontendHost.trim()) {
+      res.status(400).json({ error: "frontendHost must be a non-empty string" });
+      return;
+    }
+    const port = Number(frontendPort);
+    if (!Number.isInteger(port) || port < 1 || port > 65535) {
+      res.status(400).json({ error: "frontendPort must be an integer between 1 and 65535" });
+      return;
+    }
+
+    await Promise.all([
+      prisma.systemSetting.upsert({
+        where: { key: "FRONTEND_HOST" },
+        create: { key: "FRONTEND_HOST", value: frontendHost.trim() },
+        update: { value: frontendHost.trim() },
+      }),
+      prisma.systemSetting.upsert({
+        where: { key: "FRONTEND_PORT" },
+        create: { key: "FRONTEND_PORT", value: String(port) },
+        update: { value: String(port) },
+      }),
+    ]);
+
+    res.json({ frontendHost: frontendHost.trim(), frontendPort: port });
+  } catch (err) {
+    console.error("system/npm-config PUT error:", err);
+    res.status(500).json({ error: "Internal server error" });
+  }
+});
+
+app.post("/api/system/npm-config/sync", async (req, res) => {
+  try {
+    const session = await auth.api.getSession({
+      headers: new Headers({ cookie: req.headers.cookie ?? "" }),
+    });
+    if (!session || (session.user as Record<string, unknown>).role !== "SUPER_ADMIN") {
+      res.status(403).json({ error: "Forbidden" });
+      return;
+    }
+
+    if (!process.env.NPM_API_URL) {
+      res.status(422).json({ error: "NPM_API_URL is not configured — cannot sync proxy hosts" });
+      return;
+    }
+
+    const cfg = await getNpmProvisionConfig();
+    const [verifiedDomains, allNpmHosts] = await Promise.all([
+      prisma.organizationDomain.findMany({
+        where: { verified: true },
+        select: { id: true, domain: true, npmProxyHostId: true },
+      }),
+      createNpmClient().proxyHosts.list(),
+    ]);
+
+    // Build a domain→npmHostId lookup from the live NPM list
+    const npmHostByDomain = new Map<string, number>();
+    for (const h of allNpmHosts) {
+      for (const d of h.domain_names) {
+        npmHostByDomain.set(d, h.id);
+      }
+    }
+
+    const synced: string[] = [];
+    const failed: { domain: string; error: string }[] = [];
+    const client = createNpmClient();
+
+    await Promise.allSettled(
+      verifiedDomains.map(async (d) => {
+        // Prefer stored ID; fall back to live domain-name lookup for pre-existing hosts
+        const npmHostId = d.npmProxyHostId ?? npmHostByDomain.get(d.domain) ?? null;
+        if (!npmHostId) {
+          failed.push({ domain: d.domain, error: "No NPM proxy host found for this domain" });
+          return;
+        }
+        try {
+          await client.proxyHosts.update(npmHostId, {
+            forward_host: cfg.frontendHost,
+            forward_port: cfg.frontendPort,
+          });
+          synced.push(d.domain);
+          // Backfill the ID if it was missing
+          if (!d.npmProxyHostId) {
+            await prisma.organizationDomain.update({
+              where: { id: d.id },
+              data: { npmProxyHostId: npmHostId },
+            }).catch(() => { /* non-critical */ });
+          }
+        } catch (err) {
+          failed.push({ domain: d.domain, error: err instanceof Error ? err.message : String(err) });
+        }
+      })
+    );
+
+    console.log(`[system/npm-config/sync] ${cfg.frontendHost}:${cfg.frontendPort} — synced ${synced.length}, failed ${failed.length}`);
+    res.json({ synced: synced.length, failed });
+  } catch (err) {
+    console.error("system/npm-config/sync error:", err);
     res.status(500).json({ error: "Internal server error" });
   }
 });
