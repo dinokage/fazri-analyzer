@@ -207,58 +207,6 @@ pipeline {
         stage('Build Images') {
             parallel {
 
-                stage('Build Backend Image') {
-                    when { expression { env.BUILD_BACKEND == 'true' } }
-                    steps {
-                        echo "Building backend image (live container still up)..."
-                        sh '''
-                            docker build -f apps/api/Dockerfile --target production \
-                                -t ${BACKEND_IMAGE}:${IMAGE_TAG} \
-                                $([ "${BRANCH_NAME}" = "master" ] && echo "-t ${BACKEND_IMAGE}:latest" || echo "") \
-                                apps/api/
-                        '''
-                    }
-                }
-
-                stage('Build Auth Image') {
-                    when { expression { env.BUILD_AUTH == 'true' } }
-                    steps {
-                        echo "Building auth service image (live container still up)..."
-                        sh '''
-                            docker build -f apps/auth/Dockerfile \
-                                -t ${AUTH_IMAGE}:${IMAGE_TAG} \
-                                $([ "${BRANCH_NAME}" = "master" ] && echo "-t ${AUTH_IMAGE}:latest" || echo "") \
-                                .
-                        '''
-                    }
-                }
-
-                stage('Build DeepFace Image') {
-                    when { expression { env.BUILD_DEEPFACE == 'true' } }
-                    steps {
-                        echo "Building DeepFace server image (live container still up)..."
-                        sh '''
-                            docker build -f apps/deepface/Dockerfile \
-                                -t ${DEEPFACE_IMAGE}:${IMAGE_TAG} \
-                                $([ "${BRANCH_NAME}" = "master" ] && echo "-t ${DEEPFACE_IMAGE}:latest" || echo "") \
-                                apps/deepface/
-                        '''
-                    }
-                }
-
-                stage('Build go2rtc Image') {
-                    when { expression { env.BUILD_GO2RTC == 'true' && env.BRANCH_NAME != 'master' } }
-                    steps {
-                        echo "Building go2rtc relay image..."
-                        sh '''
-                            docker build -f mediamtx/Dockerfile \
-                                -t ${GO2RTC_IMAGE}:${IMAGE_TAG} \
-                                $([ "${BRANCH_NAME}" = "master" ] && echo "-t ${GO2RTC_IMAGE}:latest" || echo "") \
-                                mediamtx/
-                        '''
-                    }
-                }
-
                 stage('Build Dashboard Image') {
                     when { expression { env.BUILD_WEB == 'true' } }
                     steps {
@@ -277,6 +225,58 @@ pipeline {
                                 -t ${DASHBOARD_IMAGE}:${IMAGE_TAG} \
                                 $([ "${BRANCH_NAME}" = "master" ] && echo "-t ${DASHBOARD_IMAGE}:latest" || echo "") \
                                 .
+                        '''
+                    }
+                }
+
+                stage('Build Backend Image') {
+                    when { expression { env.BUILD_BACKEND == 'true' } }
+                    steps {
+                        echo "Building backend image (live container still up)..."
+                        sh '''
+                            docker build -f apps/api/Dockerfile --target production \
+                                -t ${BACKEND_IMAGE}:${IMAGE_TAG} \
+                                $([ "${BRANCH_NAME}" = "master" ] && echo "-t ${BACKEND_IMAGE}:latest" || echo "") \
+                                apps/api/
+                        '''
+                    }
+                }
+
+                stage('Build DeepFace Image') {
+                    when { expression { env.BUILD_DEEPFACE == 'true' } }
+                    steps {
+                        echo "Building DeepFace server image (live container still up)..."
+                        sh '''
+                            docker build -f apps/deepface/Dockerfile \
+                                -t ${DEEPFACE_IMAGE}:${IMAGE_TAG} \
+                                $([ "${BRANCH_NAME}" = "master" ] && echo "-t ${DEEPFACE_IMAGE}:latest" || echo "") \
+                                apps/deepface/
+                        '''
+                    }
+                }
+
+                stage('Build Auth Image') {
+                    when { expression { env.BUILD_AUTH == 'true' } }
+                    steps {
+                        echo "Building auth service image (live container still up)..."
+                        sh '''
+                            docker build -f apps/auth/Dockerfile \
+                                -t ${AUTH_IMAGE}:${IMAGE_TAG} \
+                                $([ "${BRANCH_NAME}" = "master" ] && echo "-t ${AUTH_IMAGE}:latest" || echo "") \
+                                .
+                        '''
+                    }
+                }
+
+                stage('Build go2rtc Image') {
+                    when { expression { env.BUILD_GO2RTC == 'true' && env.BRANCH_NAME != 'master' } }
+                    steps {
+                        echo "Building go2rtc relay image..."
+                        sh '''
+                            docker build -f mediamtx/Dockerfile \
+                                -t ${GO2RTC_IMAGE}:${IMAGE_TAG} \
+                                $([ "${BRANCH_NAME}" = "master" ] && echo "-t ${GO2RTC_IMAGE}:latest" || echo "") \
+                                mediamtx/
                         '''
                     }
                 }
