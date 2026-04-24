@@ -291,6 +291,52 @@ pipeline {
         stage('Deploy') {
             parallel {
 
+                stage('Dashboard') {
+                    when { expression { env.BUILD_WEB == 'true' } }
+                    steps {
+                        sh '''
+                            echo "Removing existing dashboard container..."
+                            docker rm -f ${DASHBOARD_CONTAINER} 2>/dev/null || true
+
+                            echo "Starting dashboard container..."
+                            docker run -d \
+                                --name ${DASHBOARD_CONTAINER} \
+                                --restart unless-stopped \
+                                --network ${NETWORK_NAME} \
+                                -p ${DASHBOARD_PORT}:3000 \
+                                -e BETTER_AUTH_SECRET="${BETTER_AUTH_SECRET}" \
+                                -e NODE_ENV=production \
+                                -e PORT=3000 \
+                                ${DASHBOARD_IMAGE}:${IMAGE_TAG}
+
+                            if ! docker ps --format '{{.Names}}' | grep -q "^${DASHBOARD_CONTAINER}$"; then
+                                echo "✗ Dashboard container failed to start"
+                                docker logs ${DASHBOARD_CONTAINER} 2>&1 || true
+                                exit 1
+                            fi
+
+                            echo "✓ Dashboard deployed"
+                        '''
+                        echo "Waiting for dashboard to be healthy..."
+                        sh '''
+                            sleep 5
+                            for i in $(seq 1 12); do
+                                if docker exec ${DASHBOARD_CONTAINER} \
+                                    node -e "require('http').get('http://localhost:3000', r => process.exit(r.statusCode < 500 ? 0 : 1)).on('error', () => process.exit(1))" \
+                                    > /dev/null 2>&1; then
+                                    echo "✓ Dashboard is healthy"
+                                    exit 0
+                                fi
+                                echo "Attempt ${i}/12 — waiting..."
+                                sleep 5
+                            done
+                            echo "✗ Dashboard health check failed after 60s"
+                            docker logs ${DASHBOARD_CONTAINER} --tail=50
+                            exit 1
+                        '''
+                    }
+                }
+
                 stage('Backend') {
                     when { expression { env.BUILD_BACKEND == 'true' } }
                     steps {
@@ -393,6 +439,55 @@ pipeline {
                     }
                 }
 
+                stage('DeepFace Server') {
+                    when { expression { env.BUILD_DEEPFACE == 'true' } }
+                    steps {
+                        sh '''
+                            echo "Removing existing DeepFace container..."
+                            docker rm -f ${DEEPFACE_CONTAINER} 2>/dev/null || true
+
+                            echo "Starting DeepFace server container..."
+                            docker run -d \
+                                --name ${DEEPFACE_CONTAINER} \
+                                --restart unless-stopped \
+                                --network ${NETWORK_NAME} \
+                                -e DEEPFACE_WEBHOOK_SECRET="${DEEPFACE_WEBHOOK_SECRET}" \
+                                -e DEEPFACE_POSTGRES_URI="${DEEPFACE_POSTGRES_URI}" \
+                                -e SENTRY_DSN="${DEEPFACE_SENTRY_DSN}" \
+                                -e SENTRY_ENVIRONMENT=${DEPLOY_ENV} \
+                                -e SENTRY_TRACES_SAMPLE_RATE=0.1 \
+                                -e SENTRY_ENABLED=true \
+                                -v deepface_models_${DEPLOY_ENV}:/app/models \
+                                -v deepface_data_${DEPLOY_ENV}:/app/data \
+                                ${DEEPFACE_IMAGE}:${IMAGE_TAG}
+
+                            if ! docker ps --format '{{.Names}}' | grep -q "^${DEEPFACE_CONTAINER}$"; then
+                                echo "✗ DeepFace container failed to start"
+                                docker logs ${DEEPFACE_CONTAINER} 2>&1 || true
+                                exit 1
+                            fi
+
+                            echo "✓ DeepFace server deployed"
+                        '''
+                        echo "Waiting for DeepFace server to be healthy..."
+                        sh '''
+                            sleep 10
+                            for i in $(seq 1 18); do
+                                if docker exec ${DEEPFACE_CONTAINER} \
+                                    curl -sf http://localhost:8000/health > /dev/null 2>&1; then
+                                    echo "✓ DeepFace server is healthy"
+                                    exit 0
+                                fi
+                                echo "Attempt ${i}/18 — waiting..."
+                                sleep 5
+                            done
+                            echo "✗ DeepFace server health check failed after 90s"
+                            docker logs ${DEEPFACE_CONTAINER} --tail=50
+                            exit 1
+                        '''
+                    }
+                }
+
                 stage('Auth') {
                     when { expression { env.BUILD_AUTH == 'true' } }
                     steps {
@@ -452,55 +547,6 @@ pipeline {
                     }
                 }
 
-                stage('DeepFace Server') {
-                    when { expression { env.BUILD_DEEPFACE == 'true' } }
-                    steps {
-                        sh '''
-                            echo "Removing existing DeepFace container..."
-                            docker rm -f ${DEEPFACE_CONTAINER} 2>/dev/null || true
-
-                            echo "Starting DeepFace server container..."
-                            docker run -d \
-                                --name ${DEEPFACE_CONTAINER} \
-                                --restart unless-stopped \
-                                --network ${NETWORK_NAME} \
-                                -e DEEPFACE_WEBHOOK_SECRET="${DEEPFACE_WEBHOOK_SECRET}" \
-                                -e DEEPFACE_POSTGRES_URI="${DEEPFACE_POSTGRES_URI}" \
-                                -e SENTRY_DSN="${DEEPFACE_SENTRY_DSN}" \
-                                -e SENTRY_ENVIRONMENT=${DEPLOY_ENV} \
-                                -e SENTRY_TRACES_SAMPLE_RATE=0.1 \
-                                -e SENTRY_ENABLED=true \
-                                -v deepface_models_${DEPLOY_ENV}:/app/models \
-                                -v deepface_data_${DEPLOY_ENV}:/app/data \
-                                ${DEEPFACE_IMAGE}:${IMAGE_TAG}
-
-                            if ! docker ps --format '{{.Names}}' | grep -q "^${DEEPFACE_CONTAINER}$"; then
-                                echo "✗ DeepFace container failed to start"
-                                docker logs ${DEEPFACE_CONTAINER} 2>&1 || true
-                                exit 1
-                            fi
-
-                            echo "✓ DeepFace server deployed"
-                        '''
-                        echo "Waiting for DeepFace server to be healthy..."
-                        sh '''
-                            sleep 10
-                            for i in $(seq 1 18); do
-                                if docker exec ${DEEPFACE_CONTAINER} \
-                                    curl -sf http://localhost:8000/health > /dev/null 2>&1; then
-                                    echo "✓ DeepFace server is healthy"
-                                    exit 0
-                                fi
-                                echo "Attempt ${i}/18 — waiting..."
-                                sleep 5
-                            done
-                            echo "✗ DeepFace server health check failed after 90s"
-                            docker logs ${DEEPFACE_CONTAINER} --tail=50
-                            exit 1
-                        '''
-                    }
-                }
-
                 stage('go2rtc Relay') {
                     when { expression { env.BUILD_GO2RTC == 'true' && env.BRANCH_NAME != 'master' } }
                     steps {
@@ -550,52 +596,6 @@ pipeline {
                             done
                             echo "✗ go2rtc health check failed after 12s"
                             docker logs ${GO2RTC_CONTAINER} --tail=30
-                            exit 1
-                        '''
-                    }
-                }
-
-                stage('Dashboard') {
-                    when { expression { env.BUILD_WEB == 'true' } }
-                    steps {
-                        sh '''
-                            echo "Removing existing dashboard container..."
-                            docker rm -f ${DASHBOARD_CONTAINER} 2>/dev/null || true
-
-                            echo "Starting dashboard container..."
-                            docker run -d \
-                                --name ${DASHBOARD_CONTAINER} \
-                                --restart unless-stopped \
-                                --network ${NETWORK_NAME} \
-                                -p ${DASHBOARD_PORT}:3000 \
-                                -e BETTER_AUTH_SECRET="${BETTER_AUTH_SECRET}" \
-                                -e NODE_ENV=production \
-                                -e PORT=3000 \
-                                ${DASHBOARD_IMAGE}:${IMAGE_TAG}
-
-                            if ! docker ps --format '{{.Names}}' | grep -q "^${DASHBOARD_CONTAINER}$"; then
-                                echo "✗ Dashboard container failed to start"
-                                docker logs ${DASHBOARD_CONTAINER} 2>&1 || true
-                                exit 1
-                            fi
-
-                            echo "✓ Dashboard deployed"
-                        '''
-                        echo "Waiting for dashboard to be healthy..."
-                        sh '''
-                            sleep 5
-                            for i in $(seq 1 12); do
-                                if docker exec ${DASHBOARD_CONTAINER} \
-                                    node -e "require('http').get('http://localhost:3000', r => process.exit(r.statusCode < 500 ? 0 : 1)).on('error', () => process.exit(1))" \
-                                    > /dev/null 2>&1; then
-                                    echo "✓ Dashboard is healthy"
-                                    exit 0
-                                fi
-                                echo "Attempt ${i}/12 — waiting..."
-                                sleep 5
-                            done
-                            echo "✗ Dashboard health check failed after 60s"
-                            docker logs ${DASHBOARD_CONTAINER} --tail=50
                             exit 1
                         '''
                     }
@@ -693,6 +693,36 @@ pipeline {
         stage('Sentry Release') {
             parallel {
 
+                stage('Sentry Release Dashboard') {
+                    when { expression { env.BUILD_WEB == 'true' } }
+                    steps {
+                        sh """
+                            if command -v sentry-cli > /dev/null 2>&1; then
+                                sentry-cli update 2>/dev/null || true
+                            else
+                                curl -sL https://sentry.io/get-cli/ | bash
+                            fi
+
+                            RELEASE_VERSION="fazri-analyzer-web@${env.GIT_COMMIT}"
+
+                            sentry-cli releases new "\$RELEASE_VERSION" \
+                                --org rayzrsole --project fazri-frontend || true
+
+                            sentry-cli releases set-commits "\$RELEASE_VERSION" --auto \
+                                --org rayzrsole --project fazri-frontend || true
+
+                            sentry-cli releases deploys "\$RELEASE_VERSION" new \
+                                --env ${DEPLOY_ENV} \
+                                --org rayzrsole --project fazri-frontend
+
+                            sentry-cli releases finalize "\$RELEASE_VERSION" \
+                                --org rayzrsole --project fazri-frontend
+
+                            echo "✓ Sentry release (dashboard): \$RELEASE_VERSION (${DEPLOY_ENV})"
+                        """
+                    }
+                }
+
                 stage('Sentry Release Backend') {
                     when { expression { env.BUILD_BACKEND == 'true' } }
                     steps {
@@ -719,36 +749,6 @@ pipeline {
                                 --org rayzrsole --project fazri-backend
 
                             echo "✓ Sentry release (backend): \$RELEASE_VERSION (${DEPLOY_ENV})"
-                        """
-                    }
-                }
-
-                stage('Sentry Release Auth') {
-                    when { expression { env.BUILD_AUTH == 'true' } }
-                    steps {
-                        sh """
-                            if command -v sentry-cli > /dev/null 2>&1; then
-                                sentry-cli update 2>/dev/null || true
-                            else
-                                curl -sL https://sentry.io/get-cli/ | bash
-                            fi
-
-                            RELEASE_VERSION="fazri-analyzer-auth@${env.GIT_COMMIT}"
-
-                            sentry-cli releases new "\$RELEASE_VERSION" \
-                                --org rayzrsole --project fazri-auth || true
-
-                            sentry-cli releases set-commits "\$RELEASE_VERSION" --auto \
-                                --org rayzrsole --project fazri-auth || true
-
-                            sentry-cli releases deploys "\$RELEASE_VERSION" new \
-                                --env ${DEPLOY_ENV} \
-                                --org rayzrsole --project fazri-auth
-
-                            sentry-cli releases finalize "\$RELEASE_VERSION" \
-                                --org rayzrsole --project fazri-auth
-
-                            echo "✓ Sentry release (auth): \$RELEASE_VERSION (${DEPLOY_ENV})"
                         """
                     }
                 }
@@ -783,8 +783,8 @@ pipeline {
                     }
                 }
 
-                stage('Sentry Release Dashboard') {
-                    when { expression { env.BUILD_WEB == 'true' } }
+                stage('Sentry Release Auth') {
+                    when { expression { env.BUILD_AUTH == 'true' } }
                     steps {
                         sh """
                             if command -v sentry-cli > /dev/null 2>&1; then
@@ -793,22 +793,22 @@ pipeline {
                                 curl -sL https://sentry.io/get-cli/ | bash
                             fi
 
-                            RELEASE_VERSION="fazri-analyzer-web@${env.GIT_COMMIT}"
+                            RELEASE_VERSION="fazri-analyzer-auth@${env.GIT_COMMIT}"
 
                             sentry-cli releases new "\$RELEASE_VERSION" \
-                                --org rayzrsole --project fazri-frontend || true
+                                --org rayzrsole --project fazri-auth || true
 
                             sentry-cli releases set-commits "\$RELEASE_VERSION" --auto \
-                                --org rayzrsole --project fazri-frontend || true
+                                --org rayzrsole --project fazri-auth || true
 
                             sentry-cli releases deploys "\$RELEASE_VERSION" new \
                                 --env ${DEPLOY_ENV} \
-                                --org rayzrsole --project fazri-frontend
+                                --org rayzrsole --project fazri-auth
 
                             sentry-cli releases finalize "\$RELEASE_VERSION" \
-                                --org rayzrsole --project fazri-frontend
+                                --org rayzrsole --project fazri-auth
 
-                            echo "✓ Sentry release (dashboard): \$RELEASE_VERSION (${DEPLOY_ENV})"
+                            echo "✓ Sentry release (auth): \$RELEASE_VERSION (${DEPLOY_ENV})"
                         """
                     }
                 }
