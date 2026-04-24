@@ -9,6 +9,7 @@ COPY apps/web/package.json ./apps/web/
 COPY packages/config/package.json ./packages/config/
 COPY packages/db/package.json ./packages/db/
 COPY packages/npm-sdk/package.json ./packages/npm-sdk/
+COPY patches/ ./patches/
 RUN pnpm install --frozen-lockfile
 
 FROM base AS build
