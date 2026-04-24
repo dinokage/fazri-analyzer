@@ -1,0 +1,23 @@
+# Dependencies
+**/node_modules
+
+# Build outputs
+**/.next
+**/dist
+**/.turbo
+
+# Environment files
+.env
+.env.*
+!.env.example
+
+# Dev / editor
+.git
+.gitignore
+**/.DS_Store
+**/*.log
+
+# CI / tooling
+.github
+Jenkinsfile
+docker-compose*.yml
