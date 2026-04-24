@@ -18,18 +18,16 @@ class ApiError extends Error {
 // Invalidated on 401 and when org changes via OrgSwitcher.
 let tokenCache: { value: string; expiresAt: number } | null = null;
 
+// Deduplicates concurrent getSession() calls so that when the JWT cache
+// expires and multiple queries fire at the same time (e.g. on alert polls),
+// only one network round-trip is made.
+let pendingJwtFetch: Promise<string> | null = null;
+
 export function invalidateTokenCache() {
   tokenCache = null;
 }
 
-async function getAuthHeaders(): Promise<HeadersInit> {
-  if (tokenCache && Date.now() < tokenCache.expiresAt) {
-    return {
-      'Content-Type': 'application/json',
-      'Authorization': `Bearer ${tokenCache.value}`,
-    };
-  }
-
+async function fetchFreshJwt(): Promise<string> {
   let jwt: string | null = null;
   const session = await getSession({
     fetchOptions: {
@@ -46,7 +44,27 @@ async function getAuthHeaders(): Promise<HeadersInit> {
     throw new ApiError("Could not retrieve auth token.", 401);
   }
 
-  tokenCache = { value: jwt, expiresAt: Date.now() + 4 * 60 * 1000 };
+  // Cache for 20 minutes — JWT is valid for 30 days, 20 min keeps it fresh
+  // without hitting the auth service on every alert poll cycle.
+  tokenCache = { value: jwt, expiresAt: Date.now() + 20 * 60 * 1000 };
+  return jwt;
+}
+
+async function getAuthHeaders(): Promise<HeadersInit> {
+  if (tokenCache && Date.now() < tokenCache.expiresAt) {
+    return {
+      'Content-Type': 'application/json',
+      'Authorization': `Bearer ${tokenCache.value}`,
+    };
+  }
+
+  if (!pendingJwtFetch) {
+    pendingJwtFetch = fetchFreshJwt().finally(() => {
+      pendingJwtFetch = null;
+    });
+  }
+
+  const jwt = await pendingJwtFetch;
   return {
     'Content-Type': 'application/json',
     'Authorization': `Bearer ${jwt}`,
@@ -55,15 +73,16 @@ async function getAuthHeaders(): Promise<HeadersInit> {
 
 async function handleResponse(response: Response) {
   if (response.status === 401) {
+    // Invalidate the JWT cache so the next call fetches a fresh token.
+    // Do NOT hard-redirect here — a transient 401 (network blip, brief
+    // service restart) would boot the user out. The sidebar's useSession()
+    // hook handles the redirect when the session is genuinely gone.
     invalidateTokenCache();
-    Sentry.captureMessage('Session expired - authentication required', {
+    Sentry.captureMessage('API returned 401 - invalidating JWT cache', {
       level: 'warning',
       tags: { type: 'auth_expired', status_code: '401' },
       extra: { url: response.url },
     });
-    if (typeof window !== 'undefined') {
-      window.location.href = '/auth';
-    }
     throw new ApiError('Session expired. Please log in again.', 401);
   }
 

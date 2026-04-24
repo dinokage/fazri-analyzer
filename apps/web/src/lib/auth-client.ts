@@ -12,6 +12,14 @@ export const authClient = createAuthClient({
   // Browser: route through the Next.js proxy (/api/auth/*) so cookies are
   // first-party on any tenant domain. Server-side: hit the auth service directly.
   baseURL: typeof window !== "undefined" ? window.location.origin : process.env.NEXT_PUBLIC_AUTH_SERVICE_URL,
+  sessionOptions: {
+    // Disable Better Auth's built-in visibilitychange refetch. Before the
+    // cross-domain cookie fix this caused false logouts: tab focus triggered
+    // get-session, the cookie wasn't sent (third-party), session came back
+    // null, sidebar redirected. Alert polling calls getSession every ~4 min
+    // via getAuthHeaders() so session freshness is maintained without this.
+    refetchOnWindowFocus: false,
+  },
   plugins: [
     usernameClient(),
     jwtClient(),
