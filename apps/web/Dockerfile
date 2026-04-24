@@ -40,7 +40,7 @@ ENV SENTRY_PROJECT=$SENTRY_PROJECT
 ENV NEXT_TELEMETRY_DISABLED=1
 RUN pnpm --filter @fazri/web build
 
-FROM base AS runner
+FROM node:22.11.0-alpine AS runner
 WORKDIR /app
 
 ENV NODE_ENV=production \

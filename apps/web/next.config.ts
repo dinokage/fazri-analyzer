@@ -31,8 +31,6 @@ export default withSentryConfig(nextConfig, {
   // tunnelRoute disabled — causes React 19 script tag warning
   // tunnelRoute: "/monitoring",
 
-  // Disable source map upload in development
-  ...(process.env.NODE_ENV !== 'production' && {
-    dryRun: true,
-  }),
+  // Don't upload source maps if token is absent (e.g. local dev builds)
+  ...(process.env.SENTRY_AUTH_TOKEN ? {} : { dryRun: true }),
 });
