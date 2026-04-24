@@ -6,9 +6,9 @@ WORKDIR /app
 # Copy workspace manifests for reproducible monorepo install
 COPY package.json pnpm-lock.yaml pnpm-workspace.yaml ./
 COPY apps/web/package.json ./apps/web/
-COPY packages/ui/package.json ./packages/ui/
-COPY packages/types/package.json ./packages/types/
 COPY packages/config/package.json ./packages/config/
+COPY packages/db/package.json ./packages/db/
+COPY packages/npm-sdk/package.json ./packages/npm-sdk/
 RUN pnpm install --frozen-lockfile
 
 FROM base AS build
