@@ -93,6 +93,20 @@ export async function removeOrigin(domain: string): Promise<void> {
   }
 }
 
+export function getAllOrigins(): string[] {
+  const staticOrigins = (process.env.TRUSTED_ORIGINS ?? "http://localhost:3000")
+    .split(",")
+    .map((o) => o.trim())
+    .filter(Boolean);
+  const baseDomain = process.env.FAZRI_BASE_DOMAIN ?? "rayzrsole.com";
+  return [
+    ...staticOrigins,
+    `https://${baseDomain}`,
+    `https://*.${baseDomain}`,
+    ..._localSet,
+  ];
+}
+
 export function isOriginAllowed(requestOrigin: string | undefined): boolean {
   if (!requestOrigin) return true;
 
