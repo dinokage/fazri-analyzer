@@ -14,6 +14,7 @@ from config import settings
 from auth.dependencies import get_current_user
 from auth.models import AuthenticatedUser
 from middleware import SentryContextMiddleware
+from cors_origins import init_cors_origins, start_refresh_task, is_allowed_origin as _is_allowed_origin
 
 # Sentry imports
 import sentry_sdk
@@ -128,6 +129,10 @@ async def lifespan(app: FastAPI):
     # Startup
     logger.info("Starting Fazri Analyzer API...")
 
+    # Load verified custom-domain CORS origins from Redis
+    await init_cors_origins()
+    _cors_refresh_task = start_refresh_task()
+
     # Initialize alert system database if enabled
     if settings.ALERT_SYSTEM_ENABLED:
         try:
@@ -218,6 +223,8 @@ async def lifespan(app: FastAPI):
 
     # Shutdown — cancel background tasks cleanly
     tasks_to_cancel = []
+    _cors_refresh_task.cancel()
+    tasks_to_cancel.append(_cors_refresh_task)
     if _batch_sync_task and not _batch_sync_task.done():
         _batch_sync_task.cancel()
         tasks_to_cancel.append(_batch_sync_task)
@@ -244,23 +251,14 @@ app = FastAPI(
     lifespan=lifespan,
 )
 
-# CORS configuration for allowed domains and their subdomains
-ALLOWED_DOMAIN_PATTERNS = [
-    r"^https?://([a-zA-Z0-9-]+\.)*rayzrsole\.com$",
-    r"^https?://([a-zA-Z0-9-]+\.)*rdpdc\.in$",
-    r"^http://localhost(:[0-9]+)?$",  # Allow localhost for development
-]
-
-def is_origin_allowed(origin: str) -> bool:
-    """Check if origin matches allowed domain patterns"""
-    for pattern in ALLOWED_DOMAIN_PATTERNS:
-        if re.match(pattern, origin):
-            return True
-    return False
+class _DynamicCORSMiddleware(CORSMiddleware):
+    """CORSMiddleware subclass that consults the Redis-backed origin cache."""
+    def is_allowed_origin(self, origin: str) -> bool:
+        return _is_allowed_origin(origin)
 
 app.add_middleware(
-    CORSMiddleware,
-    allow_origin_regex=r"^https?://([a-zA-Z0-9-]+\.)*rayzrsole\.com$|^https?://([a-zA-Z0-9-]+\.)*rdpdc\.in$|^http://localhost(:[0-9]+)?$",
+    _DynamicCORSMiddleware,
+    allow_origins=[],  # origin checking is handled by is_allowed_origin override
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],

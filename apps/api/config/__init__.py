@@ -23,6 +23,11 @@ class Settings(BaseSettings):
     REDIS_PORT: int = 6379
     REDIS_DB: int = 0
 
+    # Multi-tenant CORS
+    FAZRI_BASE_DOMAIN: str = "rayzrsole.com"
+    # Comma-separated extra literal origins to allow (e.g. a staging domain)
+    EXTRA_CORS_ORIGINS: list[str] = []
+
     # Application Settings
     DEBUG: bool = False
     LOG_LEVEL: str = "INFO"
