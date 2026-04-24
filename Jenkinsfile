@@ -186,7 +186,6 @@ pipeline {
                                           isFirstRun) ? 'true' : 'false'
 
                     env.BUILD_WEB      = (changedFiles.contains('apps/web/')          ||
-                                          changedFiles.contains('packages/')          ||
                                           changedFiles.contains('Jenkinsfile')        ||
                                           isFirstRun) ? 'true' : 'false'
 
@@ -222,6 +221,7 @@ pipeline {
                                 --build-arg SENTRY_AUTH_TOKEN="${SENTRY_AUTH_TOKEN}" \
                                 --build-arg SENTRY_ORG=rayzrsole \
                                 --build-arg SENTRY_PROJECT=fazri-frontend \
+                                --build-arg SENTRY_RELEASE="${GIT_COMMIT}" \
                                 -t ${DASHBOARD_IMAGE}:${IMAGE_TAG} \
                                 $([ "${BRANCH_NAME}" = "master" ] && echo "-t ${DASHBOARD_IMAGE}:latest" || echo "") \
                                 .
@@ -322,7 +322,7 @@ pipeline {
                             sleep 5
                             for i in $(seq 1 12); do
                                 if docker exec ${DASHBOARD_CONTAINER} \
-                                    node -e "require('http').get('http://localhost:3000', r => process.exit(r.statusCode < 500 ? 0 : 1)).on('error', () => process.exit(1))" \
+                                    node -e "require('http').get('http://localhost:3000', r => process.exit(r.statusCode < 400 ? 0 : 1)).on('error', () => process.exit(1))" \
                                     > /dev/null 2>&1; then
                                     echo "✓ Dashboard is healthy"
                                     exit 0
