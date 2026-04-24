@@ -13,6 +13,7 @@ pipeline {
         AUTH_IMAGE      = 'fazri-analyzer-auth'
         DEEPFACE_IMAGE  = 'fazri-deepface-server'
         GO2RTC_IMAGE    = 'fazri-go2rtc'
+        DASHBOARD_IMAGE = 'fazri-analyzer-web'
         NETWORK_NAME    = 'backend_fazri-network'
         DOCKER_BUILDKIT = '1'
 
@@ -78,6 +79,14 @@ pipeline {
         ARUBA_POLL_INTERVAL     = credentials('fazri-aruba-poll-interval')
         ARUBA_AP_ZONE_MAP       = credentials('fazri-aruba-ap-zone-map')
 
+        // ── Web/Dashboard credentials ─────────────────────────────────────────
+        WEB_API_URL_PROD       = credentials('fazri-web-fastapi-base-url')
+        WEB_API_URL_STAGING    = credentials('fazri-web-fastapi-base-url-staging')
+        WEB_AUTH_URL_PROD      = credentials('fazri-web-auth-service-url')
+        WEB_AUTH_URL_STAGING   = credentials('fazri-web-auth-service-url-staging')
+        WEB_CDN_URL            = credentials('fazri-web-cdn-url')
+        WEB_SENTRY_DSN         = credentials('fazri-web-sentry-dsn')
+
         // ── Simulators (reuse existing DB/Redis credentials) ──────────────────
         // These feed the MovementCoordinator inside the simulator containers.
         SIM_POSTGRES_SERVER   = credentials('fazri-postgres-server')
@@ -115,30 +124,35 @@ pipeline {
             steps {
                 script {
                     if (env.BRANCH_NAME == 'master') {
-                        env.DEPLOY_ENV          = 'production'
-                        env.BACKEND_CONTAINER   = 'fazri-api'
-                        env.AUTH_CONTAINER      = 'fazri-auth'
-                        env.DEEPFACE_CONTAINER  = 'deepface-server'
-                        env.BACKEND_PORT        = '8000'
-                        env.AUTH_PORT           = '4002'
+                        env.DEPLOY_ENV           = 'production'
+                        env.BACKEND_CONTAINER    = 'fazri-api'
+                        env.AUTH_CONTAINER       = 'fazri-auth'
+                        env.DEEPFACE_CONTAINER   = 'deepface-server'
+                        env.DASHBOARD_CONTAINER  = 'fazri-dashboard'
+                        env.BACKEND_PORT         = '8000'
+                        env.AUTH_PORT            = '4002'
+                        env.DASHBOARD_PORT       = '3000'
                     } else {
-                        env.DEPLOY_ENV          = 'staging'
-                        env.BACKEND_CONTAINER   = 'fazri-api-staging'
-                        env.AUTH_CONTAINER      = 'fazri-auth-staging'
-                        env.DEEPFACE_CONTAINER  = 'deepface-server-staging'
-                        env.GO2RTC_CONTAINER    = 'go2rtc-staging'
-                        env.BACKEND_PORT        = '8001'
-                        env.AUTH_PORT           = '4003'
+                        env.DEPLOY_ENV           = 'staging'
+                        env.BACKEND_CONTAINER    = 'fazri-api-staging'
+                        env.AUTH_CONTAINER       = 'fazri-auth-staging'
+                        env.DEEPFACE_CONTAINER   = 'deepface-server-staging'
+                        env.GO2RTC_CONTAINER     = 'go2rtc-staging'
+                        env.DASHBOARD_CONTAINER  = 'fazri-dashboard-staging'
+                        env.BACKEND_PORT         = '8001'
+                        env.AUTH_PORT            = '4003'
+                        env.DASHBOARD_PORT       = '3001'
                     }
                     env.SANITIZED_BRANCH = env.BRANCH_NAME.replaceAll('[^a-zA-Z0-9]', '-').toLowerCase()
                     def shortSha         = env.GIT_COMMIT?.take(7) ?: 'unknown'
                     env.IMAGE_TAG        = "${env.SANITIZED_BRANCH}-${shortSha}"
 
-                    echo 'Branch:            ' + env.BRANCH_NAME
-                    echo 'Deploy target:     ' + env.DEPLOY_ENV
-                    echo 'Image tag:         ' + env.IMAGE_TAG
-                    echo 'Backend container: ' + env.BACKEND_CONTAINER + ' (' + env.BACKEND_PORT + ')'
-                    echo 'Auth container:    ' + env.AUTH_CONTAINER    + ' (' + env.AUTH_PORT    + ')'
+                    echo 'Branch:              ' + env.BRANCH_NAME
+                    echo 'Deploy target:       ' + env.DEPLOY_ENV
+                    echo 'Image tag:           ' + env.IMAGE_TAG
+                    echo 'Backend container:   ' + env.BACKEND_CONTAINER   + ' (' + env.BACKEND_PORT   + ')'
+                    echo 'Auth container:      ' + env.AUTH_CONTAINER      + ' (' + env.AUTH_PORT      + ')'
+                    echo 'Dashboard container: ' + env.DASHBOARD_CONTAINER + ' (' + env.DASHBOARD_PORT + ')'
                 }
             }
         }
@@ -171,12 +185,18 @@ pipeline {
                                           changedFiles.contains('Jenkinsfile')        ||
                                           isFirstRun) ? 'true' : 'false'
 
+                    env.BUILD_WEB      = (changedFiles.contains('apps/web/')          ||
+                                          changedFiles.contains('packages/')          ||
+                                          changedFiles.contains('Jenkinsfile')        ||
+                                          isFirstRun) ? 'true' : 'false'
+
                     // Use concatenation instead of GString interpolation to avoid
                     // Jenkins masking these values when a credential shares the same string.
                     echo 'Changed files:\n' + changedFiles
                     echo 'Build backend:  ' + env.BUILD_BACKEND
                     echo 'Build auth:     ' + env.BUILD_AUTH
                     echo 'Build deepface: ' + env.BUILD_DEEPFACE
+                    echo 'Build web:      ' + env.BUILD_WEB
                 }
             }
         }
@@ -235,6 +255,28 @@ pipeline {
                                 -t ${GO2RTC_IMAGE}:${IMAGE_TAG} \
                                 $([ "${BRANCH_NAME}" = "master" ] && echo "-t ${GO2RTC_IMAGE}:latest" || echo "") \
                                 mediamtx/
+                        '''
+                    }
+                }
+
+                stage('Build Dashboard Image') {
+                    when { expression { env.BUILD_WEB == 'true' } }
+                    steps {
+                        echo "Building dashboard image (live container still up)..."
+                        sh '''
+                            docker build -f apps/web/Dockerfile \
+                                --build-arg NEXT_PUBLIC_FASTAPI_BASE_URL=$([ "${BRANCH_NAME}" = "master" ] && echo "${WEB_API_URL_PROD}" || echo "${WEB_API_URL_STAGING}") \
+                                --build-arg NEXT_PUBLIC_AUTH_SERVICE_URL=$([ "${BRANCH_NAME}" = "master" ] && echo "${WEB_AUTH_URL_PROD}" || echo "${WEB_AUTH_URL_STAGING}") \
+                                --build-arg NEXT_PUBLIC_CDN_URL="${WEB_CDN_URL}" \
+                                --build-arg NEXT_PUBLIC_SENTRY_DSN="${WEB_SENTRY_DSN}" \
+                                --build-arg NEXT_PUBLIC_SENTRY_ENVIRONMENT="${DEPLOY_ENV}" \
+                                --build-arg NEXT_PUBLIC_SENTRY_ENABLED=true \
+                                --build-arg SENTRY_AUTH_TOKEN="${SENTRY_AUTH_TOKEN}" \
+                                --build-arg SENTRY_ORG=rayzrsole \
+                                --build-arg SENTRY_PROJECT=fazri-frontend \
+                                -t ${DASHBOARD_IMAGE}:${IMAGE_TAG} \
+                                $([ "${BRANCH_NAME}" = "master" ] && echo "-t ${DASHBOARD_IMAGE}:latest" || echo "") \
+                                .
                         '''
                     }
                 }
@@ -513,6 +555,52 @@ pipeline {
                     }
                 }
 
+                stage('Dashboard') {
+                    when { expression { env.BUILD_WEB == 'true' } }
+                    steps {
+                        sh '''
+                            echo "Removing existing dashboard container..."
+                            docker rm -f ${DASHBOARD_CONTAINER} 2>/dev/null || true
+
+                            echo "Starting dashboard container..."
+                            docker run -d \
+                                --name ${DASHBOARD_CONTAINER} \
+                                --restart unless-stopped \
+                                --network ${NETWORK_NAME} \
+                                -p ${DASHBOARD_PORT}:3000 \
+                                -e BETTER_AUTH_SECRET="${BETTER_AUTH_SECRET}" \
+                                -e NODE_ENV=production \
+                                -e PORT=3000 \
+                                ${DASHBOARD_IMAGE}:${IMAGE_TAG}
+
+                            if ! docker ps --format '{{.Names}}' | grep -q "^${DASHBOARD_CONTAINER}$"; then
+                                echo "✗ Dashboard container failed to start"
+                                docker logs ${DASHBOARD_CONTAINER} 2>&1 || true
+                                exit 1
+                            fi
+
+                            echo "✓ Dashboard deployed"
+                        '''
+                        echo "Waiting for dashboard to be healthy..."
+                        sh '''
+                            sleep 5
+                            for i in $(seq 1 12); do
+                                if docker exec ${DASHBOARD_CONTAINER} \
+                                    node -e "require('http').get('http://localhost:3000', r => process.exit(r.statusCode < 500 ? 0 : 1)).on('error', () => process.exit(1))" \
+                                    > /dev/null 2>&1; then
+                                    echo "✓ Dashboard is healthy"
+                                    exit 0
+                                fi
+                                echo "Attempt ${i}/12 — waiting..."
+                                sleep 5
+                            done
+                            echo "✗ Dashboard health check failed after 60s"
+                            docker logs ${DASHBOARD_CONTAINER} --tail=50
+                            exit 1
+                        '''
+                    }
+                }
+
                 stage('Simulators') {
                     when { expression { env.BUILD_BACKEND == 'true' && env.DEPLOY_ENV != 'production' } }
                     steps {
@@ -695,6 +783,36 @@ pipeline {
                     }
                 }
 
+                stage('Sentry Release Dashboard') {
+                    when { expression { env.BUILD_WEB == 'true' } }
+                    steps {
+                        sh """
+                            if command -v sentry-cli > /dev/null 2>&1; then
+                                sentry-cli update 2>/dev/null || true
+                            else
+                                curl -sL https://sentry.io/get-cli/ | bash
+                            fi
+
+                            RELEASE_VERSION="fazri-analyzer-web@${env.GIT_COMMIT}"
+
+                            sentry-cli releases new "\$RELEASE_VERSION" \
+                                --org rayzrsole --project fazri-frontend || true
+
+                            sentry-cli releases set-commits "\$RELEASE_VERSION" --auto \
+                                --org rayzrsole --project fazri-frontend || true
+
+                            sentry-cli releases deploys "\$RELEASE_VERSION" new \
+                                --env ${DEPLOY_ENV} \
+                                --org rayzrsole --project fazri-frontend
+
+                            sentry-cli releases finalize "\$RELEASE_VERSION" \
+                                --org rayzrsole --project fazri-frontend
+
+                            echo "✓ Sentry release (dashboard): \$RELEASE_VERSION (${DEPLOY_ENV})"
+                        """
+                    }
+                }
+
             }
         }
 
@@ -723,6 +841,12 @@ pipeline {
                             | grep -v "^${IMAGE_TAG}$" \
                             | xargs -r -I{} docker rmi ${DEEPFACE_IMAGE}:{} 2>/dev/null || true
                     fi
+                    if [ "${BUILD_WEB}" = "true" ]; then
+                        docker images ${DASHBOARD_IMAGE} --format "{{.Tag}}" \
+                            | grep "^${SANITIZED_BRANCH}-" \
+                            | grep -v "^${IMAGE_TAG}$" \
+                            | xargs -r -I{} docker rmi ${DASHBOARD_IMAGE}:{} 2>/dev/null || true
+                    fi
                 '''
             }
         }
@@ -736,6 +860,7 @@ pipeline {
                 if (env.BUILD_BACKEND  == 'true') built.add("backend (${env.BACKEND_CONTAINER})")
                 if (env.BUILD_AUTH     == 'true') built.add("auth (${env.AUTH_CONTAINER})")
                 if (env.BUILD_DEEPFACE == 'true') built.add("deepface (${env.DEEPFACE_CONTAINER})")
+                if (env.BUILD_WEB      == 'true') built.add("dashboard (${env.DASHBOARD_CONTAINER})")
                 echo '✓ Deployment successful! Built: ' + built.join(', ')
             }
         }
@@ -744,12 +869,14 @@ pipeline {
             script {
                 node('built-in') {
                     def isProd        = env.BRANCH_NAME == 'master'
-                    def backendCtr    = env.BACKEND_CONTAINER  ?: (isProd ? 'fazri-api'           : 'fazri-api-staging')
-                    def authCtr       = env.AUTH_CONTAINER     ?: (isProd ? 'fazri-auth'          : 'fazri-auth-staging')
-                    def deepfaceCtr   = env.DEEPFACE_CONTAINER ?: (isProd ? 'deepface-server'     : 'deepface-server-staging')
-                    sh "docker logs ${backendCtr}  --tail=30 2>&1 || true"
-                    sh "docker logs ${authCtr}     --tail=30 2>&1 || true"
-                    sh "docker logs ${deepfaceCtr} --tail=30 2>&1 || true"
+                    def backendCtr    = env.BACKEND_CONTAINER    ?: (isProd ? 'fazri-api'           : 'fazri-api-staging')
+                    def authCtr       = env.AUTH_CONTAINER       ?: (isProd ? 'fazri-auth'          : 'fazri-auth-staging')
+                    def deepfaceCtr   = env.DEEPFACE_CONTAINER   ?: (isProd ? 'deepface-server'     : 'deepface-server-staging')
+                    def dashboardCtr  = env.DASHBOARD_CONTAINER  ?: (isProd ? 'fazri-dashboard'     : 'fazri-dashboard-staging')
+                    sh "docker logs ${backendCtr}   --tail=30 2>&1 || true"
+                    sh "docker logs ${authCtr}      --tail=30 2>&1 || true"
+                    sh "docker logs ${deepfaceCtr}  --tail=30 2>&1 || true"
+                    sh "docker logs ${dashboardCtr} --tail=30 2>&1 || true"
                 }
             }
         }
