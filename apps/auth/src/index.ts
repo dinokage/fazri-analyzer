@@ -7,6 +7,7 @@ import net from "net";
 import { toNodeHandler } from "better-auth/node";
 import { auth, refreshSSOProviderIds } from "./auth";
 import { prisma } from "@fazri/db";
+import { initTrustedOrigins, addOrigin, removeOrigin, isOriginAllowed } from "./trusted-origins-cache";
 import { provisionCustomDomain, reprovisionCustomDomain, deprovisionCustomDomain, syncNpmSettings, createNpmClient, type NpmProvisionConfig } from "./npm-provision";
 
 // Process-global DNS override — affects all dns.resolve* calls but NOT dns.lookup / libuv getaddrinfo.
@@ -51,11 +52,12 @@ function isCloudflareIp(ip: string): boolean {
 const app = express();
 const PORT = parseInt(process.env.PORT ?? "4000", 10);
 
-const allowedOrigins = (process.env.TRUSTED_ORIGINS ?? "http://localhost:3000").split(",");
-
 app.use(
   cors({
-    origin: allowedOrigins,
+    origin: (requestOrigin, callback) => {
+      const allowed = isOriginAllowed(requestOrigin);
+      callback(allowed ? null : new Error("CORS: origin not allowed"), allowed);
+    },
     credentials: true,
     methods: ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
     allowedHeaders: ["Content-Type", "Authorization", "Cookie"],
@@ -486,6 +488,9 @@ app.post("/api/domain/activate", async (req, res) => {
       return;
     }
 
+    // Immediately allow CORS from this domain (Redis + local Set)
+    void addOrigin(domain);
+
     // Tracked async — updates sslStatus in DB on both success and failure
     void (async () => {
       try {
@@ -666,6 +671,7 @@ app.delete("/api/domain/:id", async (req, res) => {
     const domainName = record.domain;
     const proxyHostId = record.npmProxyHostId;
     await prisma.organizationDomain.delete({ where: { id: req.params.id } });
+    void removeOrigin(domainName);
     res.json({ success: true });
 
     // Clean up NPM proxy host by ID after responding — targeted delete avoids racing a re-register
@@ -841,12 +847,21 @@ app.post("/api/check-username", async (req, res) => {
 
 Sentry.setupExpressErrorHandler(app);
 
-app.listen(PORT, () => {
-  console.log(`Auth service running on port ${PORT}`);
-  if (!process.env.NPM_API_URL) {
-    console.warn("[startup] NPM_API_URL not set — SSL auto-provisioning disabled. Domains will be marked active without certificate setup.");
-  }
-  if (process.env.NPM_API_URL && !process.env.FAZRI_SERVER_IP) {
-    console.warn("[startup] NPM_API_URL is set but FAZRI_SERVER_IP is missing — DNS verification will be skipped and domain activation will be blocked. Set FAZRI_SERVER_IP to your server's public IP.");
-  }
-});
+initTrustedOrigins()
+  .then(() => {
+    app.listen(PORT, () => {
+      console.log(`Auth service running on port ${PORT}`);
+      if (!process.env.NPM_API_URL) {
+        console.warn("[startup] NPM_API_URL not set — SSL auto-provisioning disabled. Domains will be marked active without certificate setup.");
+      }
+      if (process.env.NPM_API_URL && !process.env.FAZRI_SERVER_IP) {
+        console.warn("[startup] NPM_API_URL is set but FAZRI_SERVER_IP is missing — DNS verification will be skipped and domain activation will be blocked. Set FAZRI_SERVER_IP to your server's public IP.");
+      }
+    });
+  })
+  .catch((err) => {
+    console.error("[startup] Failed to initialize trusted origins cache:", err);
+    app.listen(PORT, () => {
+      console.log(`Auth service running on port ${PORT} (trusted origins degraded — static TRUSTED_ORIGINS env only)`);
+    });
+  });

@@ -187,7 +187,12 @@ export const auth = betterAuth({
     skipStateCookieCheck: true,
   },
 
-  trustedOrigins: (process.env.TRUSTED_ORIGINS ?? "http://localhost:3000").split(","),
+  trustedOrigins: (request) => {
+    const origin = (request as Request | undefined)?.headers?.get?.("origin") ?? undefined;
+    // eslint-disable-next-line @typescript-eslint/no-require-imports
+    const { isOriginAllowed } = require("./trusted-origins-cache") as typeof import("./trusted-origins-cache");
+    return isOriginAllowed(origin) as unknown as string[];
+  },
 
   advanced: {
     crossSubDomainCookies: {

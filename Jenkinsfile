@@ -511,6 +511,8 @@ pipeline {
                                 -e NPM_PASSWORD="${NPM_PASSWORD}" \
                                 -e FAZRI_BASE_DOMAIN="${FAZRI_BASE_DOMAIN}" \
                                 -e FAZRI_SERVER_IP="${FAZRI_SERVER_IP}" \
+                                -e REDIS_HOST="${REDIS_HOST}" \
+                                -e REDIS_PORT="${REDIS_PORT}" \
                                 -e NODE_ENV=production \
                                 -e PORT=4000 \
                                 -e SENTRY_DSN="${AUTH_SENTRY_DSN}" \

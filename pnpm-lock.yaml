@@ -51,6 +51,9 @@ importers:
       express:
         specifier: ^4.21.2
         version: 4.22.1
+      ioredis:
+        specifier: ^5.6.0
+        version: 5.8.0
       samlify:
         specifier: ~2.10.2
         version: 2.10.2(patch_hash=6ed7d16e5121e3d94d95bef6bdb1c7628965b82555e4be190de18d8ee8e6f16a)
