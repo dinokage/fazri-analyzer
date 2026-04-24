@@ -196,7 +196,9 @@ export const auth = betterAuth({
   advanced: {
     crossSubDomainCookies: {
       enabled: true,
-      domain: process.env.COOKIE_DOMAIN ?? ".rayzrsole.com",
+      // No hardcoded domain — Better Auth derives it from the resolved request host.
+      // For *.rayzrsole.com subdomains this gives .rayzrsole.com (shared session).
+      // For custom TLD domains the Next.js proxy strips Domain so cookie is first-party.
     },
     defaultCookieAttributes: {
       sameSite: "none" as const,
@@ -205,7 +207,25 @@ export const auth = betterAuth({
   },
 
   secret: process.env.BETTER_AUTH_SECRET!,
-  baseURL: process.env.AUTH_SERVICE_URL ?? "http://localhost:4000",
+  baseURL: {
+    allowedHosts: [
+      // Auth service own host
+      ...(process.env.AUTH_SERVICE_URL
+        ? [new URL(process.env.AUTH_SERVICE_URL).hostname]
+        : []),
+      // All org subdomains + root base domain
+      `*.${process.env.FAZRI_BASE_DOMAIN ?? "rayzrsole.com"}`,
+      process.env.FAZRI_BASE_DOMAIN ?? "rayzrsole.com",
+      // Verified custom domains loaded from DB at startup (via trusted-origins-cache)
+      // eslint-disable-next-line @typescript-eslint/no-require-imports
+      ...((require("./trusted-origins-cache") as typeof import("./trusted-origins-cache")).getVerifiedCustomDomainHosts()),
+      // Local dev
+      "localhost:4000",
+      "localhost:3000",
+    ],
+    protocol: process.env.NODE_ENV === "production" ? "https" : undefined,
+    fallback: process.env.AUTH_SERVICE_URL ?? "http://localhost:4000",
+  },
 });
 
 export type Auth = typeof auth;

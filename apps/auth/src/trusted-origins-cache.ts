@@ -93,6 +93,13 @@ export async function removeOrigin(domain: string): Promise<void> {
   }
 }
 
+// Returns bare hostnames (no scheme) for use in Better Auth allowedHosts
+export function getVerifiedCustomDomainHosts(): string[] {
+  return Array.from(_localSet).map((origin) => {
+    try { return new URL(origin).hostname; } catch { return ""; }
+  }).filter(Boolean);
+}
+
 export function getAllOrigins(): string[] {
   const staticOrigins = (process.env.TRUSTED_ORIGINS ?? "http://localhost:3000")
     .split(",")

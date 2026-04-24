@@ -9,7 +9,9 @@ import { ssoClient } from "@better-auth/sso/client";
 import { toast } from "sonner";
 
 export const authClient = createAuthClient({
-  baseURL: process.env.NEXT_PUBLIC_AUTH_SERVICE_URL,
+  // Browser: route through the Next.js proxy (/api/auth/*) so cookies are
+  // first-party on any tenant domain. Server-side: hit the auth service directly.
+  baseURL: typeof window !== "undefined" ? window.location.origin : process.env.NEXT_PUBLIC_AUTH_SERVICE_URL,
   plugins: [
     usernameClient(),
     jwtClient(),
