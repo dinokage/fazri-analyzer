@@ -239,6 +239,42 @@ app.get("/api/org/resolve", async (req, res) => {
   }
 });
 
+// Public endpoint — returns org logo + metadata for login page branding
+app.get("/api/org/branding", async (req, res) => {
+  const raw = req.query.hostname;
+  const hostname = (Array.isArray(raw) ? raw[0] : raw) ?? "";
+  if (!hostname || typeof hostname !== "string") {
+    res.status(400).json({ error: "hostname required" });
+    return;
+  }
+  try {
+    const baseDomain = process.env.FAZRI_BASE_DOMAIN ?? "rayzrsole.com";
+    let org: { logo: string | null; metadata: string | null } | null = null;
+
+    if (hostname.endsWith(`.${baseDomain}`)) {
+      const slug = hostname.slice(0, -(`.${baseDomain}`.length));
+      if (slug && !slug.includes(".")) {
+        org = await prisma.organization.findUnique({
+          where: { slug },
+          select: { logo: true, metadata: true },
+        });
+      }
+    } else {
+      const orgDomain = await prisma.organizationDomain.findUnique({
+        where: { domain: hostname, verified: true },
+        include: { organization: { select: { logo: true, metadata: true } } },
+      });
+      org = orgDomain?.organization ?? null;
+    }
+
+    if (!org) { res.status(404).json({ error: "Not found" }); return; }
+    res.json({ logo: org.logo, metadata: org.metadata });
+  } catch (err) {
+    console.error("org-branding error:", err);
+    res.status(500).json({ error: "Internal server error" });
+  }
+});
+
 // ─── Custom domain management ─────────────────────────────────────────────────
 
 async function assertOrgAccess(session: NonNullable<Awaited<ReturnType<typeof auth.api.getSession>>>, organizationId: string): Promise<boolean> {

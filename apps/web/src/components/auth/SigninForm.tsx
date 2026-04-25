@@ -34,6 +34,13 @@ function Spinner() {
 
 type Step = "username" | "password";
 
+interface OrgBrandingData {
+  logo: string | null;
+  welcomeMessage: string | null;
+  primaryColor: string | null;
+  loginBgUrl: string | null;
+}
+
 export default function SigninPage() {
   const router = useRouter();
 
@@ -48,12 +55,32 @@ export default function SigninPage() {
   const [ssoLoading, setSsoLoading] = useState(false);
   const [direction, setDirection] = useState<1 | -1>(1);
   const [activeFeature, setActiveFeature] = useState(0);
+  const [orgBranding, setOrgBranding] = useState<OrgBrandingData | null>(null);
   const passwordRef = useRef<HTMLInputElement>(null);
   const ssoDomainRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
     const interval = setInterval(() => setActiveFeature(p => (p + 1) % features.length), 3000);
     return () => clearInterval(interval);
+  }, []);
+
+  useEffect(() => {
+    const hostname = window.location.hostname;
+    if (hostname === "localhost" || hostname === "127.0.0.1") return;
+    fetch(`${process.env.NEXT_PUBLIC_AUTH_SERVICE_URL}/api/org/branding?hostname=${encodeURIComponent(hostname)}`)
+      .then(r => r.ok ? r.json() : null)
+      .then((data: { logo?: string; metadata?: string } | null) => {
+        if (!data) return;
+        let meta: Record<string, unknown> = {};
+        try { meta = JSON.parse(data.metadata ?? "{}"); } catch {}
+        setOrgBranding({
+          logo: data.logo ?? null,
+          welcomeMessage: (meta.welcomeMessage as string) ?? null,
+          primaryColor: (meta.primaryColor as string) ?? null,
+          loginBgUrl: (meta.loginBgUrl as string) ?? null,
+        });
+      })
+      .catch(() => {});
   }, []);
 
   useEffect(() => {
@@ -170,9 +197,19 @@ export default function SigninPage() {
 
           {/* Logo */}
           <div className="mb-8 flex items-center gap-2">
-            <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-neutral-900 dark:bg-neutral-50">
-              <Shield className="h-4 w-4 text-white dark:text-neutral-900" />
-            </div>
+            {orgBranding?.logo ? (
+              // eslint-disable-next-line @next/next/no-img-element
+              <img
+                src={orgBranding.logo}
+                alt="Organization logo"
+                className="h-8 w-8 rounded-lg object-contain"
+                onError={(e) => { (e.target as HTMLImageElement).style.display = "none"; }}
+              />
+            ) : (
+              <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-neutral-900 dark:bg-neutral-50">
+                <Shield className="h-4 w-4 text-white dark:text-neutral-900" />
+              </div>
+            )}
             <span className="text-lg font-semibold tracking-tight text-neutral-900 dark:text-neutral-50">
               Fazri Analyzer
             </span>
@@ -195,7 +232,7 @@ export default function SigninPage() {
                     Welcome back
                   </h1>
                   <p className="mt-1 text-sm text-neutral-500 dark:text-neutral-400">
-                    Enter your username to sign in
+                    {orgBranding?.welcomeMessage ?? "Enter your username to sign in"}
                   </p>
 
                   <div className="mt-7 space-y-4">
@@ -420,13 +457,23 @@ export default function SigninPage() {
 
       {/* Right: decorative panel */}
       <div className="relative hidden overflow-hidden bg-neutral-900 lg:flex lg:w-[48%] flex-col items-center justify-center">
-        <div
-          className="absolute inset-0"
-          style={{
-            backgroundImage: 'radial-gradient(circle, rgba(255,255,255,0.07) 1px, transparent 1px)',
-            backgroundSize: '28px 28px',
-          }}
-        />
+        {orgBranding?.loginBgUrl ? (
+          // eslint-disable-next-line @next/next/no-img-element
+          <img
+            src={orgBranding.loginBgUrl}
+            alt=""
+            className="absolute inset-0 h-full w-full object-cover"
+            aria-hidden="true"
+          />
+        ) : (
+          <div
+            className="absolute inset-0"
+            style={{
+              backgroundImage: 'radial-gradient(circle, rgba(255,255,255,0.07) 1px, transparent 1px)',
+              backgroundSize: '28px 28px',
+            }}
+          />
+        )}
         <div className="absolute inset-0 bg-gradient-to-br from-neutral-900 via-transparent to-neutral-900/80" />
 
         <div className="relative z-10 px-14 text-center max-w-md">

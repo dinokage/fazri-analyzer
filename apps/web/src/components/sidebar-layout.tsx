@@ -35,11 +35,12 @@ import {
   Heart,
   Settings,
   KeyRound,
-  Globe,
+  Palette,
 } from "lucide-react"
 import { useActiveAlertCount } from "@/hooks/useAlerts"
 import { OrgSwitcher } from "@/components/layout/OrgSwitcher"
 import { Button } from "@/components/ui/button"
+import { useBranding } from "@/hooks/use-branding"
 
 const BASE = "/dashboard" // coderabbitai[manual] ignore: org-slug routing is a planned Phase 1 feature, current URL structure has no [orgSlug] segment
 
@@ -61,14 +62,27 @@ export function SidebarLayout({ children }: { children: React.ReactNode }) {
   }, [isPending, session, router])
 
   const { count: activeAlertCount } = useActiveAlertCount(30000)
+  const branding = useBranding()
 
   return (
     <SidebarProvider>
-      <div className="flex h-screen w-full overflow-hidden">
+      <div
+        className="flex h-screen w-full overflow-hidden"
+        style={branding.primaryColor ? { "--brand-primary": branding.primaryColor } as React.CSSProperties : undefined}
+      >
         <Sidebar className="flex flex-col overflow-hidden">
           <SidebarHeader className="flex-shrink-0 px-3 pt-3 pb-2">
             <div className="flex items-center gap-2 px-1 mb-2">
-              <span className="font-bold text-lg truncate">Fazri Analyzer</span>
+              {branding.logo ? (
+                // eslint-disable-next-line @next/next/no-img-element
+                <img
+                  src={branding.logo}
+                  alt={branding.name ?? "Org logo"}
+                  className="h-7 w-7 rounded object-contain shrink-0"
+                  onError={(e) => { (e.target as HTMLImageElement).style.display = "none"; }}
+                />
+              ) : null}
+              <span className="font-bold text-lg truncate">{branding.name ?? "Fazri Analyzer"}</span>
             </div>
             <OrgSwitcher />
           </SidebarHeader>
@@ -187,10 +201,10 @@ export function SidebarLayout({ children }: { children: React.ReactNode }) {
                       </SidebarMenuButton>
                     </SidebarMenuItem>
                     <SidebarMenuItem>
-                      <SidebarMenuButton asChild data-active={isActive(`${BASE}/settings/custom-domain`)}>
-                        <Link href={`${BASE}/settings/custom-domain`} className="flex items-center gap-3">
-                          <Globe className="h-5 w-5 flex-shrink-0" />
-                          <span className="truncate">Custom Domain</span>
+                      <SidebarMenuButton asChild data-active={isActive(`${BASE}/settings/branding`)}>
+                        <Link href={`${BASE}/settings/branding`} className="flex items-center gap-3">
+                          <Palette className="h-5 w-5 flex-shrink-0" />
+                          <span className="truncate">Branding</span>
                         </Link>
                       </SidebarMenuButton>
                     </SidebarMenuItem>

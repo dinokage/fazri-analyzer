@@ -12,6 +12,21 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 
+function OrgAvatar({ logo, name }: { logo?: string | null; name?: string | null }) {
+  if (logo) {
+    return (
+      // eslint-disable-next-line @next/next/no-img-element
+      <img
+        src={logo}
+        alt={name ?? "Org logo"}
+        className="h-4 w-4 shrink-0 rounded object-contain"
+        onError={(e) => { (e.target as HTMLImageElement).style.display = "none"; }}
+      />
+    );
+  }
+  return <Building2 className="h-4 w-4 shrink-0 text-sidebar-foreground/60" />;
+}
+
 export function OrgSwitcher() {
   const router = useRouter();
   const { organizationId, organizationSlug, isLoaded } = useOrg();
@@ -35,7 +50,7 @@ export function OrgSwitcher() {
   if (!hasMultipleOrgs) {
     return (
       <div className="flex items-center gap-2 rounded-md px-2 py-1.5 text-sm text-sidebar-foreground">
-        <Building2 className="h-4 w-4 shrink-0 text-sidebar-foreground/60" />
+        <OrgAvatar logo={currentOrg?.logo} name={currentOrg?.name} />
         <span className="truncate font-medium">
           {currentOrg?.name ?? organizationSlug ?? "No organization"}
         </span>
@@ -47,7 +62,7 @@ export function OrgSwitcher() {
     <DropdownMenu>
       <DropdownMenuTrigger asChild>
         <button className="flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-sm text-sidebar-foreground hover:bg-sidebar-accent transition-colors">
-          <Building2 className="h-4 w-4 shrink-0 text-sidebar-foreground/60" />
+          <OrgAvatar logo={currentOrg?.logo} name={currentOrg?.name} />
           <span className="truncate font-medium flex-1 text-left">
             {currentOrg?.name ?? organizationSlug ?? "Select organization"}
           </span>
@@ -61,7 +76,7 @@ export function OrgSwitcher() {
             onSelect={() => switchOrg(org.id)}
             className="flex items-center gap-2"
           >
-            <Building2 className="h-4 w-4 shrink-0 text-muted-foreground" />
+            <OrgAvatar logo={org.logo} name={org.name} />
             <span className="flex-1 truncate">{org.name}</span>
             {org.id === organizationId && (
               <Check className="h-3.5 w-3.5 shrink-0 text-primary" />

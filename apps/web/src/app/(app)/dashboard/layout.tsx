@@ -6,6 +6,7 @@ import { ErrorBoundary } from "@/components/ErrorBoundary";
 import { AlertNotificationListener } from "@/components/alert-notification-listener";
 import { OrgProvider } from "@/lib/org-context";
 import { getAuthSession } from "@/lib/auth-server";
+import { BrandingFavicon } from "@/components/branding-favicon";
 
 export default async function DashboardLayout({
   children,
@@ -20,6 +21,7 @@ export default async function DashboardLayout({
 
   return (
     <OrgProvider>
+      <BrandingFavicon />
       <SidebarLayout>
         <AlertNotificationListener enabled pollInterval={10000} />
         <ErrorBoundary>{children}</ErrorBoundary>
