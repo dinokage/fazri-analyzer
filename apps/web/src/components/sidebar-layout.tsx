@@ -64,12 +64,27 @@ export function SidebarLayout({ children }: { children: React.ReactNode }) {
   const { count: activeAlertCount } = useActiveAlertCount(30000)
   const branding = useBranding()
 
+  // Validated hex only — prevents CSS injection from metadata
+  const safeColor = /^#[0-9a-fA-F]{6}$/.test(branding.primaryColor ?? "") ? branding.primaryColor! : null
+
   return (
     <SidebarProvider>
-      <div
-        className="flex h-screen w-full overflow-hidden"
-        style={branding.primaryColor ? { "--brand-primary": branding.primaryColor } as React.CSSProperties : undefined}
-      >
+      {safeColor && (
+        <style dangerouslySetInnerHTML={{ __html: `
+          [data-sidebar="menu-button"][data-active="true"] {
+            background-color: ${safeColor}1a !important;
+            color: ${safeColor} !important;
+            border-left: 2px solid ${safeColor};
+          }
+          [data-sidebar="menu-button"][data-active="true"] svg {
+            color: ${safeColor} !important;
+          }
+          [data-sidebar="menu-button"]:hover {
+            background-color: ${safeColor}0d !important;
+          }
+        `}} />
+      )}
+      <div className="flex h-screen w-full overflow-hidden">
         <Sidebar className="flex flex-col overflow-hidden">
           <SidebarHeader className="flex-shrink-0 px-3 pt-3 pb-2">
             <div className="flex items-center gap-2 px-1 mb-2">
