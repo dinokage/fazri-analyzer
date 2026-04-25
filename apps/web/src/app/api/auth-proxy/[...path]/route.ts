@@ -21,7 +21,7 @@ async function handler(
 ) {
   const { path } = await context.params;
   const search = request.nextUrl.search;
-  const targetUrl = `${AUTH_SERVICE_URL}/api/${path.join("/")}${search}`;
+  const targetUrl = `${AUTH_SERVICE_URL}/${path.join("/")}${search}`;
 
   const headers = new Headers(request.headers);
   headers.delete("host");
