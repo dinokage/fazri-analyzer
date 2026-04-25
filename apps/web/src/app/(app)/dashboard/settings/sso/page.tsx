@@ -22,7 +22,8 @@ interface SSOProviderInfo {
   updatedAt: string;
 }
 
-const AUTH_URL = process.env.NEXT_PUBLIC_AUTH_SERVICE_URL ?? "http://localhost:4000";
+const AUTH_URL = "/api/auth-proxy";
+const AUTH_SERVICE_URL = process.env.NEXT_PUBLIC_AUTH_SERVICE_URL ?? "http://localhost:4000";
 
 export default function SSOSettingsPage() {
   const { data: session } = authClient.useSession();
@@ -120,8 +121,8 @@ export default function SSOSettingsPage() {
       toast.error("Please fill in all fields"); return;
     }
     setRegistering(true);
-    const acsUrl = `${AUTH_URL}/api/auth/sso/saml2/callback/${samlProviderId}`;
-    const spEntityId = `${AUTH_URL}/api/auth/sso/saml2/sp/metadata`;
+    const acsUrl = `${AUTH_SERVICE_URL}/api/auth/sso/saml2/callback/${samlProviderId}`;
+    const spEntityId = `${AUTH_SERVICE_URL}/api/auth/sso/saml2/sp/metadata`;
     const { error } = await authClient.sso.register({
       providerId: samlProviderId,
       issuer: samlIssuer,
@@ -302,8 +303,8 @@ export default function SSOSettingsPage() {
                     <div className="rounded-lg border bg-muted/50 p-4 space-y-2">
                       <p className="text-xs font-medium">SP Metadata for your IdP</p>
                       <div className="text-xs text-muted-foreground space-y-1">
-                        <p><span className="font-medium">ACS URL:</span> <code className="bg-muted px-1 py-0.5 rounded">{AUTH_URL}/api/auth/sso/saml2/callback/{samlProviderId}</code></p>
-                        <p><span className="font-medium">SP Metadata URL:</span> <code className="bg-muted px-1 py-0.5 rounded">{AUTH_URL}/api/auth/sso/saml2/sp/metadata?providerId={samlProviderId}</code></p>
+                        <p><span className="font-medium">ACS URL:</span> <code className="bg-muted px-1 py-0.5 rounded">{AUTH_SERVICE_URL}/api/auth/sso/saml2/callback/{samlProviderId}</code></p>
+                        <p><span className="font-medium">SP Metadata URL:</span> <code className="bg-muted px-1 py-0.5 rounded">{AUTH_SERVICE_URL}/api/auth/sso/saml2/sp/metadata?providerId={samlProviderId}</code></p>
                       </div>
                     </div>
                   )}
@@ -338,7 +339,7 @@ export default function SSOSettingsPage() {
                   {provider.type === "saml" && (
                     <p className="mt-1 text-xs text-muted-foreground">
                       <span className="font-medium">ACS URL:</span>{" "}
-                      <code className="bg-muted px-1 py-0.5 rounded">{AUTH_URL}/api/auth/sso/saml2/callback/{provider.providerId}</code>
+                      <code className="bg-muted px-1 py-0.5 rounded">{AUTH_SERVICE_URL}/api/auth/sso/saml2/callback/{provider.providerId}</code>
                     </p>
                   )}
                 </div>

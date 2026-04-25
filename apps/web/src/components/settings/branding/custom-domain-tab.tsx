@@ -11,7 +11,7 @@ import {
   Loader2, XCircle, ShieldAlert,
 } from "lucide-react";
 
-const AUTH_URL = process.env.NEXT_PUBLIC_AUTH_SERVICE_URL ?? "http://localhost:4000";
+const AUTH_URL = "/api/auth-proxy";
 const SERVER_IP = process.env.NEXT_PUBLIC_FAZRI_SERVER_IP ?? "";
 
 type PageState = "loading" | "list" | "add" | "txt-verification" | "cname-instructions";
