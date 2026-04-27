@@ -824,32 +824,26 @@ pipeline {
             steps {
                 sh '''
                     docker image prune -f || true
-                    # Remove old tagged images ONLY for the current branch prefix.
-                    # This prevents concurrent branch/PR jobs from deleting each other's images.
-                    if [ "${BUILD_BACKEND}" = "true" ]; then
-                        docker images ${BACKEND_IMAGE} --format "{{.Tag}}" \
-                            | grep "^${SANITIZED_BRANCH}-" \
-                            | grep -v "^${IMAGE_TAG}$" \
-                            | xargs -r -I{} docker rmi ${BACKEND_IMAGE}:{} 2>/dev/null || true
-                    fi
-                    if [ "${BUILD_AUTH}" = "true" ]; then
-                        docker images ${AUTH_IMAGE} --format "{{.Tag}}" \
-                            | grep "^${SANITIZED_BRANCH}-" \
-                            | grep -v "^${IMAGE_TAG}$" \
-                            | xargs -r -I{} docker rmi ${AUTH_IMAGE}:{} 2>/dev/null || true
-                    fi
-                    if [ "${BUILD_DEEPFACE}" = "true" ]; then
-                        docker images ${DEEPFACE_IMAGE} --format "{{.Tag}}" \
-                            | grep "^${SANITIZED_BRANCH}-" \
-                            | grep -v "^${IMAGE_TAG}$" \
-                            | xargs -r -I{} docker rmi ${DEEPFACE_IMAGE}:{} 2>/dev/null || true
-                    fi
-                    if [ "${BUILD_WEB}" = "true" ]; then
-                        docker images ${DASHBOARD_IMAGE} --format "{{.Tag}}" \
-                            | grep "^${SANITIZED_BRANCH}-" \
-                            | grep -v "^${IMAGE_TAG}$" \
-                            | xargs -r -I{} docker rmi ${DASHBOARD_IMAGE}:{} 2>/dev/null || true
-                    fi
+
+                    # Collect every image reference held by any container (running or stopped).
+                    # Using -a ensures we don't delete images for containers that are temporarily down.
+                    USED_IMAGES=$(docker ps -a --format "{{.Image}}")
+
+                    # For each service image, remove every tag that is not 'latest' and is not
+                    # currently referenced by any container. This cleans up stale branch and PR
+                    # images across ALL branches, not just the current one.
+                    for IMAGE in ${BACKEND_IMAGE} ${AUTH_IMAGE} ${DEEPFACE_IMAGE} ${GO2RTC_IMAGE} ${DASHBOARD_IMAGE}; do
+                        docker images "${IMAGE}" --format "{{.Tag}}" \
+                            | grep -v "^latest$" \
+                            | while read -r tag; do
+                                if printf '%s\n' "${USED_IMAGES}" | grep -qxF "${IMAGE}:${tag}"; then
+                                    echo "Keeping ${IMAGE}:${tag} (in use)"
+                                else
+                                    echo "Removing ${IMAGE}:${tag}"
+                                    docker rmi "${IMAGE}:${tag}" 2>/dev/null || true
+                                fi
+                            done
+                    done
                 '''
             }
         }
