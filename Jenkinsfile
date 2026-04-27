@@ -825,18 +825,17 @@ pipeline {
                 sh '''
                     docker image prune -f || true
 
-                    # Collect every image reference held by any container (running or stopped).
-                    # Using -a ensures we don't delete images for containers that are temporarily down.
-                    USED_IMAGES=$(docker ps -a --format "{{.Image}}")
+                    # Write container image references to a temp file once to avoid
+                    # re-expanding a large variable on every loop iteration (which floods
+                    # the Jenkins log via set -x).
+                    USED_IMAGES_FILE=$(mktemp)
+                    docker ps -a --format "{{.Image}}" > "${USED_IMAGES_FILE}"
 
-                    # For each service image, remove every tag that is not 'latest' and is not
-                    # currently referenced by any container. This cleans up stale branch and PR
-                    # images across ALL branches, not just the current one.
                     for IMAGE in ${BACKEND_IMAGE} ${AUTH_IMAGE} ${DEEPFACE_IMAGE} ${GO2RTC_IMAGE} ${DASHBOARD_IMAGE}; do
                         docker images "${IMAGE}" --format "{{.Tag}}" \
                             | grep -v "^latest$" \
                             | while read -r tag; do
-                                if printf '%s\n' "${USED_IMAGES}" | grep -qxF "${IMAGE}:${tag}"; then
+                                if grep -qxF "${IMAGE}:${tag}" "${USED_IMAGES_FILE}"; then
                                     echo "Keeping ${IMAGE}:${tag} (in use)"
                                 else
                                     echo "Removing ${IMAGE}:${tag}"
@@ -844,6 +843,8 @@ pipeline {
                                 fi
                             done
                     done
+
+                    rm -f "${USED_IMAGES_FILE}"
                 '''
             }
         }
