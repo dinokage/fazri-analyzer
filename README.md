@@ -1,6 +1,6 @@
 # Fazri Analyzer
 
-![Fazri Analyzer Screenshot](https://cdn.hextasphere.com/hexta/ethos/screenshot-with-background.png)
+![Fazri Analyzer Screenshot](https://cdn.rdpdatacenter.in/hexta/ethos/screenshot-with-background.png)
 
 A multi-tenant campus intelligence platform built as a pnpm monorepo with Turborepo. It combines a Next.js 16 dashboard, a dedicated Express/Better Auth service, a FastAPI ML engine with TensorFlow and graph analytics, and an InsightFace-powered face recognition microservice — all orchestrated via Docker Compose on a single-node on-premise deployment.
 
