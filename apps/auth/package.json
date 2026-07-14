@@ -8,7 +8,7 @@
     "start": "node --require ./dist/instrument.js dist/index.js"
   },
   "dependencies": {
-    "@better-auth/sso": "1.5.4",
+    "@better-auth/sso": "1.6.11",
     "@fazri/db": "workspace:*",
     "@sentry/node": "^8",
     "bcryptjs": "^2.4.3",
