@@ -75,7 +75,7 @@ email-validator==2.1.0
 Pygments==2.20.0
 pyparsing==3.2.5
 python-dateutil==2.9.0.post0
-python-dotenv==1.1.1
+python-dotenv==1.2.2
 python-jose==3.5.0
 python-Levenshtein==0.27.1
 python-multipart==0.0.22
